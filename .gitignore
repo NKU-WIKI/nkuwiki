@@ -1,0 +1,68 @@
+# 环境文件
+.env
+.env.local
+.env.*.local
+
+# 日志文件
+*.log
+*.log.*
+logs/
+
+# 本地开发文件
+processed.txt
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 测试相关
+.coverage
+htmlcov/
+.pytest_cache/
+
+# IDE相关
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 数据库相关
+*.sqlite
+*.db
+*.dump
+
+# 大文件
+*.zip
+*.tar.gz
+*.7z
+*.dmg
+*.iso
+
+# 数据目录中的HTML文件
+data/wechat/**/*.html
+
+# Docker相关
+docker-compose.override.yml
+
+# 添加虚拟环境目录到.gitignore
+.nkuwiki/
+
+# 常见需要忽略的文件类型
+*.tmp
+.DS_Store 
