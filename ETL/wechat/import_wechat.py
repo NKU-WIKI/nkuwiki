@@ -165,7 +165,7 @@ class WechatImporter:
                 self._initialize_database(cur)
                 conn.commit()
                 
-                # 修改文件匹配逻辑（移除分区处理）
+                # 修改文件匹配逻辑，适配Linux路径
                 meta_files = list(Path(data_dir).rglob("*.json")) + list(Path(data_dir).rglob("*.JSON"))
                 
                 logger.info(f"找到 {len(meta_files)} 个元数据文件")
@@ -266,7 +266,7 @@ def main():
     }
     
     importer = WechatImporter(db_config, config)
-    importer.run_import(args.data_dir)
+    importer.run_import(args.data_dir or "/data/wechat/202501/")
 
 if __name__ == "__main__":
     main()
