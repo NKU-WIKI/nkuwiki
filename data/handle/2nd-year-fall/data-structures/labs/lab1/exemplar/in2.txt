@@ -1,0 +1,7 @@
+What Causes Hallucinations?
+Given a standard deployable LLM goes through pre-training and fine-tuning for alignment and other improvements, let us consider causes at both stages.
+
+Pre-training Data Issues
+The volume of the pre-training data corpus is enormous, as it is supposed to represent world knowledge in all available written forms. 
+Data crawled from the public Internet is the most common choice and thus out-of-date, missing, or incorrect information is expected. 
+As the model may incorrectly memorize this information by simply maximizing the log-likelihood, we would expect the model to make mistakes.

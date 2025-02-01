@@ -1,0 +1,4 @@
+n = int(input())
+s = list(map(int, input().split()))
+k = s[::-1].index(min(s)) + s.index(max(s))
+print(k if k < n - 1 else k - 1)

@@ -1,0 +1,6 @@
+from math import * 
+x,y,z=eval(input())
+s=sqrt(abs(4*x*y-3*e*e))
+r=log(z)
+q=pow(x*y,4)
+print('%.2f' %((s+r)/q))

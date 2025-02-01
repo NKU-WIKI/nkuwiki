@@ -1,0 +1,9 @@
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/planewar.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/edit_cache.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/rebuild_cache.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/list_install_components.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/install.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/install/local.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/install/strip.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/planewar_autogen_timestamp_deps.dir
+D:/Code/giteerepo/build-planewar-Desktop_Qt_6_4_2_MinGW_64_bit-Debug/CMakeFiles/planewar_autogen.dir

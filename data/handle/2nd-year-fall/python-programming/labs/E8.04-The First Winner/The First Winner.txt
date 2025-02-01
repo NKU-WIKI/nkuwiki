@@ -1,0 +1,17 @@
+d={}
+cur=glo=0
+ans=""
+for i in range(int(input())):
+    a,b=input().split()
+    b=int(b)
+    try:
+        d[a]+=b
+    except:
+        d[a]=b
+
+    cur=max(d.values())
+    if cur!=glo:
+        glo=cur
+        ans=a
+
+print(ans)

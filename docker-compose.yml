@@ -1,0 +1,22 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: nkuwiki_db
+    volumes:
+      - /mnt/d/Code/nkuwiki/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: nkuwiki_user
+      POSTGRES_PASSWORD: 123456
+      POSTGRES_DB: nkuwiki_db
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nkuwiki_user -d nkuwiki_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data: 

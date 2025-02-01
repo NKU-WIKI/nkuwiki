@@ -1,0 +1,3 @@
+import math
+r = eval(input())
+print('%.2f,%.2f' % (r * r * math.pi, 2 * r * math.pi))

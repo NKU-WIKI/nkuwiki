@@ -1,0 +1,13 @@
+input()
+r=t=0
+b=map(int,input().split())
+for x in b:
+    if x<0:
+        if t==0:
+            r+=1
+        else:
+            t-=1
+    else:
+        t+=x
+
+print(r)

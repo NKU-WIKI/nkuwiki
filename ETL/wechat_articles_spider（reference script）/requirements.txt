@@ -1,0 +1,6 @@
+requests
+loguru
+pdfplumber
+PyPDF2
+selenium
+pytz

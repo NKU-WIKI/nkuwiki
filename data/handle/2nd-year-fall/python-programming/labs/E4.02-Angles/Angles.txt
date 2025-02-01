@@ -1,0 +1,10 @@
+from math import *
+
+x1, y1, x2, y2, x3, y3 = eval(input())
+a1 = ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** (1 / 2)
+a2 = ((x3 - x2) ** 2 + (y3 - y2) ** 2) ** (1 / 2)
+a3 = ((x1 - x3) ** 2 + (y1 - y3) ** 2) ** (1 / 2)
+o1 = acos((a1 ** 2 + a2 ** 2 - a3 ** 2) / (2 * a1 * a2))
+o2 = acos((a3 ** 2 + a2 ** 2 - a1 ** 2) / (2 * a3 * a2))
+o3 = acos((a1 ** 2 + a3 ** 2 - a2 ** 2) / (2 * a1 * a3))
+print("%.2f,%.2f,%.2f" % (degrees(o3), degrees(o1), degrees(o2)))

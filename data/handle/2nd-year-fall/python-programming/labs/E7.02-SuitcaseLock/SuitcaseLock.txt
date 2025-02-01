@@ -1,0 +1,10 @@
+n=eval(input())
+a=input()
+b=input()
+s=0
+
+for i in range(n):
+    x=int(a[i])
+    y=int(b[i])
+    s+=min(abs(x-y),abs(10-abs(x-y)))
+print(s)

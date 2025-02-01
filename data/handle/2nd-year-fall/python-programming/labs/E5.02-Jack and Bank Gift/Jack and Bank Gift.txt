@@ -1,0 +1,6 @@
+n=eval(input())
+if n>=0:
+    print(n)
+else:
+    s=-n
+    print(-min(s//10,s//100*10+s%10))
