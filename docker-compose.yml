@@ -2,31 +2,29 @@
 
 services:
   postgres:
-    image: registry.cn-hangzhou.aliyuncs.com/library/postgres:15
-    platform: linux/amd64
-    pull_policy: always
+    image: postgres:16
     container_name: nkuwiki_db
     networks:
       - nkuwiki-net
     environment:
-      POSTGRES_USER: ${DB_USER:-nkuwiki_user}
+      POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-123456}
-      POSTGRES_DB: ${DB_NAME:-nkuwiki_db}
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      POSTGRES_DB: postgres
+      PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro
+      - ./docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d:ro,z
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-nkuwiki_user} -d ${DB_NAME:-nkuwiki_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-    # x-aliyun-mirror: &aliyun-mirror
-    #   registry: egi52z78.mirror.aliyuncs.com
+      test: ["CMD-SHELL", "pg_isready -U nkuwiki_user -d nkuwiki_db"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+    restart: unless-stopped
 
-  importer:
+  app:
     build:
       context: ./ETL/wechat
       dockerfile: Dockerfile
@@ -37,25 +35,44 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - wechat_data:/app/data
-    env_file:
-      - .env
+      - wechat_data:/data/wechat
+      - ./ETL/wechat/.env:/app/.env:ro
+    environment:
+      DATABASE_URL: postgresql://${DB_USER:-nkuwiki_user}:${DB_PASSWORD:-123456}@postgres:5432/${DB_NAME:-nkuwiki_db}
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 1GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-nkuwiki_user} -d ${DB_NAME:-nkuwiki_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    env_file:
+      - ./ETL/wechat/.env
+
+  verifier:
+    build:
+      context: ./ETL/wechat
+      dockerfile: Dockerfile
+    networks:
+      - nkuwiki-net
+    depends_on:
+      app:
+        condition: service_started
+    command: ["python", "verify_import.py"]
 
 volumes:
   postgres_data:
     driver: local
+    driver_opts:
+      o: bind
+      type: none
+      device: /data/postgres
   wechat_data:
     driver: local
     driver_opts:
-      type: none
       o: bind
-      device: /data/wechat/202501
+      type: none
+      device: /data/wechat
 
 networks:
   nkuwiki-net:

@@ -1,7 +1,0 @@
-n=eval(input())
-s=0
-for i in range(n):
-    p,q=eval(input().replace(' ',','))
-    if q-p>1:
-        s=s+1
-print(s)

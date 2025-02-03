@@ -1,6 +1,0 @@
-from math import * 
-r,y,l=eval(input())
-m=r/12*0.01
-s=l*m/(1-1/pow(1+m,12*y))
-print('%.2f' %s)
-print('%.2f' %(s*12*y))

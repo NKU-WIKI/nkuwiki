@@ -1,10 +1,26 @@
+-- 创建用户和数据库前切换到postgres数据库
+\c postgres;
+CREATE USER nkuwiki_user WITH PASSWORD '123456' CREATEDB CREATEROLE;
+CREATE DATABASE nkuwiki_db OWNER nkuwiki_user;
+\c nkuwiki_db;
+
+-- 授予模式权限
+GRANT CREATE, USAGE ON SCHEMA nkuwiki TO nkuwiki_user;
+
+-- 添加超级用户权限（临时）
+ALTER USER nkuwiki_user WITH SUPERUSER;
+
 -- 删除所有冗余操作
 \echo '开始执行初始化脚本'
 SET search_path TO nkuwiki;
 
 -- 创建模式并授权
 CREATE SCHEMA IF NOT EXISTS nkuwiki AUTHORIZATION nkuwiki_user;
-ALTER DEFAULT PRIVILEGES IN SCHEMA nkuwiki GRANT ALL ON TABLES TO nkuwiki_user;
+GRANT USAGE ON SCHEMA nkuwiki TO nkuwiki_user;
+GRANT CREATE ON SCHEMA nkuwiki TO nkuwiki_user;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA nkuwiki TO nkuwiki_user;
+GRANT USAGE, CREATE ON SCHEMA public TO nkuwiki_user;
+ALTER DEFAULT PRIVILEGES IN SCHEMA nkuwiki GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO nkuwiki_user;
 
 -- 删除所有旧表和相关对象
 DROP TABLE IF EXISTS nkuwiki.wechat_articles CASCADE;
@@ -50,3 +66,6 @@ COMMENT ON COLUMN nkuwiki.wechat_articles.original_meta IS '原始JSON元数据'
 GRANT ALL PRIVILEGES ON TABLE nkuwiki.wechat_articles TO nkuwiki_user;
 
 \echo '初始化完成'
+
+-- 后续操作完成后撤销权限
+-- ALTER USER nkuwiki_user WITH NOSUPERUSER;

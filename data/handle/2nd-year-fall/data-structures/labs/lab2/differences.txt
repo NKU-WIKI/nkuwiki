@@ -1,3 +1,0 @@
-Comparing files inputfile2_ascii.txt and OUTPUTFILE2.TXT
-FC: no differences encountered
-

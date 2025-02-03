@@ -1,6 +1,0 @@
-s=input()
-a=s.find('AB')
-b=s.find('BA')
-c=s.rfind('AB')
-d=s.rfind('BA')
-print('YES' if min(a,b,c,d)>=0 and (abs(a-d)>1 or abs(b-c)>1) else 'NO')

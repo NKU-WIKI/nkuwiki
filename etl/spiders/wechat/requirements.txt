@@ -1,0 +1,21 @@
+# 基础依赖
+psycopg2-binary               # PostgreSQL驱动
+python-dotenv                 # 环境变量管理
+tenacity                      # 重试机制
+tqdm                         # 进度条
+
+# 新增生产依赖
+loguru                       # 现代化日志
+python-dateutil              # 日期处理
+orjson                       # 高性能JSON解析
+
+# 开发工具 (按需使用)
+pytest                       # 测试框架
+pytest-asyncio               # 异步测试支持
+mypy                         # 静态类型检查
+
+# 添加爬虫依赖
+selenium
+webdriver-manager
+requests
+beautifulsoup4 

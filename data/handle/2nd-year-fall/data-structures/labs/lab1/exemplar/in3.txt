@@ -1,8 +1,0 @@
-Fine-tuning New Knowledge
-Fine-tuning a pre-trained LLM via supervised fine-tuning and RLHF is a common technique for improving certain capabilities of the model like instruction following. 
-Introducing new knowledge at the fine-tuning stage is hard to avoid.
-
-Fine-tuning usually consumes much less compute, making it debatable whether the model can reliably learn new knowledge via small-scale fine-tuning. 
-Gekhman et al. 2024 studied the research question of whether fine-tuning LLMs on new knowledge encourages hallucinations. 
-They found that (1) LLMs learn fine-tuning examples with new knowledge slower than other examples with knowledge consistent with the pre-existing knowledge of the model; 
-(2) Once the examples with new knowledge are eventually learned, they increase the model's tendency to hallucinate.
