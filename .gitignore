@@ -41,6 +41,7 @@ htmlcov/
 .idea/
 *.swp
 *.swo
+.cursorrules
 
 # 数据库相关
 *.sqlite
@@ -59,9 +60,6 @@ data/wechat/**/*.html
 
 # Docker相关
 docker-compose.override.yml
-
-# 添加虚拟环境目录到.gitignore
-.nkuwiki/
 
 # 常见需要忽略的文件类型
 *.tmp
