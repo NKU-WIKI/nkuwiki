@@ -1,0 +1,13 @@
+# 基础依赖
+python-dotenv
+python-dateutil
+loguru
+pytz
+
+# 爬虫依赖
+playwright
+requests
+
+# 文件处理依赖
+pdfplumber
+PyPDF2

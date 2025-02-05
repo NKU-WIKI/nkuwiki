@@ -2,14 +2,11 @@
 
 ## 🎯 愿景与目标
 
-构建**南开知识共同体**，践行：
+我们致力于构建**南开知识共同体**，践行 **开源·共治·普惠** 三位一体价值体系  
+  （🔓 技术开源透明 + 🤝 社区协同共治 + 🆓 服务永久普惠），实现：
 
-- 🧑💻 **开源·共治·普惠**  
-  （三位一体价值体系）：  
-  🔓 技术开源透明 + 🤝 社区协同共治 + 🆓 服务永久普惠）
-致力于：
 - 🚀 **消除南开学子信息差距**
-- 💡 **实现知识资源平等获取**
+- 💡 **开放知识资源免费获取**
 - 🌱 **构建可持续的互助社区**
 
 **项目亮点**：
@@ -192,7 +189,7 @@ end note
 ## 📅 演进路线
 | 阶段            | 关键里程碑                          | 技术栈与架构决策                     | 交付产物                          |
 |-----------------|-----------------------------------|--------------------------------------|----------------------------------|
-| **MVP启动期**<br>(0-3月) | ✅ 核心服务上线<br>▪ 微信公众号智能问答MVP<br>▪ 动态爬虫框架1.0<br>▪ 重点平台数据接入（官网/公众号）<br>▪ 知识库基础检索功能 | 🛠 FastAPI（API网关）<br>🤖 Coze（智能代理）<br>🕷 Playwright/Selenium（自动化爬虫） | 📦 容器化核心服务<br>📚 部署指南+运维手册<br>🔍 知识库检索API文档 |
+| **MVP启动期**<br>(0-3月) | ✅ 核心服务上线<br>▪ 微信公众号智能问答MVP<br>▪ 动态爬虫框架1.0<br>▪ 重点平台数据接入（官网/公众号）<br>▪ 知识库基础检索功能 | 🛠 FastAPI（API网关）<br>🤖 Coze（智能Agent）<br>🕷 Playwright（自动化爬虫） | 📦 容器化核心服务<br>📚 部署指南+运维手册<br>🔍 知识库检索API文档 |
 | **生态构建期**<br>(4-6月) | 🚀 核心系统扩展<br>▪ 全平台爬虫覆盖<br>▪ 数据质量看板1.0<br>▪ 用户贡献系统原型<br>▪ 反爬策略增强 | 🕸 Scrapy（分布式爬虫）<br>📊 Prometheus+Granfana（监控）<br>🔐 JWT+RBAC（权限控制） | 🧩 可插拔爬虫框架<br>📈 质量评估系统<br>🪙 Token激励原型系统 |
 | **体系升级期**<br>(7-9月) | 🌟 系统架构演进<br>▪ 微服务化改造<br>▪ 分布式积分系统<br>▪ 全链路监控体系<br>▪ 多模态知识引擎 | ☁ Spring Cloud Alibaba（微服务）<br>📦 ELK（日志分析）<br>🧠 Milvus（向量检索） | 🔄 积分系统微服务集群<br>👁️ 系统健康看板<br>🎨 多模态处理SDK |
 
@@ -222,16 +219,16 @@ nkuwiki/
 │       └── quality/      # 质量评估工具
 │
 ├── etl/
-│   ├── spiders/       # 爬虫统一管理（extraction）
-│   │   ├── base_spider.py # 爬虫基类
-│   │   ├── websites/      # 网站爬虫
-│   │   ├── wechat/        # 微信公众号爬虫
-│   │   ├── campus_market/  # 校园集市爬虫
-│   │   ├── xiaohongshu/    # 小红书爬虫
-│   │   ├── weibo/          # 微博爬虫
-│   │   ├── douyin/         # 抖音爬虫
-│   │   ├── bilibili/       # B站爬虫
-│   │   └── zhihu/          # 知乎爬虫
+│   ├── crawler/       # 爬虫统一管理（extraction）
+│   │   ├── base_crawler.py # 爬虫基类
+│   │   ├── website.py      # 网站爬虫
+│   │   ├── wechat.py        # 微信公众号爬虫
+│   │   ├── campus_market.py  # 校园集市爬虫
+│   │   ├── xiaohongshu.py    # 小红书爬虫
+│   │   ├── weibo.py          # 微博爬虫
+│   │   ├── douyin.py         # 抖音爬虫
+│   │   ├── bilibili.py       # B站爬虫
+│   │   └── zhihu.py          # 知乎爬虫
 │   └── pipelines/     # 处理管道（transformation+loading）
 │       ├── quality_control/ # 质量管控
 │       └── data_export/    # 数据导出
@@ -247,7 +244,7 @@ nkuwiki/
 │   └── website/       # 网站服务
 │       └── website_service.py # 网站服务
 │
-└── infrastructure/
+└── infra/
     ├── deploy/        # 部署配置
     │   └── docker-compose.yml
     └── monitoring/    # 监控体系
@@ -275,7 +272,7 @@ nkuwiki/
 ### 技术选型表
 | 模块           | 子模块              | 技术栈                                | 版本     | 选型依据                          |
 |----------------|-------------------|-------------------------------------|---------|---------------------------------|
-| **爬虫引擎**    | 混合采集架构       | Playwright + Selenium              | 1.42.0 / 4.18.0 | 双引擎覆盖现代SPA与传统网页场景，Playwright处理复杂DOM性能提升40% |
+| **爬虫引擎**    | 轻量采集架构       | Playwright              | 1.42.0  | Playwright处理复杂DOM性能提升40% |
 |                | 反爬解决方案       | Browserless + mitmproxy            | 2.7.0 / 10.1.0 | 分布式浏览器指纹混淆 + 公众号API流量镜像捕获能力 |
 | **数据清洗**    | 数据清洗           | Pandera + DuckDB                  | 0.11.0 / 0.9.2 | 声明式数据验证框架 + 列式存储实时处理能力 |
 | **消息队列**    | 用户贡献处理       | RabbitMQ                           | 3.13.0  | 支持AMQP 1.0协议，消息持久化与死信队列保障数据完整性 |
@@ -293,7 +290,7 @@ nkuwiki/
 
 ### 核心模块实现
 
-#### 爬虫混合架构实现方案
+#### 爬虫架构实现方案
 ```plantuml
 @startuml
 package "采集策略路由" #LightBlue {
@@ -302,26 +299,22 @@ package "采集策略路由" #LightBlue {
 }
 
 package "采集引擎" #LightGreen {
-    component "Selenium" as selenium <<集群>>
     component "Playwright" as playwright <<集群>>
     component "Mitmproxy" as mitmproxy
 }
 
 component "Browserless" as browserless
 
-dynamic_detection --> selenium : "需要登录/复杂JS"
 dynamic_detection --> playwright : "现代Web应用"
 dynamic_detection --> mitmproxy : "公众号流量捕获"
 
-selenium --> browserless : "浏览器实例池"
 playwright --> browserless : "浏览器实例池"
 @enduml
 ```
 方案说明
-1. **复杂登录场景**：使用Selenium处理南开教务系统等需要模拟完整登录流程的系统（[BrowserStack指南](https://www.browserstack.com/guide/web-scraping-using-selenium-python)）
-2. **混合抓包模式**：结合Mitmproxy+Selenium Wire实现公众号API请求捕获（[Scrape-it案例](https://scrape-it.cloud/blog/web-scraping-using-selenium-python)）
-3. **反反爬策略**：通过Browserless集群实现IP轮换和浏览器指纹混淆
-4. **性能平衡**：Playwright处理现代Web应用（B站/小红书），Selenium专注复杂传统系统
+1. playwright 处理现代Web应用（B站/小红书）
+2. mitmproxy 捕获公众号流量
+3. browserless 实现IP轮换和浏览器指纹混淆
 
 #### 知识库入库流程
 
@@ -633,6 +626,7 @@ networks:
 | 版本 | 日期       | 修改人   | 变更描述               |
 |------|------------|----------|-----------------------|
 | 1.0  | 2025-02-03 | aokimi   | 初稿       |
+| 1.1  | 2025-02-05 | aokimi   | 爬虫架构全面转向Playwright|
 
 
 
