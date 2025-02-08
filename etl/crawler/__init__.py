@@ -17,4 +17,4 @@ import pdfplumber  # 导入pdfplumber模块，用于处理PDF文件
 from PyPDF2 import PdfWriter, PdfReader  # 导入PyPDF2模块，用于处理PDF文件
 from playwright.sync_api import sync_playwright  # 新增Playwright导入
 
-__all__ = ['datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 'logger', 'Counter', 'pdfplumber', 'PdfWriter', 'PdfReader', 'load_dotenv', 'tempfile', 'shutil', 'logger'] 
+__all__ = ['datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 'logger', 'Counter', 'pdfplumber', 'PdfWriter', 'PdfReader', 'load_dotenv', 'tempfile', 'shutil', 'logger', 'sync_playwright'] 

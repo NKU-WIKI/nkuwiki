@@ -1,36 +1,29 @@
 from __init__ import *
-# import json  # 导入JSON模块，用于处理JSON数据
-# import time  # 导入时间模块，用于处理时间相关的操作
-# import tempfile  # 用于创建临时用户目录
-# from datetime import datetime  # 导入datetime类，用于处理日期和时间
-# find_element(By.XPATH)  # 通过XPath定位元素
-# find_element(By.CSS_SELECTOR)  # 通过CSS选择器定位元素
-# find_element(By.ID)  # 通过ID定位元素
-# find_element(By.TAG_NAME)  # 通过标签名定位元素
-# find_element(By.CLASS_NAME)  # 通过类名定位元素
-# find_element(By.PARTIAL_LINK_TEXT)  # 通过部分链接文本定位元素
-# find_element(By.LINK_TEXT)  # 通过链接文本定位元素
-# find_element(By.NAME)  # 通过名称定位元素
-
-from playwright.sync_api import sync_playwright
+import re
 
 """
 爬虫基类
 包含通用请求处理、反反爬策略等
 """
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / '.env')
+
 class BaseCrawler():
-    def __init__(self, name, debug = False, headless = True):
+    def __init__(self, name, debug = False, headless = False):
         """
         传入名称、是否调试模式、是否无头模式
         """
         self.debug = debug
         self.headless = headless
         log_day_str = '{time:%Y-%m-%d}'
-        if(self.debug):
-            self.base_data_dir = str(Path(__file__).resolve().parent.parent) + '/data/' # 本地调试数据目录
-        else:
-            self.base_data_dir = '/data/raw/' # 生产环境用绝对数据目录
-        self.base_log_dir = str(Path(__file__).resolve().parent.parent) + '/logs/' # 日志目录  
+        # 使用Path对象处理路径，避免跨平台问题
+        base_path = Path(__file__).resolve().parent.parent
+        self.base_data_dir = base_path / 'data' / 'raw'
+        self.base_log_dir = base_path / 'logs'
+        
+        # 确保目录存在并有正确权限
+        self.base_data_dir.mkdir(parents=True, exist_ok=True)
+        self.base_log_dir.mkdir(parents=True, exist_ok=True)
         self.process_name = name
         self.content_type = name
         logger.add(f'{self.base_log_dir}/{self.process_name}.{log_day_str}.log', rotation="1 day", retention='3 months', level="INFO")# 配置日志记录器
@@ -42,24 +35,52 @@ class BaseCrawler():
         self.counter_file = 'counter.txt'  # 计数器文件，用于记录运行统计
         self.update_file = 'update.txt'  # 更新文件，用于记录更新信息
         self.update_f = open(self.base_dir / self.update_file, 'a+', encoding='utf-8')  # 打开更新文件
-        self.scraped_file = 'scraped.json'  # 已抓取记录文件
+        self.scraped_links_file = 'scraped_links.json'  # 已抓取链接文件
         self.cookies_file = 'cookies.txt'  # cookies文件，用于保存登录信息
         self.tz = pytz.timezone('Asia/Shanghai')  # 设置时区
+
 
         # 初始化Playwright
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch(headless=self.headless)
-        self.context = self.browser.new_context()
+        self.context = self.browser.new_context(
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+            locale='zh-CN',
+            timezone_id='Asia/Shanghai',
+            color_scheme='dark',
+            # 禁用自动化特征
+            bypass_csp=True,
+            java_script_enabled=True,
+            service_workers='block',
+            permissions=[]  # 禁用所有权限请求
+        )
+
+
+
+        # 从环境变量读取代理池配置
+        self.proxy_pool = os.getenv("PROXY_POOL", "http://127.0.0.1:7897").split(',')
+        self.current_proxy = None
+
+
+        # 初始化代理
+        self.rotate_proxy()
+        # 确保在初始化代理后创建page对象
         self.page = self.context.new_page()
 
         self.min_sleep_microsec = 3000  # 最小休眠时间
         self.max_sleep_microsec = 8000  # 最大休眠时间
         self.max_retry = 5  # 最大重试次数
         self.login_url = self.base_url  # 登录URL
-        # self.wait = WebDriverWait(self.page, 10)  # 设置最大等待时间
-        # 请求头
+        # 修改请求头增加随机性
         self.headers = {
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept': random.choice([
+                'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+            ]),
+            'User-Agent': random.choice([
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15'
+            ]),
             'Accept-Encoding': 'gzip, deflate, br',
             'Accept-Language': 'zh-CN,zh;q=0.9',
             'Connection': 'keep-alive',
@@ -68,11 +89,28 @@ class BaseCrawler():
             'Sec-Fetch-Site': 'same-origin',
             'Sec-Fetch-User': '?1',
             'Upgrade-Insecure-Requests': '1',
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
             'sec-ch-ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"macOS"',
         }
+
+        # 增加鼠标移动轨迹模拟
+        self.page.mouse.move(random.randint(0, 100), random.randint(0, 100))
+
+        # 增加代理健康检查
+        def check_proxy_health(proxy):
+            try:
+                test_url = "http://www.gstatic.com/generate_204"
+                response = requests.get(test_url, proxies={"http": proxy, "https": proxy}, timeout=10)
+                return response.status_code == 204
+            except:
+                return False
+
+        # 在初始化时选择可用代理
+        healthy_proxies = [p for p in self.proxy_pool if check_proxy_health(p)]
+        if healthy_proxies:
+            self.current_proxy = random.choice(healthy_proxies)
+
     def __del__(self):
         """析构时关闭浏览器"""
         try:
@@ -92,6 +130,8 @@ class BaseCrawler():
         if(self.debug): 
             pass
         else:
+            # 随机滚动页面
+            self.page.evaluate(f"window.scrollTo(0, {random.randint(100, 500)})")
             # 随机休眠一段时间
             time.sleep(random.uniform(self.min_sleep_microsec, self.max_sleep_microsec)/1000.0)
 
@@ -126,46 +166,118 @@ class BaseCrawler():
             lines += f'{k}: {v}\n'
         f.write_text(lines) 
 
-    def init_cookies(self, cookies, go_base_url=False):
+    def inject_anti_detection_script(self):
+        """
+        注入反检测脚本
+        """
+        try:
+            # 读取初始化脚本
+            init_script_path = Path(__file__).resolve().parent / 'init_script.js'
+            with open(init_script_path, 'r', encoding='utf-8') as f:
+                init_script = f.read()
+            # 注入脚本
+            self.page.add_init_script(init_script)
+        except Exception as e:
+            self.logger.error(f"Failed to inject anti-detection script: {e}")
+
+    def init_cookies(self, cookies, go_base_url=True):
         """
         初始化cookies，go_base_url为是否打开基础URL，默认False，即打开cookie_init_url
         """
         try:
-            self.page.goto(self.cookie_init_url)  # 打开初始化cookies的URL
-            self.counter['visit'] += 1  # 访问计数器加1
-            self.random_sleep()  # 随机休眠
-
-            # 使用BrowserContext设置cookies
-            cookie_list = [{'name': name, 'value': value, 'url': self.cookie_init_url} for name, value in cookies.items()]
-            self.context.add_cookies(cookie_list)  # 添加cookies到上下文
-
-            self.random_sleep()  # 随机休眠
+            self.inject_anti_detection_script()
+            self.page.goto(self.cookie_init_url)
+            self.counter['visit'] += 1
+            self.page.evaluate(f"window.scrollTo(0, {random.randint(100, 500)})")
+            self.random_sleep()
+            # 分批添加cookies并随机等待
+            batch_size = 3  # 每批添加的cookie数量
+            cookie_list = []
+            for name, value in cookies.items():
+                cookie_list.append({'name': name, 'value': value, 'url': self.cookie_init_url})
+                if len(cookie_list) >= batch_size:
+                    self.context.add_cookies(cookie_list)
+                    cookie_list = []
+                    self.random_sleep()  # 每批之间随机等待
+            # 添加剩余的cookies
+            if cookie_list:
+                self.context.add_cookies(cookie_list)
+                self.random_sleep()
+            self.random_sleep()
             if go_base_url:
-                self.page.goto(self.base_url)  # 打开基础URL
-                self.counter['visit'] += 1  # 访问计数器加1
-                self.random_sleep()  # 随机休眠
+                self.page.goto(self.base_url)
+                self.counter['visit'] += 1
+                self.random_sleep()
+                self.logger.info('go to base url')
         except Exception as e:
             self.counter['error'] += 1  # 错误计数器加1
             self.logger.error(e)  # 记录错误日志
 
-    def save_scraped_records(self, add_scraped_links):
+    def update_scraped_articles(self, scraped_links, articles):
         """
-        保存已抓取链接，add_scraped_links为新增抓取链接
+        保存已抓取文章，articles为新增抓取文章
         """
-        total_f = self.base_dir / self.scraped_file
-        scraped_records = self.get_scraped_records()
-        scraped_records = list(set(scraped_records) | set(add_scraped_links))  # 合并已抓取链接
-        try:
-            total_f.write_text(json.dumps(scraped_records, ensure_ascii=False, indent=0))  # 写入已抓取链接
-        except Exception as e:
-            self.counter['error'] += 1  # 错误计数器加1
-            self.logger.error(e)  # 记录错误日志
+        def clean_filename(filename):
+            """清理文件名，使其符合Windows和Linux文件系统规范"""
+            # 1. 替换或删除特殊字符
+            # Windows/Linux都不允许的字符: / \ : * ? " < > |
+            # 空格和点号虽然允许，但可能造成问题，也替换掉
+            invalid_chars = r'[<>:"/\\|?*\s.]+'
+            clean_name = re.sub(invalid_chars, '_', filename)
+            
+            # 2. 删除首尾的点和空格（Windows不允许）
+            clean_name = clean_name.strip('. ')
+            
+            # 3. 确保文件名不为空或仅包含特殊字符
+            if not clean_name or clean_name.isspace():
+                clean_name = 'untitled'
+                
+            # 4. 限制文件名长度（考虑中文字符）
+            # Windows最长255字节，Linux一般255字符
+            # 保守起见，取较小值，并留出后缀名空间
+            while len(clean_name.encode('utf-8')) > 200:
+                clean_name = clean_name[:-1]
+            
+            return clean_name
 
-    def get_scraped_records(self):
+        total_f = self.base_dir / self.scraped_links_file
+        for article in articles:    
+            if(article['link'] not in scraped_links):
+                year_month = article['publish_time'][0:7].replace('-', '')
+                save_dir = self.base_dir / year_month
+                save_dir.mkdir(exist_ok=True, parents=True)
+                clean_title = clean_filename(article['title'])
+                save_path = save_dir / clean_title
+                meta = {
+                    "link": article['link'],
+                    "nickname": article['nickname'],
+                    "publish_time": article['publish_time'],
+                    "run_time": datetime.now().isoformat(),
+                    "title": article['title'],
+                    "author": article.get('author'),
+                    "read_count": article.get('read_count', 0),
+                    "like_count": article.get('like_count', 0),
+                    "content_type": self.content_type,
+                    "file_path": str(save_path)
+                }
+                try:
+                    with open(save_path.with_suffix('.json'), 'w', encoding='utf-8', errors='ignore') as f:
+                        json.dump(meta, f, ensure_ascii=False, indent=2)
+                except PermissionError:
+                    self.logger.error(f"无法写入文件 {save_path}，权限被拒绝")
+                    # 尝试使用临时文件名
+                    temp_path = save_path.with_name(f"temp_{save_path.name}")
+                    with open(temp_path.with_suffix('.json'), 'w', encoding='utf-8', errors='ignore') as f:
+                        json.dump(meta, f, ensure_ascii=False, indent=2)
+                scraped_links.append(article['link'])
+        total_f = self.base_dir / self.scraped_links_file
+        total_f.write_text(json.dumps(scraped_links, ensure_ascii=False, indent=0))
+
+    def get_scraped_links(self):
         """
         获取已抓取链接
         """
-        total_f = self.base_dir / self.scraped_file
+        total_f = self.base_dir / self.scraped_links_file
         if total_f.exists():
             content = total_f.read_text()
             if len(content) > 0:  
@@ -180,17 +292,27 @@ class BaseCrawler():
         保存计数器，start_time为开始时间
         """
         path = self.base_dir / self.counter_file
-        with path.open('a+', encoding='utf-8') as h:
-            visit = self.counter.get('visit', 0)
-            scrape = self.counter.get('scrape', 0)
-            download = self.counter.get('download', 0)
-            error = self.counter.get('error', 0)
-            noneed = self.counter.get('noneed', 0)
-            time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            used_time = int(time.time() - start_time)
-            self.logger.info(f'#summary# {used_time}s, visit: {visit}, scrape: {scrape}, download: {download}, error: {error}, noneed: {noneed}')  # 记录日志
-            h.write(f'{time_str},{used_time},{visit},{scrape},{download},{error},{noneed}\n')  # 写入计数器文件
-          
+        try:
+            # 使用临时文件
+            temp_path = path.with_name(f"temp_{path.name}")
+            with temp_path.open('w', encoding='utf-8') as h:
+                visit = self.counter.get('visit', 0)
+                scrape = self.counter.get('scrape', 0)
+                download = self.counter.get('download', 0)
+                error = self.counter.get('error', 0)
+                noneed = self.counter.get('noneed', 0)
+                time_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                used_time = int(time.time() - start_time)
+                self.logger.info(f'#summary# {used_time}s, visit: {visit}, scrape: {scrape}, download: {download}, error: {error}, noneed: {noneed}')  # 记录日志
+                h.write(f'{time_str},{used_time},{visit},{scrape},{download},{error},{noneed}\n')  # 写入计数器文件
+            # 成功后重命名
+            if temp_path.exists():
+                temp_path.replace(path)
+        except PermissionError:
+            self.logger.error(f"无法访问文件 {path}，权限被拒绝")
+        except Exception as e:
+            self.logger.error(f"保存计数器失败: {str(e)}")
+
     def remove_disclosures(self, pdf_path, match):
         """
         使用 pdfplumber 检查文本，使用 PyPDF2 修改并保存 PDF，match为匹配文本
@@ -218,32 +340,6 @@ class BaseCrawler():
             self.counter['error'] += 1  # 错误计数器加1
             self.logger.error(f"An error occurred while cleaning {pdf_path}: {e}")  # 记录错误日志
 
-    def save_metadata(self, article):
-        """
-        生成存储路径，article为文章元数据
-        """
-        save_dir = self.base_dir / article['publish_time'].strftime("%Y-%m")
-        save_dir.mkdir(exist_ok=True, parents=True)
-        save_path = save_dir / f"{article['title']}_{article['publish_time'].strftime('%Y%m%d%H%M')}"
-        """
-        保存元数据
-        """
-        meta = {
-            "url": article.get('url'), 
-            "nickname": article['nickname'],
-            "publish_time": article['publish_time'].strftime("%Y-%m-%d"),
-            "publish_time_detail": article['publish_time'].isoformat(),
-            "run_time": datetime.now().isoformat(),
-            "title": article['title'],
-            "author": article.get('author'),
-            "read_count": article.get('read_count', 0),
-            "like_count": article.get('like_count', 0),
-            "content_type": self.content_type,
-            "file_path": str(save_path)
-        }
-        with open(save_path.with_suffix('.meta.json'), 'w', encoding='utf-8') as f:
-            json.dump(meta, f, ensure_ascii=False, indent=2)
-
     def close(self):
         """显式关闭浏览器"""
         try:
@@ -251,3 +347,54 @@ class BaseCrawler():
             self.logger.info("Browser closed successfully")
         except Exception as e:
             self.logger.error(f"Browser close failed: {e}")
+
+    def rotate_proxy(self):
+        """从代理池中随机选择可用代理"""
+        if self.proxy_pool:
+            self.current_proxy = random.choice(self.proxy_pool)
+            self.logger.info(f"使用代理: {self.current_proxy}")
+            
+            # 创建带有代理的新上下文
+            self.context = self.browser.new_context(
+                proxy={"server": self.current_proxy},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+                locale='zh-CN',
+                timezone_id='Asia/Shanghai',
+                color_scheme='dark',
+                # 禁用自动化特征
+                bypass_csp=True,
+                java_script_enabled=True,
+                service_workers='block',
+                permissions=[]  # 禁用所有权限请求
+            )
+    def check_proxy_health(self, proxy):
+        """检查代理是否可用"""
+        try:
+            test_url = "http://www.gstatic.com/generate_204"
+            response = requests.get(
+                test_url,
+                proxies={"http": proxy, "https": proxy},
+                timeout=10
+            )
+            return response.status_code == 204
+        except Exception as e:
+            self.logger.warning(f"代理 {proxy} 不可用: {str(e)}")
+            return False
+
+    def get_healthy_proxies(self):
+        """获取可用代理列表"""
+        return [p for p in self.proxy_pool if self.check_proxy_health(p)]
+
+    def safe_write_file(self, path, content):
+        """安全地写入文件，处理权限和锁问题"""
+        try:
+            # 创建临时文件
+            temp_path = path.with_name(f"temp_{path.name}")
+            with open(temp_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            # 如果成功写入临时文件，则替换原文件
+            temp_path.replace(path)
+            return True
+        except Exception as e:
+            self.logger.error(f"写入文件 {path} 失败: {str(e)}")
+            return False

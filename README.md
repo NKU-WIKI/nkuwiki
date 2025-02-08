@@ -66,6 +66,7 @@
 - [@LiaojunChen](https://github.com/LiaojunChen)
 - [@hht421](https://github.com/hht421)
 - [@ym-guan](https://github.com/ym-guan)
+- [@Yiwenjia1](https://github.com/Yiwenjia1)
 
 现任志愿者团队
 
