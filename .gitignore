@@ -33,6 +33,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+chatgpt-on-wechat/
 
 # 测试相关
 .coverage
@@ -40,6 +41,7 @@ htmlcov/
 .pytest_cache/
 
 # IDE相关
+.cursor/
 .vscode/
 .idea/
 *.swp
@@ -57,9 +59,6 @@ htmlcov/
 *.7z
 *.dmg
 *.iso
-
-# 数据目录中的HTML文件
-data/wechat/**/*.html
 
 # Docker相关
 docker-compose.override.yml
