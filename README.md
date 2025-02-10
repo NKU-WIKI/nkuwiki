@@ -2,7 +2,12 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)
 
-## 目录
+## 🚀 立即体验
+
+- 🔗 网站：https://coze.nankai.edu.cn/product/llm/chat/cuh2gospkp8br093l2eg
+- 🔎 微信公众号：nkuwiki
+
+## 📇 目录
 
 - [nkuwiki 开源·共治·普惠的南开百科](#nkuwiki-开源共治普惠的南开百科)
   - [目录](#目录)
