@@ -1,6 +1,6 @@
 # nkuwiki 开源·共治·普惠的南开百科
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.0.1-blue.svg)](https://github.com/your-org/nkuwiki/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)
 
 ## 目录
 
