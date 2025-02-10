@@ -5,6 +5,6 @@ setup(
     version="0.1",
     packages=find_packages(),
     install_requires=[
-        open("etl/crawler/requirements.txt").read().splitlines()
-    ]
+        # 依赖列表
+    ],
 ) 
