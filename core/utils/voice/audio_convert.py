@@ -1,7 +1,7 @@
 import shutil
 import wave
 
-from common.log import logger
+from infra.deploy.app import logger
 
 try:
     import pysilk

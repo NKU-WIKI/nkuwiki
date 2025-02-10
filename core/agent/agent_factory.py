@@ -2,7 +2,7 @@
 channel factory
 """
 from core.utils.common import const
-from core.utils.common.log import logger
+from loguru import logger
 
 def create_agent(agent_type):
     """
@@ -11,8 +11,8 @@ def create_agent(agent_type):
     :return: agent instance
     """
     if agent_type == const.COZE:
-        from core.agent.coze.coze_agent import CozeBot
-        return CozeBot()
+        from core.agent.coze.coze_agent import CozeAgent
+        return CozeAgent()
     else :
         logger.error(f"agent_type: {agent_type} not supported")
         raise RuntimeError

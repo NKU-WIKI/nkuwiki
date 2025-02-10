@@ -1,16 +1,13 @@
 #!/bin/bash
-
-#关闭服务
-cd `dirname $0`/..
-export BASE_DIR=`pwd`
-pid=`ps ax | grep -i app.py | grep "${BASE_DIR}" | grep python3 | grep -v grep | awk '{print $1}'`
-if [ -z "$pid" ] ; then
-        echo "No chatgpt-on-wechat running."
-        exit -1;
+# 查找占用80端口的进程并杀死
+pid=$(lsof -ti:80)
+if [ -n "$pid" ]; then
+    kill $pid
+    echo "已杀死占用80端口的进程（PID: $pid）"
+else
+    echo "没有进程占用80端口。"
 fi
 
-echo "The chatgpt-on-wechat(${pid}) is running..."
-
-kill ${pid}
-
-echo "Send shutdown request to chatgpt-on-wechat(${pid}) OK"
+sudo systemctl stop nkuwiki.service
+sudo systemctl disable nkuwiki.service
+sudo systemctl daemon-reload

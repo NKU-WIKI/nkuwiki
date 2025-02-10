@@ -1,4 +1,4 @@
-from core.utils.common.log import logger
+from infra.deploy.app import logger
 from core.agent.session_manager import Session
 from config import conf
 
@@ -6,14 +6,14 @@ class CozeSession(Session):
     def __init__(self, session_id, system_prompt=None, model="coze-pro"):
         super().__init__(session_id, system_prompt)
         self.model = model
-        self.conversation_id = None  # Coze会话ID
+        self.conversation_id = None  # 已存在的会话ID存储字段
         self.max_history = 5  # 控制历史记录长度
         self.response_buffer = ""  # 新增响应缓冲
         self.reset()
 
     def reset(self):
         super().reset()
-        self.conversation_id = None
+        self.conversation_id = None  # 重置会话时会清空ID
         # Coze需要的系统提示格式
         self.messages = [{
             "role": "system",
@@ -47,7 +47,7 @@ class CozeSession(Session):
                     return msg["content"]
             return ""  # 如果没有找到用户消息，返回空字符串
         except Exception as e:
-            logger.error(f"[COZE] 获取最后查询失败: {str(e)}")
+            logger.exception(f"[COZE] 获取最后查询失败: {str(e)}")
             return ""
 
     def discard_exceeding(self, max_tokens, cur_tokens=None):
@@ -59,7 +59,7 @@ class CozeSession(Session):
                 try:
                     import tiktoken
                 except ImportError:
-                    logger.error("请先安装tiktoken: pip install tiktoken")
+                    logger.error("[COZE] 请先安装tiktoken: pip install tiktoken")
                     raise
                 
                 try:
@@ -97,7 +97,7 @@ class CozeSession(Session):
             return total_tokens
             
         except Exception as e:
-            logger.warning(f"Token计算异常: {str(e)}，使用字符长度估算")
+            logger.exception(f"[COZE] Token计算异常: {str(e)}，使用字符长度估算")
             # 回退到简单字符数估算 (1 token ≈ 4个英文字符)
             total_chars = sum(len(msg["content"]) for msg in self.messages)
             estimated_tokens = total_chars // 4

@@ -1,7 +1,7 @@
 """
 channel factory
 """
-from services.channel import Channel
+from .channel import Channel
 
 
 def create_channel(channel_type) -> Channel:

@@ -11,7 +11,10 @@ from services.channel import Channel
 from core.utils.common.dequeue import Dequeue
 from core.utils.common import memory
 from core.utils.plugins import *
-
+from config import conf
+from infra.deploy.app import logger
+from core.utils.plugins.plugin_manager import PluginManager
+from core.utils.plugins.event import Event, EventContext
 try:
     from core.utils.voice.audio_convert import any_to_wav
 except Exception as e:
@@ -180,11 +183,11 @@ class ChatChannel(Channel):
     def _handle(self, context: Context):
         if context is None or not context.content:
             return
-        logger.debug("[chat_channel] ready to handle context: {}".format(context))
+        # logger.debug("[chat_channel] ready to handle context: {}".format(context))
         # reply的构建步骤
         reply = self._generate_reply(context)
 
-        logger.debug("[chat_channel] ready to decorate reply: {}".format(reply))
+        # logger.debug("[chat_channel] ready to decorate reply: {}".format(reply))
 
         # reply的包装步骤
         if reply and reply.content:
@@ -202,7 +205,7 @@ class ChatChannel(Channel):
         )
         reply = e_context["reply"]
         if not e_context.is_pass():
-            logger.debug("[chat_channel] ready to handle context: type={}, content={}".format(context.type, context.content))
+            # logger.debug("[chat_channel] ready to handle context: type={}, content={}".format(context.type, context.content))
             if context.type == ContextType.TEXT or context.type == ContextType.IMAGE_CREATE:  # 文字和图片消息
                 context["channel"] = e_context["channel"]
                 reply = super().build_reply_content(context.content, context)
@@ -296,7 +299,7 @@ class ChatChannel(Channel):
             )
             reply = e_context["reply"]
             if not e_context.is_pass() and reply and reply.type:
-                logger.debug("[chat_channel] ready to send reply: {}, context: {}".format(reply, context))
+                # logger.debug("[chat_channel] ready to send reply: {}, context: {}".format(reply, context))
                 self._send(reply, context)
 
     def _send(self, reply: Reply, context: Context, retry_cnt=0):
@@ -358,7 +361,7 @@ class ChatChannel(Channel):
                 if semaphore.acquire(blocking=False):  # 等线程处理完毕才能删除
                     if not context_queue.empty():
                         context = context_queue.get()
-                        logger.debug("[chat_channel] consume context: {}".format(context))
+                        # logger.debug("[chat_channel] consume context: {}".format(context))
                         future: Future = handler_pool.submit(self._handle, context)
                         future.add_done_callback(self._thread_pool_callback(session_id, context=context))
                         with self.lock:

@@ -10,7 +10,7 @@ from core.bridge.reply import *
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_channel import WechatMPChannel
 from services.wechatmp.wechatmp_message import WeChatMPMessage
-from core.utils.common.log import logger
+from infra.deploy.app import logger
 from core.utils.common.string_utils import split_string_by_utf8_length
 from config import conf, subscribe_msg
 
@@ -37,7 +37,7 @@ class Query:
                     )
                     logger.debug(f"[解密后] 消息内容: {message.decode()}")
                 except Exception as e:
-                    logger.error(f"解密失败: {str(e)}")
+                    logger.exception(f"解密失败")
                     return "decrypt error"
                 
                 encrypt_func = lambda x: channel.crypto.encrypt_message(
@@ -46,11 +46,11 @@ class Query:
                     params["timestamp"]
                 )
             else:
-                logger.debug(f"[明文消息] {data.decode()}")
+                # logger.debug("[明文消息]")
                 message = data
             
             msg = parse_message(message)
-            logger.info(f"消息类型: {msg.type}, 用户: {msg.source}")
+            # logger.debug(f"消息类型: {msg.type}, 用户: {msg.source}")
             if msg.type in ["text", "voice", "image"]:
                 wechatmp_msg = WeChatMPMessage(msg, client=channel.client)
                 from_user = wechatmp_msg.from_user_id
@@ -73,7 +73,7 @@ class Query:
                         context = channel._compose_context(wechatmp_msg.ctype, content, isgroup=False, desire_rtype=ReplyType.VOICE, msg=wechatmp_msg)
                     else:
                         context = channel._compose_context(wechatmp_msg.ctype, content, isgroup=False, msg=wechatmp_msg)
-                    logger.debug(f"[wechatmp] context: {context} {wechatmp_msg} {supported}")
+                    # logger.debug(f"wechatmp_msg：{wechatmp_msg}")
 
                     if supported and context:
                         channel.running.add(from_user)
@@ -108,14 +108,14 @@ class Query:
                 # Because the interval is 5 seconds, here assumed that do not have multithreading problems.
                 request_cnt = channel.request_cnt.get(message_id, 0) + 1
                 channel.request_cnt[message_id] = request_cnt
-                logger.info(
-                    "[wechatmp] Request {} from {} {} {}:{}\n{}".format(
-                        request_cnt, from_user, message_id, params.get("REMOTE_ADDR"), params.get("REMOTE_PORT"), content
-                    )
-                )
+                # logger.debug(
+                #     "[wechatmp] Request {} from {} {} {}:{}\ncontent:{}".format(
+                #         request_cnt, from_user, message_id, params.get("REMOTE_ADDR"), params.get("REMOTE_PORT"), content
+                #     )
+                # )
 
                 task_running = True
-                waiting_until = time.time() + 4
+                waiting_until = time.time() + 3.5
                 while time.time() < waiting_until:
                     if from_user in channel.running:
                         time.sleep(0.1)
@@ -124,6 +124,8 @@ class Query:
                         break
 
                 reply_text = ""
+                logger.debug(f"task_running: {task_running}")
+                logger.debug(f"request_cnt: {request_cnt}")
                 if task_running:
                     if request_cnt < 3:
                         # waiting for timeout (the POST request will be closed by Wechat official server)
@@ -132,6 +134,7 @@ class Query:
                         return "success"
                     else:  # request_cnt == 3:
                         # return timeout message
+                        logger.debug(f"time out")
                         reply_text = "【正在思考中，回复任意文字尝试获取回复】"
                         replyPost = create_reply(reply_text, msg)
                         return encrypt_func(replyPost.render())
@@ -179,7 +182,7 @@ class Query:
                 elif reply_type == "voice":
                     media_id = reply_content
                     asyncio.run_coroutine_threadsafe(channel.delete_media(media_id), channel.delete_media_loop)
-                    logger.info(
+                    logger.debug(
                         "[wechatmp] Request {} do send to {} {}: {} voice media_id {}".format(
                             request_cnt,
                             from_user,
@@ -195,7 +198,7 @@ class Query:
                 elif reply_type == "image":
                     media_id = reply_content
                     asyncio.run_coroutine_threadsafe(channel.delete_media(media_id), channel.delete_media_loop)
-                    logger.info(
+                    logger.debug(
                         "[wechatmp] Request {} do send to {} {}: {} image media_id {}".format(
                             request_cnt,
                             from_user,
@@ -209,7 +212,7 @@ class Query:
                     return encrypt_func(replyPost.render())
 
             elif msg.type == "event":
-                logger.info("[wechatmp] Event {} from {}".format(msg.event, msg.source))
+                logger.debug("[wechatmp] Event {} from {}".format(msg.event, msg.source))
                 if msg.event in ["subscribe", "subscribe_scan"]:
                     reply_text = subscribe_msg()
                     if reply_text:
@@ -218,8 +221,8 @@ class Query:
                 else:
                     return "success"
             else:
-                logger.info("暂且不处理")
+                logger.debug("暂且不处理")
             return "success"
         except Exception as exc:
-            logger.exception(f"处理请求时发生未捕获异常: {str(exc)}")
+            logger.exception(f"处理请求时发生未捕获异常")
             return "server error"

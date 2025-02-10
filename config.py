@@ -1,15 +1,16 @@
 # encoding:utf-8
 import json
-import logging
 import os
 import pickle
 import copy
-
-from core.utils.common.log import logger
+from core.utils.common import const
+from infra.deploy.app import logger
 
 ## 将所有可用的配置项写在字典里, 请使用小写字母
 # 此处的配置值无实际意义，程序不会读取此处的配置，仅用于提示格式，请将配置加入到config.json中
 available_setting = {
+    # 支持的部署通道
+    "support_channel": ["terminal", "wechatmp"],
     # openai api配置
     "open_ai_api_key": "",  # openai api key
     # openai apibase，当use_azure_chatgpt为true时，需要设置对应的api base
@@ -17,7 +18,6 @@ available_setting = {
     "proxy": "",  # openai使用的代理
     # chatgpt模型， 当use_azure_chatgpt为true时，其名称为Azure上model deployment名称
     "model": "gpt-3.5-turbo",  # 可选择: gpt-4o, pt-4o-mini, gpt-4-turbo, claude-3-sonnet, wenxin, moonshot, qwen-turbo, xunfei, glm-4, minimax, gemini等模型，全部可选模型详见common/const.py文件
-    "bot_type": "",  # 可选配置，使用兼容openai格式的三方服务时候，需填"chatGPT"。bot具体名称详见common/const.py文件列出的bot_type，如不填根据model名称判断，
     "use_azure_chatgpt": False,  # 是否使用azure的chatgpt
     "azure_deployment_id": "",  # azure 模型部署名称
     "azure_api_version": "",  # azure api版本
@@ -157,7 +157,6 @@ available_setting = {
     # channel配置
     "channel_type": "",  # 通道类型，支持：{wx,wxy,terminal,wechatmp,wechatmp_service,wechatcom_app,dingtalk}
     "subscribe_msg": "",  # 订阅消息, 支持: wechatmp, wechatmp_service, wechatcom_app
-    "debug": False,  # 是否开启debug模式，开启后会打印更多日志
     "appdata_dir": "",  # 数据目录
     # 插件配置
     "plugin_trigger_prefix": "$",  # 规范插件提供聊天相关指令的前缀，建议不要和管理员指令前缀"#"冲突
@@ -175,27 +174,23 @@ available_setting = {
     "linkai_api_key": "",
     "linkai_app_code": "",
     "linkai_api_base": "https://api.link-ai.tech",  # linkAI服务地址
-    "Minimax_api_key": "",
-    "Minimax_group_id": "",
-    "Minimax_base_url": "",
     "web_port": 9899,
+    # coze配置
+    "agent_type": "coze",  
     "coze_api_key": "",
     "coze_app_id": "",
-    "coze_api_base": "https://coze.nankai.edu.cn/api/proxy/api/v1",
+    "coze_api_base": "",
     "coze_user_id": "default_user",
-    "coze-pro": {
-        "retry_times": 3  # 仅保留重试次数配置
-    },
-    "log_level": "DEBUG",
     "enable_knowledge_integration": True,
     "max_knowledge_display": 3,
-    "max_knowledge_length": 100
+    "max_knowledge_length": 100,
+    "response_mode": "blocking"
 }
-
 
 class Config(dict):
     def __init__(self, d=None):
         super().__init__()
+        self.update(available_setting)
         if d is None:
             d = {}
         # 统一转换为小写键名
@@ -216,7 +211,7 @@ class Config(dict):
         except KeyError:
             return default
         except Exception as e:
-            logger.error(f"配置获取异常：{str(e)}")
+            logger.exception(f"[config] 配置获取异常")
             return default
 
     # Make sure to return a dictionary to ensure atomic
@@ -231,9 +226,9 @@ class Config(dict):
                 self.user_datas = pickle.load(f)
                 logger.info("[Config] User datas loaded.")
         except FileNotFoundError as e:
-            logger.info("[Config] User datas file not found, ignore.")
+            logger.debug("[Config] User datas file not found, ignore.")
         except Exception as e:
-            logger.info("[Config] User datas error: {}".format(e))
+            logger.debug("[Config] User datas error")
             self.user_datas = {}
 
     def save_user_datas(self):
@@ -242,7 +237,7 @@ class Config(dict):
                 pickle.dump(self.user_datas, f)
                 logger.info("[Config] User datas saved.")
         except Exception as e:
-            logger.info("[Config] User datas error: {}".format(e))
+            logger.debug("[Config] User datas error")
 
 def drag_sensitive(config):
     try:
@@ -272,29 +267,22 @@ config = Config()
 def load_config():
     global config
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    
     try:
         with open(config_path, "r", encoding="utf-8-sig") as f:
             config_str = f.read()
             config_data = json.loads(config_str)
-            
-            # 强制转换键名为小写
             config_data = {k.lower(): v for k, v in config_data.items()}
-            logger.debug("处理后的配置数据: {}".format(config_data))  # 调试输出
-            
-            # 创建Config实例时传入处理后的数据
+            logger.debug("[config] 处理后的配置数据: {}".format(config_data))  # 调试输出
             config = Config(config_data)
-            
     except json.JSONDecodeError as e:
-        logger.error(f"配置文件格式错误：{str(e)}")
-        raise
+        logger.exception(f"[config] 配置文件格式错误")
 
     # override config with environment variables.
     # Some online deployment platforms (e.g. Railway) deploy project from github directly. So you shouldn't put your secrets like api key in a config file, instead use environment variables to override the default config.
     for name, value in os.environ.items():
         name = name.lower()
         if name in available_setting:
-            logger.info("[INIT] override config by environ args: {}={}".format(name, value))
+            logger.info("[config] override config by environ args: {}={}".format(name, value))
             try:
                 config[name] = eval(value)
             except:
@@ -304,12 +292,7 @@ def load_config():
                     config[name] = True
                 else:
                     config[name] = value
-
-    if config.get("debug", False):
-        logger.setLevel(logging.DEBUG)
-        logger.debug("[INIT] set log level to DEBUG")
-   
-    logger.info("[INIT] load config: {}".format(drag_sensitive(config)))
+    logger.debug("[config] load config: {}".format(drag_sensitive(config)))
     config.load_user_datas()
     return config
 

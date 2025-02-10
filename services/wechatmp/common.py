@@ -1,18 +1,12 @@
-from wechatpy.crypto import WeChatCrypto
 from wechatpy.exceptions import InvalidSignatureException, InvalidAppIdException
 from wechatpy.utils import check_signature
-
 from config import conf
-import logging
+from infra.deploy.app import logger
 
 MAX_UTF8_LEN = 2048
 
-logger = logging.getLogger(__name__)
-
-
 class WeChatAPIException(Exception):
     pass
-
 
 def verify_server(params: dict) -> str:
     """
@@ -34,8 +28,8 @@ def verify_server(params: dict) -> str:
         check_signature(token, signature, timestamp, nonce)
         return echostr
     except InvalidSignatureException as e:
-        logger.error(f"签名验证失败: {str(e)}")
+        logger.exception(f"签名验证失败")
         raise
     except Exception as e:
-        logger.error(f"服务器验证异常: {str(e)}")
+        logger.exception(f"服务器验证异常")
         raise

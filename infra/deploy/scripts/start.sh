@@ -1,16 +1,36 @@
 #!/bin/bash
-#后台运行Chat_on_webchat执行脚本
+#配置nkuwiki自启动
 
-cd `dirname $0`/..
-export BASE_DIR=`pwd`
-echo $BASE_DIR
+# 1. 创建服务文件（使用sudo）
+sudo tee /etc/systemd/system/nkuwiki.service <<EOF
+[Unit]
+Description=NKUWiki Chat Service
+After=network.target
 
-# check the nohup.out log output file
-if [ ! -f "${BASE_DIR}/nohup.out" ]; then
-  touch "${BASE_DIR}/nohup.out"
-echo "create file  ${BASE_DIR}/nohup.out"
-fi
+[Service]
+User=root
+WorkingDirectory=/home/nkuwiki/nkuwiki
+ExecStart=/usr/bin/python3 ./infra/deploy/app.py
+Restart=always
+RestartSec=3
+StandardOutput=file:/var/log/nkuwiki.log
+StandardError=file:/var/log/nkuwiki-error.log
 
-nohup python3 "${BASE_DIR}/app.py" & tail -f "${BASE_DIR}/nohup.out"
+[Install]
+WantedBy=multi-user.target
+EOF
 
-echo "Chat_on_webchat is starting，you can check the ${BASE_DIR}/nohup.out"
+# 2. 设置文件权限
+sudo chmod 644 /etc/systemd/system/nkuwiki.service
+
+# 3. 重载systemd配置
+sudo systemctl daemon-reload
+
+# 4. 启用开机启动
+sudo systemctl enable nkuwiki.service
+
+# 5. 启动服务
+sudo systemctl start nkuwiki.service
+
+# 6. 验证服务状态
+systemctl status nkuwiki.service

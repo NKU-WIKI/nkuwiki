@@ -5,7 +5,7 @@ from wechatpy.client import WeChatClient
 from wechatpy.exceptions import APILimitedException
 
 from services.wechatmp.common import *
-from core.utils.common.log import logger
+from infra.deploy.app import logger
 
 
 class WechatMPClient(WeChatClient):

@@ -3,7 +3,7 @@ import os
 import re
 from urllib.parse import urlparse
 from PIL import Image
-from common.log import logger
+from infra.deploy.app import logger     
 
 def fsize(file):
     if isinstance(file, io.BytesIO):
@@ -67,7 +67,7 @@ def convert_webp_to_png(webp_image):
         png_image.seek(0)
         return png_image
     except Exception as e:
-        logger.error(f"Failed to convert WEBP to PNG: {e}")
+        logger.exception(f"Failed to convert WEBP to PNG")
         raise
 
 

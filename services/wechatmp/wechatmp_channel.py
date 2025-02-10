@@ -7,11 +7,10 @@ import threading
 import time
 
 import requests
-import web
 from wechatpy.crypto import WeChatCrypto
 from wechatpy.exceptions import WeChatClientException
 from collections import defaultdict
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 import uvicorn
 
@@ -20,9 +19,9 @@ from core.bridge.reply import *
 from services.chat_channel import ChatChannel
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_client import WechatMPClient
-from core.utils.common.log import logger
+from infra.deploy.app import logger
 from core.utils.common.singleton import singleton
-from core.utils.common import split_string_by_utf8_length, remove_markdown_symbol
+from core.utils.common.string_utils import split_string_by_utf8_length, remove_markdown_symbol
 from config import conf
 from core.utils.voice.audio_convert import any_to_mp3, split_audio
 
@@ -43,11 +42,11 @@ async def wechat_handler(request: Request):
     
     # 微信服务器验证（GET请求）
     if request.method == "GET":
-        logger.info(f"微信服务器验证请求: {params}")
+        # logger.debug("收到微信服务器验证请求")
         return PlainTextResponse(content=params.get("echostr", ""))
     
     # 消息处理（POST请求）
-    logger.debug(f"收到微信消息: {data.decode()}")
+    # logger.debug("收到微信消息")
     
     # 根据配置选择处理器
     if conf().get("channel_type") == "wechatmp":
@@ -87,7 +86,13 @@ class WechatMPChannel(ChatChannel):
 
     def startup(self):
         """启动FastAPI服务"""
-        port = int(conf().get("wechatmp_port", 80))
+        port = conf().get("wechatmp_port", 8080)
+        thread = threading.Thread(target=self.run_uvicorn, args=(port,))
+        thread.start()
+        logger.info(f"Channel wechatmp started successfully on port {port}")
+
+    def run_uvicorn(self, port):
+        """UVicorn服务运行方法"""
         uvicorn.run(
             app,
             host="0.0.0.0",
@@ -110,7 +115,8 @@ class WechatMPChannel(ChatChannel):
         if self.passive_reply:
             if reply.type == ReplyType.TEXT or reply.type == ReplyType.INFO or reply.type == ReplyType.ERROR:
                 reply_text = remove_markdown_symbol(reply.content)
-                logger.info("[wechatmp] text cached, receiver {}\n{}".format(receiver, reply_text))
+                if receiver not in self.running:
+                    self.running.add(receiver)
                 self.cache_dict[receiver].append(("text", reply_text))
             elif reply.type == ReplyType.VOICE:
                 voice_file_path = reply.content
@@ -285,7 +291,7 @@ class WechatMPChannel(ChatChannel):
                     logger.error("[wechatmp] upload image failed: {}".format(e))
                     return
                 self.client.message.send_image(receiver, response["media_id"])
-                logger.info("[wechatmp] Do send image to {}".format(receiver))
+                logger.debug("[wechatmp] Do send image to {}".format(receiver))
             elif reply.type == ReplyType.VIDEO_URL:  # 从网络下载视频
                 video_url = reply.content
                 video_res = requests.get(video_url, stream=True)
@@ -300,7 +306,7 @@ class WechatMPChannel(ChatChannel):
                     response = self.client.media.upload("video", (filename, video_storage, content_type))
                     logger.debug("[wechatmp] upload video response: {}".format(response))
                 except WeChatClientException as e:
-                    logger.error("[wechatmp] upload video failed: {}".format(e))
+                    logger.exception("[wechatmp] upload video failed")
                     return
                 self.client.message.send_video(receiver, response["media_id"])
                 logger.info("[wechatmp] Do send video to {}".format(receiver))
@@ -314,19 +320,20 @@ class WechatMPChannel(ChatChannel):
                     response = self.client.media.upload("video", (filename, video_storage, content_type))
                     logger.debug("[wechatmp] upload video response: {}".format(response))
                 except WeChatClientException as e:
-                    logger.error("[wechatmp] upload video failed: {}".format(e))
+                    logger.exception("[wechatmp] upload video failed")
                     return
                 self.client.message.send_video(receiver, response["media_id"])
                 logger.info("[wechatmp] Do send video to {}".format(receiver))
         return
 
-    def _success_callback(self, session_id, context, **kwargs):  # 线程异常结束时的回调函数
+    def _success_callback(self, session_id, context, **kwargs):
         logger.debug("[wechatmp] Success to generate reply, msgId={}".format(context["msg"].msg_id))
-        if self.passive_reply:
-            self.running.remove(session_id)
+        receiver = context["receiver"]
+        if receiver in self.running:
+            self.running.remove(receiver)
 
-    def _fail_callback(self, session_id, exception, context, **kwargs):  # 线程异常结束时的回调函数
+    def _fail_callback(self, session_id, exception, context, **kwargs):
         logger.exception("[wechatmp] Fail to generate reply to user, msgId={}, exception={}".format(context["msg"].msg_id, exception))
-        if self.passive_reply:
-            assert session_id not in self.cache_dict
-            self.running.remove(session_id)
+        receiver = context["receiver"]
+        if receiver in self.running:
+            self.running.remove(receiver)

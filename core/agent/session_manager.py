@@ -1,5 +1,5 @@
 from core.utils.common.expired_dict import ExpiredDict
-from core.utils.common.log import logger
+from infra.deploy.app import logger
 from config import conf
 
 
@@ -67,9 +67,9 @@ class SessionManager(object):
         try:
             max_tokens = conf().get("conversation_max_tokens", 1000)
             total_tokens = session.discard_exceeding(max_tokens, None)
-            logger.debug("prompt tokens used={}".format(total_tokens))
+            # logger.info("prompt tokens used={}".format(total_tokens))
         except Exception as e:
-            logger.warning("Exception when counting tokens precisely for prompt: {}".format(str(e)))
+            logger.exception("Exception when counting tokens precisely for prompt: {}".format(str(e)))
         return session
 
     def session_reply(self, reply, session_id, total_tokens=None):
@@ -80,7 +80,7 @@ class SessionManager(object):
             tokens_cnt = session.discard_exceeding(max_tokens, total_tokens)
             logger.debug("raw total_tokens={}, savesession tokens={}".format(total_tokens, tokens_cnt))
         except Exception as e:
-            logger.warning("Exception when counting tokens precisely for session: {}".format(str(e)))
+            logger.exception("Exception when counting tokens precisely for session: {}".format(str(e)))
         return session
 
     def clear_session(self, session_id):

@@ -1,7 +1,7 @@
 import os
 import json
-from config import pconf, plugin_config, conf, write_plugin_config
-from common.log import logger
+from config import pconf, write_plugin_config
+from infra.deploy.app import logger
 
 
 class Plugin:
@@ -35,7 +35,7 @@ class Plugin:
             global_config_path = "./plugins/config.json"
             if os.path.exists(global_config_path):
                 with open(global_config_path, "w", encoding='utf-8') as f:
-                    json.dump(plugin_config, f, indent=4, ensure_ascii=False)
+                    json.dump(pconf(), f, indent=4, ensure_ascii=False)
             # 写入插件配置
             plugin_config_path = os.path.join(self.path, "config.json")
             if os.path.exists(plugin_config_path):

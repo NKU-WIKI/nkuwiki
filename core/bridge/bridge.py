@@ -2,7 +2,7 @@ from core.agent.agent_factory import create_agent
 from core.bridge.context import Context
 from core.bridge.reply import Reply
 from core.utils.common import const
-from core.utils.common.log import logger
+from infra.deploy.app import logger
 from core.utils.common.singleton import singleton
 from config import conf
 from core.utils.translate.factory import create_translator
@@ -12,85 +12,81 @@ from core.utils.voice.factory import create_voice
 @singleton
 class Bridge(object):
     def __init__(self):
-        self.btype = {
-            "chat": const.CHATGPT,
+        self.agent_type = {
+            "chat": const.COZE,
             "voice_to_text": conf().get("voice_to_text", "openai"),
             "text_to_voice": conf().get("text_to_voice", "google"),
             "translate": conf().get("translate", "baidu"),
         }
         # 这边取配置的模型
-        bot_type = conf().get("bot_type")
-        if bot_type:
-            self.btype["chat"] = bot_type
+        agent_type = conf().get("agent_type")
+        if agent_type:
+            self.agent_type["chat"] = agent_type
         else:
             model_type = conf().get("model") or const.GPT35
             if model_type in ["text-davinci-003"]:
-                self.btype["chat"] = const.OPEN_AI
+                self.agent_type["chat"] = const.OPEN_AI
             if conf().get("use_azure_chatgpt", False):
-                self.btype["chat"] = const.CHATGPTONAZURE
+                self.agent_type["chat"] = const.CHATGPTONAZURE
             if model_type in ["wenxin", "wenxin-4"]:
-                self.btype["chat"] = const.BAIDU
+                self.agent_type["chat"] = const.BAIDU
             if model_type in ["xunfei"]:
-                self.btype["chat"] = const.XUNFEI
+                self.agent_type["chat"] = const.XUNFEI
             if model_type in [const.QWEN]:
-                self.btype["chat"] = const.QWEN
+                self.agent_type["chat"] = const.QWEN
             if model_type in [const.QWEN_TURBO, const.QWEN_PLUS, const.QWEN_MAX]:
-                self.btype["chat"] = const.QWEN_DASHSCOPE
+                self.agent_type["chat"] = const.QWEN_DASHSCOPE
             if model_type and model_type.startswith("gemini"):
-                self.btype["chat"] = const.GEMINI
+                self.agent_type["chat"] = const.GEMINI
             if model_type and model_type.startswith("glm"):
-                self.btype["chat"] = const.ZHIPU_AI
+                self.agent_type["chat"] = const.ZHIPU_AI
             if model_type and model_type.startswith("claude-3"):
-                self.btype["chat"] = const.CLAUDEAPI
-
+                self.agent_type["chat"] = const.CLAUDEAPI
             if model_type in ["claude"]:
-                self.btype["chat"] = const.CLAUDEAI
-
+                self.agent_type["chat"] = const.CLAUDEAI
             if model_type in [const.MOONSHOT, "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]:
-                self.btype["chat"] = const.MOONSHOT
-
+                self.agent_type["chat"] = const.MOONSHOT
             if model_type in ["abab6.5-chat"]:
-                self.btype["chat"] = const.MiniMax
-
-        self.bots = {}
-        self.chat_bots = {}
+                self.agent_type["chat"] = const.MiniMax
+        self.agents = {}
+        self.chat_agents = {}
 
     # 模型对应的接口
-    def get_bot(self, typename):
-        if self.bots.get(typename) is None:
-            logger.info("create bot {} for {}".format(self.btype[typename], typename))
+    def get_agent(self, typename):
+        if self.agents.get(typename) is None:
+            # logger.debug("create bot {} for {}".format(self.btype[typename], typename))
             if typename == "text_to_voice":
-                self.bots[typename] = create_voice(self.btype[typename])
+                self.agents[typename] = create_voice(self.agent_type[typename])
             elif typename == "voice_to_text":
-                self.bots[typename] = create_voice(self.btype[typename])
+                self.agents[typename] = create_voice(self.agent_type[typename])
             elif typename == "chat":
-                self.bots[typename] = create_agent(self.btype[typename])
+                self.agents[typename] = create_agent(self.agent_type[typename])
             elif typename == "translate":
-                self.bots[typename] = create_translator(self.btype[typename])
-        return self.bots[typename]
+                self.agents[typename] = create_translator(self.agent_type[typename])
+        return self.agents[typename]
 
-    def get_bot_type(self, typename):
-        return self.btype[typename]
+    def get_agent_type(self, typename):
+        return self.agent_type[typename]
 
     def fetch_reply_content(self, query, context: Context) -> Reply:
-        return self.get_bot("chat").reply(query, context)
+        return self.get_agent("chat").reply(query, context)
 
     def fetch_voice_to_text(self, voiceFile) -> Reply:
-        return self.get_bot("voice_to_text").voiceToText(voiceFile)
+        return self.get_agent("voice_to_text").voiceToText(voiceFile)
 
     def fetch_text_to_voice(self, text) -> Reply:
-        return self.get_bot("text_to_voice").textToVoice(text)
+        return self.get_agent("text_to_voice").textToVoice(text)
 
     def fetch_translate(self, text, from_lang="", to_lang="en") -> Reply:
-        return self.get_bot("translate").translate(text, from_lang, to_lang)
+        return self.get_agent("translate").translate(text, from_lang, to_lang)
 
-    def find_chat_bot(self, bot_type: str):
-        if self.chat_bots.get(bot_type) is None:
-            self.chat_bots[bot_type] = create_agent(bot_type)
-        return self.chat_bots.get(bot_type)
+    def find_chat_agent(self, agent_type: str):
+        if self.chat_agents.get(agent_type) is None:
+            self.chat_agents[agent_type] = create_agent(agent_type)
+        return self.chat_agents.get(agent_type)
 
-    def reset_bot(self):
+    def reset_agent(self):
         """
-        重置bot路由
+        重置agent路由
         """
         self.__init__()

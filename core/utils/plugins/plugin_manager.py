@@ -6,10 +6,10 @@ import json
 import os
 import sys
 
-from common.log import logger
-from common.singleton import singleton
-from common.sorted_dict import SortedDict
-from config import conf, remove_plugin_config, write_plugin_config
+from infra.deploy.app import logger
+from core.utils.common.singleton import singleton
+from core.utils.common.sorted_dict import SortedDict
+from config import remove_plugin_config, write_plugin_config
 
 from .event import *
 

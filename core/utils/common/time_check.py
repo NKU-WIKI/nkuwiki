@@ -1,7 +1,7 @@
 import re
 import time
 import config
-from common.log import logger
+from infra.deploy.app import logger
 
 
 def time_checker(f):
