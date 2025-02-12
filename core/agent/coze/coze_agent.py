@@ -2,8 +2,8 @@ from core.agent import Agent
 from core.agent.session_manager import SessionManager
 from core.agent.coze.coze_session import CozeSession
 from core.bridge.reply import Reply, ReplyType
-from infra.deploy.app import logger 
-from config import conf
+from app import App
+from config import Config
 import requests
 import json
 import time
@@ -12,11 +12,11 @@ from collections import defaultdict
 class CozeAgent(Agent):
     def __init__(self):
         super().__init__()
-        self.sessions = SessionManager(CozeSession, model=conf().get("model") or "coze-pro")
-        self.api_key = conf().get("coze_api_key")
-        self.app_id = conf().get("coze_app_id")
-        self.api_base = conf().get("coze_api_base")
-        self.user_id = conf().get("coze_user_id", "default_user")
+        self.sessions = SessionManager(CozeSession, model=Config().get("model") or "coze-pro")
+        self.api_key = Config().get("coze_api_key")
+        self.app_id = Config().get("coze_app_id")
+        self.api_base = Config().get("coze_api_base")
+        self.user_id = Config().get("coze_user_id", "default_user")
         self.max_retries = 3  
 
     def _create_conversation(self, session_id):
@@ -39,12 +39,12 @@ class CozeAgent(Agent):
             response = requests.post(url, headers=headers, json=payload)
             # logger.debug(f"[COZE] 创建会话响应: {response.status_code} {response.text}")
             response.raise_for_status()
-            logger.debug(f"[COZE] 创建会话响应成功: {response.status_code} {response.text}")
+            App().logger.debug(f"[COZE] 创建会话响应成功: {response.status_code} {response.text}")
             return response.json().get("Conversation", {}).get("AppConversationID")
         except requests.exceptions.HTTPError as e:
-            logger.exception(f"[COZE] API错误")
+            App().logger.exception(f"[COZE] API错误")
         except Exception as e:
-            logger.exception(f"[COZE] 创建会话失败")
+            App().logger.exception(f"[COZE] 创建会话失败")
         return None
 
 
@@ -91,13 +91,13 @@ class CozeAgent(Agent):
                         try:
                             event_data = json.loads(data_line)
                         except json.JSONDecodeError:
-                            logger.exception(f"解析JSON失败")
+                            App().logger.exception(f"解析JSON失败")
                             continue
                         if event_data.get("event").startswith("message"):
                             chunk = event_data.get("answer", "")
                             if chunk:
                                 if(chunk == '['):
-                                    logger.debug(f"chunk: {chunk}")
+                                    App().logger.debug(f"chunk: {chunk}")
                                     answer_content += "【"
                                 elif(chunk == ']'):
                                     answer_content += '】'
@@ -106,8 +106,8 @@ class CozeAgent(Agent):
                         elif event_data.get("event") == "knowledge_retrieve_end":
                             output_list = event_data.get("docs", {}).get("outputList", [])
                             total_docs = len(output_list)
-                            max_count = conf().get("max_knowledge_display", 3)
-                            max_length = conf().get("max_knowledge_length", 100)
+                            max_count = Config().get("max_knowledge_display", 3)
+                            max_length = Config().get("max_knowledge_length", 100)
                             # 处理知识引用
                             if output_list:
                                 knowledge_content = f"\n\n📃找到 {total_docs} 个回答来源，显示{min(total_docs,max_count)}个：\n"
@@ -128,7 +128,7 @@ class CozeAgent(Agent):
                             suggestions = event_data.get("suggested_questions", [])[:3]
                             if suggestions:
                                 suggestion_content = "\n\n💡猜你想问：\n" + "\n".join(suggestions)
-            logger.debug(f"[COZE] 成功接收流式响应，事件统计: {dict(event_counter)}")
+            App().logger.debug(f"[COZE] 成功接收流式响应，事件统计: {dict(event_counter)}")
             full_response = answer_content
             if knowledge_content:
                 full_response += knowledge_content
@@ -137,7 +137,7 @@ class CozeAgent(Agent):
             return full_response
                 
         except Exception as e:
-            logger.exception(f"[COZE] 流式请求失败")
+            App().logger.exception(f"[COZE] 流式请求失败")
             raise
 
     def _blocking_chat_query(self, session, conversation_id):
@@ -183,12 +183,12 @@ class CozeAgent(Agent):
                         try:
                             event_data = json.loads(data_line)
                         except json.JSONDecodeError:
-                            logger.exception(f"解析JSON失败")
+                            App().logger.exception(f"解析JSON失败")
                             continue
                         if event_data.get("event").startswith("message"):
                             answer_content = event_data.get("answer", "")
                                 
-            logger.debug(f"[COZE] 成功接收块式响应，事件统计: {dict(event_counter)}")
+            App().logger.debug(f"[COZE] 成功接收块式响应，事件统计: {dict(event_counter)}")
             full_response = answer_content
             # if knowledge_content:
             #     full_response += knowledge_content
@@ -196,10 +196,15 @@ class CozeAgent(Agent):
             #     full_response += suggestion_content
             return full_response
         except Exception as e:
-            logger.exception(f"[COZE] 块式请求失败")
+            App().logger.exception(f"[COZE] 块式请求失败")
             raise
 
     def reply(self, query, context=None):
+        # 新增代码开始
+        if context and context.get("reply"):
+            App().logger.debug("[COZE] 检测到插件回复，直接返回")
+            return context["reply"]
+        # 新增代码结束
         retry_count = 0
         max_retries = self.max_retries
         while retry_count < max_retries:
@@ -218,9 +223,9 @@ class CozeAgent(Agent):
                 else:
                     # 使用已有会话ID
                     conversation_id = session.conversation_id
-                    logger.debug(f"[COZE] 使用现有会话ID: {conversation_id}")
+                    App().logger.debug(f"[COZE] 使用现有会话ID: {conversation_id}")
 
-                if(conf().get("response_mode") == "streaming"):
+                if(Config().get("response_mode") == "streaming"):
                     full_content = self._stream_chat_query(session, conversation_id)
                 else:
                     full_content = self._blocking_chat_query(session, conversation_id)
@@ -232,11 +237,11 @@ class CozeAgent(Agent):
                 return Reply(ReplyType.TEXT, full_content)
                 
             except requests.exceptions.RequestException as e:
-                logger.exception(f"[COZE] 网络请求异常")
+                App().logger.exception(f"[COZE] 网络请求异常")
                 retry_count += 1
                 time.sleep(2 ** retry_count)  # 指数退避
             except json.JSONDecodeError as e:
-                logger.exception(f"[COZE] JSON解析失败")
+                App().logger.exception(f"[COZE] JSON解析失败")
                 return Reply(ReplyType.ERROR, "响应解析错误")
         
         return Reply(ReplyType.ERROR, "请求失败，请稍后再试")

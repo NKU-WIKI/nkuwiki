@@ -1,7 +1,7 @@
 from wechatpy.exceptions import InvalidSignatureException, InvalidAppIdException
 from wechatpy.utils import check_signature
-from config import conf
-from infra.deploy.app import logger
+from app import App
+from config import Config
 
 MAX_UTF8_LEN = 2048
 
@@ -22,14 +22,14 @@ def verify_server(params: dict) -> str:
     timestamp = params["timestamp"]
     nonce = params["nonce"]
     echostr = params.get("echostr", "")
-    token = conf().get("wechatmp_token")
+    token = Config().get("wechatmp_token")
     
     try:
         check_signature(token, signature, timestamp, nonce)
         return echostr
     except InvalidSignatureException as e:
-        logger.exception(f"签名验证失败")
+        App().logger.exception(f"签名验证失败")
         raise
     except Exception as e:
-        logger.exception(f"服务器验证异常")
+        App().logger.exception(f"服务器验证异常")
         raise

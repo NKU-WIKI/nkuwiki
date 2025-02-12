@@ -2,7 +2,7 @@
 channel factory
 """
 from core.utils.common import const
-from loguru import logger
+from app import App
 
 def create_agent(agent_type):
     """
@@ -13,6 +13,6 @@ def create_agent(agent_type):
     if agent_type == const.COZE:
         from core.agent.coze.coze_agent import CozeAgent
         return CozeAgent()
-    else :
-        logger.error(f"agent_type: {agent_type} not supported")
+    else:
+        App().logger.error(f"agent_type: {agent_type} not supported")
         raise RuntimeError

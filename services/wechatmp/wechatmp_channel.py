@@ -19,10 +19,10 @@ from core.bridge.reply import *
 from services.chat_channel import ChatChannel
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_client import WechatMPClient
-from infra.deploy.app import logger
+from app import App
 from core.utils.common.singleton import singleton
 from core.utils.common.string_utils import split_string_by_utf8_length, remove_markdown_symbol
-from config import conf
+from config import Config
 from core.utils.voice.audio_convert import any_to_mp3, split_audio
 
 # If using SSL, uncomment the following lines, and modify the certificate path.
@@ -42,14 +42,14 @@ async def wechat_handler(request: Request):
     
     # 微信服务器验证（GET请求）
     if request.method == "GET":
-        # logger.debug("收到微信服务器验证请求")
+        # App().logger.debug("收到微信服务器验证请求")
         return PlainTextResponse(content=params.get("echostr", ""))
     
     # 消息处理（POST请求）
-    # logger.debug("收到微信消息")
+    # App().logger.debug("收到微信消息")
     
     # 根据配置选择处理器
-    if conf().get("channel_type") == "wechatmp":
+    if Config().get("channel_type") == "wechatmp":
         from services.wechatmp.passive_reply import Query
     else:
         from services.wechatmp.active_reply import Query
@@ -63,10 +63,10 @@ class WechatMPChannel(ChatChannel):
         super().__init__()
         self.passive_reply = passive_reply
         self.NOT_SUPPORT_REPLYTYPE = []
-        appid = conf().get("wechatmp_app_id")
-        secret = conf().get("wechatmp_app_secret")
-        token = conf().get("wechatmp_token")
-        aes_key = conf().get("wechatmp_aes_key")
+        appid = Config().get("wechatmp_app_id")
+        secret = Config().get("wechatmp_app_secret")
+        token = Config().get("wechatmp_token")
+        aes_key = Config().get("wechatmp_aes_key")
         self.client = WechatMPClient(appid, secret)
         self.crypto = None
         if aes_key:
@@ -86,10 +86,10 @@ class WechatMPChannel(ChatChannel):
 
     def startup(self):
         """启动FastAPI服务"""
-        port = conf().get("wechatmp_port", 8080)
+        port = Config().get("wechatmp_port", 80)
         thread = threading.Thread(target=self.run_uvicorn, args=(port,))
         thread.start()
-        logger.info(f"Channel wechatmp started successfully on port {port}")
+        App().logger.info(f"Channel wechatmp started successfully on port {port}")
 
     def run_uvicorn(self, port):
         """UVicorn服务运行方法"""
@@ -97,7 +97,8 @@ class WechatMPChannel(ChatChannel):
             app,
             host="0.0.0.0",
             port=port,
-            log_config=None  # 使用默认日志配置
+            log_level="critical",
+            access_log=False
         )
 
     def start_loop(self, loop):
@@ -105,122 +106,124 @@ class WechatMPChannel(ChatChannel):
         loop.run_forever()
 
     async def delete_media(self, media_id):
-        logger.debug("[wechatmp] permanent media {} will be deleted in 10s".format(media_id))
+        App().logger.debug("[wechatmp] permanent media {} will be deleted in 10s".format(media_id))
         await asyncio.sleep(10)
         self.client.material.delete(media_id)
-        logger.info("[wechatmp] permanent media {} has been deleted".format(media_id))
+        App().logger.info("[wechatmp] permanent media {} has been deleted".format(media_id))
 
     def send(self, reply: Reply, context: Context):
         receiver = context["receiver"]
         if self.passive_reply:
-            if reply.type == ReplyType.TEXT or reply.type == ReplyType.INFO or reply.type == ReplyType.ERROR:
-                reply_text = remove_markdown_symbol(reply.content)
-                if receiver not in self.running:
-                    self.running.add(receiver)
-                self.cache_dict[receiver].append(("text", reply_text))
-            elif reply.type == ReplyType.VOICE:
-                voice_file_path = reply.content
-                duration, files = split_audio(voice_file_path, 60 * 1000)
-                if len(files) > 1:
-                    logger.info("[wechatmp] voice too long {}s > 60s , split into {} parts".format(duration / 1000.0, len(files)))
+            if reply.type in [ReplyType.TEXT, ReplyType.INFO, ReplyType.ERROR, ReplyType.IMAGE, ReplyType.VOICE]:
+                App().logger.debug(f"[wechatmp] 处理{reply.type}类型回复")
+                if reply.type == ReplyType.TEXT or reply.type == ReplyType.INFO or reply.type == ReplyType.ERROR:
+                    reply_text = remove_markdown_symbol(reply.content)
+                    self.cache_dict[receiver].append(("text", reply_text))
+                    if receiver not in self.running:
+                        self.running.add(receiver)
+                elif reply.type == ReplyType.VOICE:
+                    voice_file_path = reply.content
+                    duration, files = split_audio(voice_file_path, 60 * 1000)
+                    if len(files) > 1:
+                        App().logger.info("[wechatmp] voice too long {}s > 60s , split into {} parts".format(duration / 1000.0, len(files)))
 
-                for path in files:
-                    # support: <2M, <60s, mp3/wma/wav/amr
+                    for path in files:
+                        # support: <2M, <60s, mp3/wma/wav/amr
+                        try:
+                            with open(path, "rb") as f:
+                                response = self.client.material.add("voice", f)
+                                App().logger.debug("[wechatmp] upload voice response: {}".format(response))
+                                f_size = os.fstat(f.fileno()).st_size
+                                time.sleep(1.0 + 2 * f_size / 1024 / 1024)
+                                # todo check media_id
+                        except WeChatClientException as e:
+                            App().logger.error("[wechatmp] upload voice failed: {}".format(e))
+                            return
+                        media_id = response["media_id"]
+                        App().logger.info("[wechatmp] voice uploaded, receiver {}, media_id {}".format(receiver, media_id))
+                        self.cache_dict[receiver].append(("voice", media_id))
+
+                elif reply.type == ReplyType.IMAGE_URL:  # 从网络下载图片
+                    img_url = reply.content
+                    pic_res = requests.get(img_url, stream=True)
+                    image_storage = io.BytesIO()
+                    for block in pic_res.iter_content(1024):
+                        image_storage.write(block)
+                    image_storage.seek(0)
+                    image_type = imghdr.what(image_storage)
+                    filename = receiver + "-" + str(context["msg"].msg_id) + "." + image_type
+                    content_type = "image/" + image_type
                     try:
-                        with open(path, "rb") as f:
-                            response = self.client.material.add("voice", f)
-                            logger.debug("[wechatmp] upload voice response: {}".format(response))
-                            f_size = os.fstat(f.fileno()).st_size
-                            time.sleep(1.0 + 2 * f_size / 1024 / 1024)
-                            # todo check media_id
+                        response = self.client.material.add("image", (filename, image_storage, content_type))
+                        App().logger.debug("[wechatmp] upload image response: {}".format(response))
                     except WeChatClientException as e:
-                        logger.error("[wechatmp] upload voice failed: {}".format(e))
+                        App().logger.error("[wechatmp] upload image failed: {}".format(e))
                         return
                     media_id = response["media_id"]
-                    logger.info("[wechatmp] voice uploaded, receiver {}, media_id {}".format(receiver, media_id))
-                    self.cache_dict[receiver].append(("voice", media_id))
+                    App().logger.info("[wechatmp] image uploaded, receiver {}, media_id {}".format(receiver, media_id))
+                    self.cache_dict[receiver].append(("image", media_id))
+                elif reply.type == ReplyType.IMAGE:  # 从文件读取图片
+                    image_storage = reply.content
+                    image_storage.seek(0)
+                    image_type = imghdr.what(image_storage)
+                    filename = receiver + "-" + str(context["msg"].msg_id) + "." + image_type
+                    content_type = "image/" + image_type
+                    try:
+                        response = self.client.material.add("image", (filename, image_storage, content_type))
+                        App().logger.debug("[wechatmp] upload image response: {}".format(response))
+                    except WeChatClientException as e:
+                        App().logger.error("[wechatmp] upload image failed: {}".format(e))
+                        return
+                    media_id = response["media_id"]
+                    App().logger.info("[wechatmp] image uploaded, receiver {}, media_id {}".format(receiver, media_id))
+                    self.cache_dict[receiver].append(("image", media_id))
+                elif reply.type == ReplyType.VIDEO_URL:  # 从网络下载视频
+                    video_url = reply.content
+                    video_res = requests.get(video_url, stream=True)
+                    video_storage = io.BytesIO()
+                    for block in video_res.iter_content(1024):
+                        video_storage.write(block)
+                    video_storage.seek(0)
+                    video_type = 'mp4'
+                    filename = receiver + "-" + str(context["msg"].msg_id) + "." + video_type
+                    content_type = "video/" + video_type
+                    try:
+                        response = self.client.material.add("video", (filename, video_storage, content_type))
+                        App().logger.debug("[wechatmp] upload video response: {}".format(response))
+                    except WeChatClientException as e:
+                        App().logger.error("[wechatmp] upload video failed: {}".format(e))
+                        return
+                    media_id = response["media_id"]
+                    App().logger.info("[wechatmp] video uploaded, receiver {}, media_id {}".format(receiver, media_id))
+                    self.cache_dict[receiver].append(("video", media_id))
 
-            elif reply.type == ReplyType.IMAGE_URL:  # 从网络下载图片
-                img_url = reply.content
-                pic_res = requests.get(img_url, stream=True)
-                image_storage = io.BytesIO()
-                for block in pic_res.iter_content(1024):
-                    image_storage.write(block)
-                image_storage.seek(0)
-                image_type = imghdr.what(image_storage)
-                filename = receiver + "-" + str(context["msg"].msg_id) + "." + image_type
-                content_type = "image/" + image_type
-                try:
-                    response = self.client.material.add("image", (filename, image_storage, content_type))
-                    logger.debug("[wechatmp] upload image response: {}".format(response))
-                except WeChatClientException as e:
-                    logger.error("[wechatmp] upload image failed: {}".format(e))
-                    return
-                media_id = response["media_id"]
-                logger.info("[wechatmp] image uploaded, receiver {}, media_id {}".format(receiver, media_id))
-                self.cache_dict[receiver].append(("image", media_id))
-            elif reply.type == ReplyType.IMAGE:  # 从文件读取图片
-                image_storage = reply.content
-                image_storage.seek(0)
-                image_type = imghdr.what(image_storage)
-                filename = receiver + "-" + str(context["msg"].msg_id) + "." + image_type
-                content_type = "image/" + image_type
-                try:
-                    response = self.client.material.add("image", (filename, image_storage, content_type))
-                    logger.debug("[wechatmp] upload image response: {}".format(response))
-                except WeChatClientException as e:
-                    logger.error("[wechatmp] upload image failed: {}".format(e))
-                    return
-                media_id = response["media_id"]
-                logger.info("[wechatmp] image uploaded, receiver {}, media_id {}".format(receiver, media_id))
-                self.cache_dict[receiver].append(("image", media_id))
-            elif reply.type == ReplyType.VIDEO_URL:  # 从网络下载视频
-                video_url = reply.content
-                video_res = requests.get(video_url, stream=True)
-                video_storage = io.BytesIO()
-                for block in video_res.iter_content(1024):
-                    video_storage.write(block)
-                video_storage.seek(0)
-                video_type = 'mp4'
-                filename = receiver + "-" + str(context["msg"].msg_id) + "." + video_type
-                content_type = "video/" + video_type
-                try:
-                    response = self.client.material.add("video", (filename, video_storage, content_type))
-                    logger.debug("[wechatmp] upload video response: {}".format(response))
-                except WeChatClientException as e:
-                    logger.error("[wechatmp] upload video failed: {}".format(e))
-                    return
-                media_id = response["media_id"]
-                logger.info("[wechatmp] video uploaded, receiver {}, media_id {}".format(receiver, media_id))
-                self.cache_dict[receiver].append(("video", media_id))
-
-            elif reply.type == ReplyType.VIDEO:  # 从文件读取视频
-                video_storage = reply.content
-                video_storage.seek(0)
-                video_type = 'mp4'
-                filename = receiver + "-" + str(context["msg"].msg_id) + "." + video_type
-                content_type = "video/" + video_type
-                try:
-                    response = self.client.material.add("video", (filename, video_storage, content_type))
-                    logger.debug("[wechatmp] upload video response: {}".format(response))
-                except WeChatClientException as e:
-                    logger.error("[wechatmp] upload video failed: {}".format(e))
-                    return
-                media_id = response["media_id"]
-                logger.info("[wechatmp] video uploaded, receiver {}, media_id {}".format(receiver, media_id))
-                self.cache_dict[receiver].append(("video", media_id))
+                elif reply.type == ReplyType.VIDEO:  # 从文件读取视频
+                    video_storage = reply.content
+                    video_storage.seek(0)
+                    video_type = 'mp4'
+                    filename = receiver + "-" + str(context["msg"].msg_id) + "." + video_type
+                    content_type = "video/" + video_type
+                    try:
+                        response = self.client.material.add("video", (filename, video_storage, content_type))
+                        App().logger.debug("[wechatmp] upload video response: {}".format(response))
+                    except WeChatClientException as e:
+                        App().logger.error("[wechatmp] upload video failed: {}".format(e))
+                        return
+                    media_id = response["media_id"]
+                    App().logger.info("[wechatmp] video uploaded, receiver {}, media_id {}".format(receiver, media_id))
+                    self.cache_dict[receiver].append(("video", media_id))
 
         else:
-            if reply.type == ReplyType.TEXT or reply.type == ReplyType.INFO or reply.type == ReplyType.ERROR:
+            if reply.type in [ReplyType.TEXT, ReplyType.INFO, ReplyType.ERROR]:
                 reply_text = reply.content
                 texts = split_string_by_utf8_length(reply_text, MAX_UTF8_LEN)
                 if len(texts) > 1:
-                    logger.info("[wechatmp] text too long, split into {} parts".format(len(texts)))
+                    App().logger.info("[wechatmp] text too long, split into {} parts".format(len(texts)))
                 for i, text in enumerate(texts):
                     self.client.message.send_text(receiver, text)
                     if i != len(texts) - 1:
                         time.sleep(0.5)  # 休眠0.5秒，防止发送过快乱序
-                logger.info("[wechatmp] Do send text to {}: {}".format(receiver, reply_text))
+                App().logger.info("[wechatmp] Do send text to {}: {}".format(receiver, reply_text))
             elif reply.type == ReplyType.VOICE:
                 try:
                     file_path = reply.content
@@ -236,19 +239,19 @@ class WechatMPChannel(ChatChannel):
                         file_path = mp3_file
                         file_name = os.path.basename(file_path)
                         file_type = "audio/mpeg"
-                    logger.info("[wechatmp] file_name: {}, file_type: {} ".format(file_name, file_type))
+                    App().logger.info("[wechatmp] file_name: {}, file_type: {} ".format(file_name, file_type))
                     media_ids = []
                     duration, files = split_audio(file_path, 60 * 1000)
                     if len(files) > 1:
-                        logger.info("[wechatmp] voice too long {}s > 60s , split into {} parts".format(duration / 1000.0, len(files)))
+                        App().logger.info("[wechatmp] voice too long {}s > 60s , split into {} parts".format(duration / 1000.0, len(files)))
                     for path in files:
                         # support: <2M, <60s, AMR\MP3
                         response = self.client.media.upload("voice", (os.path.basename(path), open(path, "rb"), file_type))
-                        logger.debug("[wechatcom] upload voice response: {}".format(response))
+                        App().logger.debug("[wechatcom] upload voice response: {}".format(response))
                         media_ids.append(response["media_id"])
                         os.remove(path)
                 except WeChatClientException as e:
-                    logger.error("[wechatmp] upload voice failed: {}".format(e))
+                    App().logger.error("[wechatmp] upload voice failed: {}".format(e))
                     return
 
                 try:
@@ -259,7 +262,7 @@ class WechatMPChannel(ChatChannel):
                 for media_id in media_ids:
                     self.client.message.send_voice(receiver, media_id)
                     time.sleep(1)
-                logger.info("[wechatmp] Do send voice to {}".format(receiver))
+                App().logger.info("[wechatmp] Do send voice to {}".format(receiver))
             elif reply.type == ReplyType.IMAGE_URL:  # 从网络下载图片
                 img_url = reply.content
                 pic_res = requests.get(img_url, stream=True)
@@ -272,12 +275,12 @@ class WechatMPChannel(ChatChannel):
                 content_type = "image/" + image_type
                 try:
                     response = self.client.media.upload("image", (filename, image_storage, content_type))
-                    logger.debug("[wechatmp] upload image response: {}".format(response))
+                    App().logger.debug("[wechatmp] upload image response: {}".format(response))
                 except WeChatClientException as e:
-                    logger.error("[wechatmp] upload image failed: {}".format(e))
+                    App().logger.error("[wechatmp] upload image failed: {}".format(e))
                     return
                 self.client.message.send_image(receiver, response["media_id"])
-                logger.info("[wechatmp] Do send image to {}".format(receiver))
+                App().logger.info("[wechatmp] Do send image to {}".format(receiver))
             elif reply.type == ReplyType.IMAGE:  # 从文件读取图片
                 image_storage = reply.content
                 image_storage.seek(0)
@@ -286,12 +289,12 @@ class WechatMPChannel(ChatChannel):
                 content_type = "image/" + image_type
                 try:
                     response = self.client.media.upload("image", (filename, image_storage, content_type))
-                    logger.debug("[wechatmp] upload image response: {}".format(response))
+                    App().logger.debug("[wechatmp] upload image response: {}".format(response))
                 except WeChatClientException as e:
-                    logger.error("[wechatmp] upload image failed: {}".format(e))
+                    App().logger.error("[wechatmp] upload image failed: {}".format(e))
                     return
                 self.client.message.send_image(receiver, response["media_id"])
-                logger.debug("[wechatmp] Do send image to {}".format(receiver))
+                App().logger.debug("[wechatmp] Do send image to {}".format(receiver))
             elif reply.type == ReplyType.VIDEO_URL:  # 从网络下载视频
                 video_url = reply.content
                 video_res = requests.get(video_url, stream=True)
@@ -304,12 +307,12 @@ class WechatMPChannel(ChatChannel):
                 content_type = "video/" + video_type
                 try:
                     response = self.client.media.upload("video", (filename, video_storage, content_type))
-                    logger.debug("[wechatmp] upload video response: {}".format(response))
+                    App().logger.debug("[wechatmp] upload video response: {}".format(response))
                 except WeChatClientException as e:
-                    logger.exception("[wechatmp] upload video failed")
+                    App().logger.exception("[wechatmp] upload video failed")
                     return
                 self.client.message.send_video(receiver, response["media_id"])
-                logger.info("[wechatmp] Do send video to {}".format(receiver))
+                App().logger.info("[wechatmp] Do send video to {}".format(receiver))
             elif reply.type == ReplyType.VIDEO:  # 从文件读取视频
                 video_storage = reply.content
                 video_storage.seek(0)
@@ -318,22 +321,22 @@ class WechatMPChannel(ChatChannel):
                 content_type = "video/" + video_type
                 try:
                     response = self.client.media.upload("video", (filename, video_storage, content_type))
-                    logger.debug("[wechatmp] upload video response: {}".format(response))
+                    App().logger.debug("[wechatmp] upload video response: {}".format(response))
                 except WeChatClientException as e:
-                    logger.exception("[wechatmp] upload video failed")
+                    App().logger.exception("[wechatmp] upload video failed")
                     return
                 self.client.message.send_video(receiver, response["media_id"])
-                logger.info("[wechatmp] Do send video to {}".format(receiver))
+                App().logger.info("[wechatmp] Do send video to {}".format(receiver))
         return
 
     def _success_callback(self, session_id, context, **kwargs):
-        logger.debug("[wechatmp] Success to generate reply, msgId={}".format(context["msg"].msg_id))
+        App().logger.debug("[wechatmp] Success to generate reply, msgId={}".format(context["msg"].msg_id))
         receiver = context["receiver"]
         if receiver in self.running:
             self.running.remove(receiver)
 
     def _fail_callback(self, session_id, exception, context, **kwargs):
-        logger.exception("[wechatmp] Fail to generate reply to user, msgId={}, exception={}".format(context["msg"].msg_id, exception))
+        App().logger.exception("[wechatmp] Fail to generate reply to user, msgId={}, exception={}".format(context["msg"].msg_id, exception))
         receiver = context["receiver"]
         if receiver in self.running:
             self.running.remove(receiver)

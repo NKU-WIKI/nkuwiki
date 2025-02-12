@@ -6,7 +6,7 @@ import requests
 from voice import audio_convert
 from bridge.reply import Reply, ReplyType
 from common.log import logger
-from config import conf
+from app import conf
 from voice.voice import Voice
 from common import const
 import os
