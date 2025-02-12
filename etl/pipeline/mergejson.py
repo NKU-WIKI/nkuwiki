@@ -13,8 +13,12 @@ def find_json_files(directory):
     for root, dirs, files in os.walk(directory):
         for file in files:
             if file.endswith('.json'):
-                json_files.append(os.path.join(root, file))
+                if(file.startswith('scraped')):
+                    pass
+                else:
+                    json_files.append(os.path.join(root, file))
     return json_files
+
 
 def merge_json_files(json_files):
     """
@@ -53,8 +57,9 @@ if __name__ == "__main__":
     
     # 设置输入和输出路径，相对于项目根目录
     search_directory = project_root / 'etl/data/raw/wechat'
-    output_file = project_root / 'etl/data/processed' / f'wechat_merged_{datetime.now().strftime("%Y%m%d")}.json'
+    output_file = project_root / 'etl/data/processed' / f'wechat_metadata_{datetime.now().strftime("%Y%m%d")}.json'
     
+
 
     # 确保目录存在
     print(f"搜索目录: {search_directory}")

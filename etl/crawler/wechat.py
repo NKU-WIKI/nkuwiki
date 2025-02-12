@@ -4,7 +4,6 @@ from dotenv import load_dotenv
 
 # 强制重新加载.env文件
 load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / '.env', override=True)
-print(os.getenv("UNIVERSITY_OFFICIAL_ACCOUNT"))
 # 微信公众号
 class Wechat(BaseCrawler):
     def __init__(self, nicknames = "UNIVERSITY_OFFICIAL_ACCOUNT", debug = False, headless = False):
@@ -20,7 +19,7 @@ class Wechat(BaseCrawler):
         ]
         if not self.nicknames:
             raise ValueError(f"Environment variable {nicknames} is not set or is empty")
-            
+        print("nicknames: ", self.nicknames)
         super().__init__(name=self.name, debug=debug, headless=headless)
 
     def login_for_cookies(self):
@@ -53,15 +52,23 @@ class Wechat(BaseCrawler):
         """
         从公众号名称获取文章链接
         """
-        print(self.nicknames)
         total_articles = []
+        
+        # 设置较短的默认超时时间
+        self.page.set_default_timeout(6000)  # 设置为6秒
+        
         try:
             self.random_sleep()
-            new_content_button = self.page.wait_for_selector('div[class="new-creation__menu-item"]', state='attached', timeout=15000)
+            new_content_button = self.page.wait_for_selector('div[class="new-creation__menu-item"]', 
+                state='attached', 
+                timeout=3000
+            )
         except Exception as e:
             self.page.screenshot(path='viewport.png', full_page=True)
-            self.counter['error'] += 1  # 错误计数器加1
-            self.logger.error(f'get articles from {self.nicknames} error, {type(e)}: {e}')  # 记录错误日志
+            self.counter['error'] += 1
+            self.logger.error(f'get articles from {self.nicknames} error, {type(e)}: {e}')
+            return total_articles
+
         # 增加操作重试机制
         max_retries = 3
         for attempt in range(max_retries):
@@ -70,38 +77,79 @@ class Wechat(BaseCrawler):
                 break
             except Exception as e:
                 if attempt == max_retries - 1:
-                    raise
+                    self.logger.error(f"点击失败，已重试 {max_retries} 次，跳过")
+                    return total_articles
                 self.logger.warning(f"点击失败，重试 {attempt+1}/{max_retries}")
                 self.page.reload()
 
-        self.context.wait_for_event('page')  # 等待新页面事件
-        new_page = self.context.pages[-1]  # 获取最新打开的页面
-        self.page = new_page  # 切换到新页面
-        self.logger.info('go to new content page')
-        self.random_sleep()  # 随机休眠（debug模式无效）
         try:
+            self.context.wait_for_event('page')
+            new_page = self.context.pages[-1]
+            self.page = new_page
+            self.logger.info('go to new content page')
+            self.random_sleep()
             self.page.wait_for_selector('li[id="js_editor_insertlink"] > span').click()
         except Exception as e:
             self.page.screenshot(path='viewport.png', full_page=True)
-            self.counter['error'] += 1  # 错误计数器加1
-            self.logger.error(f'get articles from nickname error, {type(e)}: {e}, nickname: {nickname}')  # 记录错误日志
+            self.counter['error'] += 1
+            self.logger.error(f'get articles error, {type(e)}: {e}')
+            return total_articles
         for nickname in self.nicknames:
-            self.random_sleep()  # 随机休眠（debug模式无效）
-            self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button').click()
-            self.random_sleep()  # 随机休眠（debug模式无效）
-            search_account_field = self.page.wait_for_selector('input[placeholder="输入文章来源的账号名称或微信号，回车进行搜索"]')
-            search_account_field.fill(nickname)
             self.random_sleep()
-            self.page.wait_for_selector('button[class="weui-desktop-icon-btn weui-desktop-search__btn"]').click()
-            self.random_sleep()  # 随机休眠（debug模式无效）
-            self.page.wait_for_selector('//li[@class="inner_link_account_item"]/div[1]').click()
-            self.random_sleep()  # 随机休眠（debug模式无效）
-            max_page_num = int(self.page.wait_for_selector('span[class="weui-desktop-pagination__num__wrp"] > label:nth-of-type(2)').inner_text())
+            try:
+                self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button', 
+                    timeout=3000,
+                    state='visible'
+                ).click()
+            except Exception as e:
+                self.logger.error(f'Failed to find account button: {e}')
+            self.random_sleep()
+            try:
+                search_account_field = self.page.wait_for_selector(
+                    'input[placeholder="输入文章来源的账号名称或微信号，回车进行搜索"]',
+                    timeout=3000
+                )
+                search_account_field.fill(nickname)
+            except Exception as e:
+                self.logger.error(f'Failed to find search field,{str(e)}')
+                break
+            self.random_sleep()
+            try:
+                self.page.wait_for_selector(
+                    'button[class="weui-desktop-icon-btn weui-desktop-search__btn"]',
+                    timeout=3000
+                ).click()
+            except Exception as e:
+                self.logger.error(f'Failed to find search button: {e}')
+                break
+            self.random_sleep()
+            # 等待账号选择器出现
+            try:
+                account_selector = self.page.wait_for_selector(
+                    '//li[@class="inner_link_account_item"]/div[1]',
+                    timeout=3000
+                )
+                account_selector.click()
+
+            except Exception as e:
+                self.logger.error(f'failed to click account, {nickname} seems does not exist')
+                continue
+            self.random_sleep()
+            # 获取页码信息
+            try:
+                max_page_label = self.page.wait_for_selector(
+                    'span[class="weui-desktop-pagination__num__wrp"] > label:nth-of-type(2)',
+                    timeout=3000
+                )
+                max_page_num = int(max_page_label.inner_text())
+            except Exception as e:
+                self.logger.warning(f'Failed to get max page number: {e}, set default max page number to 1')
+                max_page_num = 1
             page = 1
             articles = []
             while len(articles) < max_article_num and page <= max_page_num:
                 try:
-                    self.random_sleep()  # 随机休眠（debug模式无效）
+                    self.random_sleep()
                     article_titles_elements = self.page.query_selector_all('div[class="inner_link_article_title"] > span:nth-of-type(2)')
                     article_dates_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(1)')
                     article_links_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(2) > a[href]')
@@ -119,26 +167,29 @@ class Wechat(BaseCrawler):
                             })
                             cnt += 1
                     page += 1
-                    self.logger.info(f'scraped {cnt} articles from {nickname}')
+                    self.logger.debug(f'scraped {cnt} articles from {nickname}')
                     try: 
                         # 通过文本内容定位"下一页"按钮
                         next_page_button = self.page.get_by_text("下一页")
                         next_page_button.click()
                     except Exception as e:
                         self.counter['error'] += 1
-                        self.logger.error(f'Page: {page}, Next Button error, {type(e)}: {e}, nickname: {nickname}')
+                        self.logger.warning(f'Page: {page}, Next Button error, {type(e)}: {e}, nickname: {nickname}')
                         break
                 except Exception as e:
-                    self.counter['error'] += 1  # 错误计数器加1
-                    self.logger.error(f'Page: {page}, Get article links error, {type(e)}: {e}, nickname: {nickname}')  # 记录错误日志
-                    break
+                    self.counter['error'] += 1
+                    self.logger.error(f'Page: {page}, Get article links error, {type(e)}: {e}, nickname: {nickname}')
+                    break  # 如果处理页面出错，跳出当前账号的处理
+
             self.update_scraped_articles(scraped_links, articles)
             self.logger.info(f'save {len(articles)} articles from {nickname}')
             total_articles.extend(articles)
-            if(len(total_articles) >= total_max_article_num):
+            if len(total_articles) >= total_max_article_num:
                 break
-        self.logger.info(f'save total {len(total_articles)} articles from {self.nicknames}')  
-  
+
+        self.logger.info(f'save total {len(total_articles)} articles from {self.nicknames}')
+        return total_articles
+
     def download_article(self, article, add_scraped_records):
         # 下载文章
         file_url = ''
@@ -220,5 +271,5 @@ class Wechat(BaseCrawler):
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
 if __name__ == "__main__":
-    wechat = Wechat(nicknames = "UNIVERSITY_OFFICIAL_ACCOUNT", debug=False, headless=False)  # 初始化
+    wechat = Wechat(nicknames = "CLUB_OFFICIAL_ACCOUNT", debug=False, headless=False)  # 初始化
     wechat.scrape(max_article_num=500, total_max_article_num=1e10)   # max_article_num最大抓取数量
