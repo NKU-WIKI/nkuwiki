@@ -20,6 +20,7 @@ class Wechat(BaseCrawler):
         if not self.nicknames:
             raise ValueError(f"Environment variable {nicknames} is not set or is empty")
         print("nicknames: ", self.nicknames)
+        print("nicknames: ", self.nicknames)
         super().__init__(name=self.name, debug=debug, headless=headless)
 
     def login_for_cookies(self):
@@ -57,14 +58,26 @@ class Wechat(BaseCrawler):
         # 设置较短的默认超时时间
         self.page.set_default_timeout(6000)  # 设置为6秒
         
+        
+        # 设置较短的默认超时时间
+        self.page.set_default_timeout(6000)  # 设置为6秒
+        
         try:
             self.random_sleep()
             new_content_button = self.page.wait_for_selector('div[class="new-creation__menu-item"]', 
                 state='attached', 
                 timeout=3000
             )
+            new_content_button = self.page.wait_for_selector('div[class="new-creation__menu-item"]', 
+                state='attached', 
+                timeout=3000
+            )
         except Exception as e:
             self.page.screenshot(path='viewport.png', full_page=True)
+            self.counter['error'] += 1
+            self.logger.error(f'get articles from {self.nicknames} error, {type(e)}: {e}')
+            return total_articles
+
             self.counter['error'] += 1
             self.logger.error(f'get articles from {self.nicknames} error, {type(e)}: {e}')
             return total_articles
@@ -77,6 +90,8 @@ class Wechat(BaseCrawler):
                 break
             except Exception as e:
                 if attempt == max_retries - 1:
+                    self.logger.error(f"点击失败，已重试 {max_retries} 次，跳过")
+                    return total_articles
                     self.logger.error(f"点击失败，已重试 {max_retries} 次，跳过")
                     return total_articles
                 self.logger.warning(f"点击失败，重试 {attempt+1}/{max_retries}")
