@@ -10,7 +10,7 @@ from aip import AipSpeech
 from bridge.reply import Reply, ReplyType
 from common.log import logger
 from common.tmp_dir import TmpDir
-from config import conf
+from app import conf
 from voice.audio_convert import get_pcm_from_wav
 from voice.voice import Voice
 

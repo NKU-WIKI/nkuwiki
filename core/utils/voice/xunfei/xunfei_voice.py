@@ -24,7 +24,7 @@ import time
 from bridge.reply import Reply, ReplyType
 from common.log import logger
 from common.tmp_dir import TmpDir
-from config import conf
+from app import conf
 from voice.voice import Voice
 from .xunfei_asr import xunfei_asr
 from .xunfei_tts import xunfei_tts

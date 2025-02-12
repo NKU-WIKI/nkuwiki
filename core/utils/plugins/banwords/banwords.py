@@ -3,12 +3,11 @@
 import json
 import os
 
-import plugins
-from bridge.context import ContextType
-from bridge.reply import Reply, ReplyType
-from common.log import logger
-from plugins import *
-
+from core.utils import plugins
+from core.bridge.context import ContextType
+from core.bridge.reply import Reply, ReplyType 
+from core.utils.plugins.plugin import Plugin
+from core.utils.plugins.event import EventContext, Event, EventAction
 from .lib.WordsSearch import WordsSearch
 
 
@@ -49,9 +48,9 @@ class Banwords(Plugin):
             if conf.get("reply_filter", True):
                 self.handlers[Event.ON_DECORATE_REPLY] = self.on_decorate_reply
                 self.reply_action = conf.get("reply_action", "ignore")
-            logger.info("[Banwords] inited")
+            self.logger.info("[Banwords] inited")
         except Exception as e:
-            logger.warn("[Banwords] init failed, ignore or see https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/banwords .")
+            self.logger.warn("[Banwords] init failed, ignore or see https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/banwords .")
             raise e
 
     def on_handle_context(self, e_context: EventContext):
@@ -62,11 +61,11 @@ class Banwords(Plugin):
             return
 
         content = e_context["context"].content
-        logger.debug("[Banwords] on_handle_context. content: %s" % content)
+        self.logger.debug("[Banwords] on_handle_context. content: %s" % content)
         if self.action == "ignore":
             f = self.searchr.FindFirst(content)
             if f:
-                logger.info("[Banwords] %s in message" % f["Keyword"])
+                self.logger.info("[Banwords] %s in message" % f["Keyword"])
                 e_context.action = EventAction.BREAK_PASS
                 return
         elif self.action == "replace":
@@ -85,7 +84,7 @@ class Banwords(Plugin):
         if self.reply_action == "ignore":
             f = self.searchr.FindFirst(content)
             if f:
-                logger.info("[Banwords] %s in reply" % f["Keyword"])
+                self.logger.info("[Banwords] %s in reply" % f["Keyword"])
                 e_context["reply"] = None
                 e_context.action = EventAction.BREAK_PASS
                 return

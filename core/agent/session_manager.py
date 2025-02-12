@@ -1,6 +1,6 @@
 from core.utils.common.expired_dict import ExpiredDict
-from infra.deploy.app import logger
-from config import conf
+from app import App
+from config import Config   
 
 
 class Session(object):
@@ -8,7 +8,7 @@ class Session(object):
         self.session_id = session_id
         self.messages = []
         if system_prompt is None:
-            self.system_prompt = conf().get("character_desc", "")
+            self.system_prompt = Config().get("character_desc", "")
         else:
             self.system_prompt = system_prompt
 
@@ -38,8 +38,8 @@ class Session(object):
 
 class SessionManager(object):
     def __init__(self, sessioncls, **session_args):
-        if conf().get("expires_in_seconds"):
-            sessions = ExpiredDict(conf().get("expires_in_seconds"))
+        if Config().get("expires_in_seconds"):
+            sessions = ExpiredDict(Config().get("expires_in_seconds"))
         else:
             sessions = dict()
         self.sessions = sessions
@@ -65,22 +65,22 @@ class SessionManager(object):
         session = self.build_session(session_id)
         session.add_query(query)
         try:
-            max_tokens = conf().get("conversation_max_tokens", 1000)
+            max_tokens = Config().get("conversation_max_tokens", 1000)
             total_tokens = session.discard_exceeding(max_tokens, None)
             # logger.info("prompt tokens used={}".format(total_tokens))
         except Exception as e:
-            logger.exception("Exception when counting tokens precisely for prompt: {}".format(str(e)))
+            App().logger.exception("Exception when counting tokens precisely for prompt: {}".format(str(e)))
         return session
 
     def session_reply(self, reply, session_id, total_tokens=None):
         session = self.build_session(session_id)
         session.add_reply(reply)
         try:
-            max_tokens = conf().get("conversation_max_tokens", 1000)
+            max_tokens = Config().get("conversation_max_tokens", 1000)
             tokens_cnt = session.discard_exceeding(max_tokens, total_tokens)
-            logger.debug("raw total_tokens={}, savesession tokens={}".format(total_tokens, tokens_cnt))
+            App().logger.debug("raw total_tokens={}, savesession tokens={}".format(total_tokens, tokens_cnt))
         except Exception as e:
-            logger.exception("Exception when counting tokens precisely for session: {}".format(str(e)))
+            App().logger.exception("Exception when counting tokens precisely for session: {}".format(str(e)))
         return session
 
     def clear_session(self, session_id):

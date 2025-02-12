@@ -1,14 +1,17 @@
 from chatgpt_tool_hub.apps import AppFactory
 from chatgpt_tool_hub.apps.app import App
 from chatgpt_tool_hub.tools.tool_register import main_tool_register
-
+import os
 import plugins
 from bridge.bridge import Bridge
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
-from common import const
-from config import conf, get_appdata_dir
-from plugins import *
+from core.utils.common import const
+from app import App
+from config import Config
+from core.utils.plugins import *
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
 
 
 @plugins.register(
@@ -24,14 +27,14 @@ class Tool(Plugin):
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
         self.app = self._reset_app()
         if not self.tool_config.get("tools"):
-            logger.warn("[tool] init failed, ignore ")
+            App().logger.warn("[tool] init failed, ignore ")
             raise Exception("config.json not found")
-        logger.info("[tool] inited")
+        App().logger.info("[tool] inited")
 
 
     def get_help_text(self, verbose=False, **kwargs):
         help_text = "这是一个能让chatgpt联网，搜索，数字运算的插件，将赋予强大且丰富的扩展能力。"
-        trigger_prefix = conf().get("plugin_trigger_prefix", "$")
+        trigger_prefix = Config().get("plugin_trigger_prefix", "$")
         if not verbose:
             return help_text
         help_text += "\n使用说明：\n"
@@ -66,28 +69,28 @@ class Tool(Plugin):
             e_context.action = EventAction.CONTINUE
             return
 
-        logger.debug("[tool] on_handle_context. content: %s" % content)
+        App().logger.debug("[tool] on_handle_context. content: %s" % content)
         reply = Reply()
         reply.type = ReplyType.TEXT
-        trigger_prefix = conf().get("plugin_trigger_prefix", "$")
+        trigger_prefix = Config().get("plugin_trigger_prefix", "$")
         # todo: 有些工具必须要api-key，需要修改config文件，所以这里没有实现query增删tool的功能
         if content.startswith(f"{trigger_prefix}tool"):
             if len(content_list) == 1:
-                logger.debug("[tool]: get help")
+                App().logger.debug("[tool]: get help")
                 reply.content = self.get_help_text()
                 e_context["reply"] = reply
                 e_context.action = EventAction.BREAK_PASS
                 return
             elif len(content_list) > 1:
                 if content_list[1].strip() == "reset":
-                    logger.debug("[tool]: reset config")
+                    App().logger.debug("[tool]: reset config")
                     self.app = self._reset_app()
                     reply.content = "重置工具成功"
                     e_context["reply"] = reply
                     e_context.action = EventAction.BREAK_PASS
                     return
                 elif content_list[1].startswith("reset"):
-                    logger.debug("[tool]: remind")
+                    App().logger.debug("[tool]: remind")
                     e_context["context"].content = "请你随机用一种聊天风格，提醒用户：如果想重置tool插件，reset之后不要加任何字符"
 
                     e_context.action = EventAction.BREAK
@@ -105,7 +108,7 @@ class Tool(Plugin):
                 all_sessions = Bridge().get_bot("chat").sessions
                 user_session = all_sessions.session_query(query, e_context["context"]["session_id"]).messages
 
-                logger.debug("[tool]: just-go")
+                App().logger.debug("[tool]: just-go")
                 try:
                     if use_one_tool:
                         _func, _ = main_tool_register.get_registered_tool()[tool_name]
@@ -117,8 +120,8 @@ class Tool(Plugin):
                     e_context.action = EventAction.BREAK_PASS
                     all_sessions.session_reply(_reply, e_context["context"]["session_id"])
                 except Exception as e:
-                    logger.exception(e)
-                    logger.error(str(e))
+                    App().logger.exception(e)
+                    App().logger.error(str(e))
 
                     e_context["context"].content = "请你随机用一种聊天风格，提醒用户：这个问题tool插件暂时无法处理"
                     reply.type = ReplyType.ERROR
@@ -143,15 +146,15 @@ class Tool(Plugin):
             "debug": kwargs.get("debug", False),  # 输出更多日志
             "no_default": kwargs.get("no_default", False),  # 不要默认的工具，只加载自己导入的工具
             "think_depth": kwargs.get("think_depth", 2),  # 一个问题最多使用多少次工具
-            "proxy": conf().get("proxy", ""),  # 科学上网
-            "request_timeout": request_timeout if request_timeout else conf().get("request_timeout", 120),
+            "proxy": Config().get("proxy", ""),  # 科学上网
+            "request_timeout": request_timeout if request_timeout else Config().get("request_timeout", 120),
             "temperature": kwargs.get("temperature", 0),  # llm 温度，建议设置0
             # LLM配置相关
-            "llm_api_key": conf().get("open_ai_api_key", ""),  # 如果llm api用key鉴权，传入这里
-            "llm_api_base_url": conf().get("open_ai_api_base", "https://api.openai.com/v1"),  # 支持openai接口的llm服务地址前缀
-            "deployment_id": conf().get("azure_deployment_id", ""),  # azure openai会用到
+            "llm_api_key": Config().get("open_ai_api_key", ""),  # 如果llm api用key鉴权，传入这里
+            "llm_api_base_url": Config().get("open_ai_api_base", "https://api.openai.com/v1"),  # 支持openai接口的llm服务地址前缀
+            "deployment_id": Config().get("azure_deployment_id", ""),  # azure openai会用到
             # note: 目前tool暂未对其他模型测试，但这里仍对配置来源做了优先级区分，一般插件配置可覆盖全局配置
-            "model_name": tool_model_name if tool_model_name else conf().get("model", const.GPT35),
+            "model_name": tool_model_name if tool_model_name else Config().get("model", const.GPT35),
             # 工具配置相关
             # for arxiv tool
             "arxiv_simple": kwargs.get("arxiv_simple", True),  # 返回内容更精简
@@ -218,7 +221,7 @@ class Tool(Plugin):
             "url_get_use_summary": kwargs.get("url_get_use_summary", True),  # 是否对返回结果使用tool功能
             # for wechat tool
             "wechat_hot_reload": kwargs.get("wechat_hot_reload", True),  # 是否使用热重载的方式发送wechat
-            "wechat_cpt_path": kwargs.get("wechat_cpt_path", os.path.join(get_appdata_dir(), "itchat.pkl")),  # wechat 配置文件（`itchat.pkl`）
+            "wechat_cpt_path": kwargs.get("wechat_cpt_path", os.path.join(Config.get_appdata_dir(), "itchat.pkl")),  # wechat 配置文件（`itchat.pkl`）
             "wechat_send_group": kwargs.get("wechat_send_group", False),  # 是否向群组发送消息
             "wechat_nickname_mapping": kwargs.get("wechat_nickname_mapping", "{}"),  # 关于人的代号映射关系。键为代号值为微信名（昵称、备注名均可）
             # for wikipedia tool
@@ -233,7 +236,7 @@ class Tool(Plugin):
             if tool in main_tool_register.get_registered_tool_names():
                 valid_list.append(tool)
             else:
-                logger.warning("[tool] filter invalid tool: " + repr(tool))
+                App().logger.warning("[tool] filter invalid tool: " + repr(tool))
         return valid_list
 
     def _reset_app(self) -> App:

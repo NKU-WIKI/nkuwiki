@@ -1,7 +1,6 @@
 import asyncio
 import time
 
-from fastapi import Request
 from wechatpy import parse_message
 from wechatpy.replies import TextReply, ImageReply, VoiceReply, create_reply
 import textwrap
@@ -10,9 +9,10 @@ from core.bridge.reply import *
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_channel import WechatMPChannel
 from services.wechatmp.wechatmp_message import WeChatMPMessage
-from infra.deploy.app import logger
+
 from core.utils.common.string_utils import split_string_by_utf8_length
-from config import conf, subscribe_msg
+from app import App
+from config import Config
 
 
 # This class is instantiated once per query
@@ -23,9 +23,9 @@ class Query:
             channel = WechatMPChannel()
             encrypt_func = lambda x: x
             if params.get("encrypt_type") == "aes":
-                logger.debug(f"[解密前] 加密数据长度: {len(data)}")
+                App().logger.debug(f"[解密前] 加密数据长度: {len(data)}")
                 if not channel.crypto:
-                    logger.error("未初始化加密模块，请检查wechatmp_aes_key配置")
+                    App().logger.error("未初始化加密模块，请检查wechatmp_aes_key配置")
                     return "service error"
                 
                 try:
@@ -35,9 +35,9 @@ class Query:
                         params["timestamp"],
                         params["nonce"]
                     )
-                    logger.debug(f"[解密后] 消息内容: {message.decode()}")
+                    App().logger.debug(f"[解密后] 消息内容: {message.decode()}")
                 except Exception as e:
-                    logger.exception(f"解密失败")
+                    App().logger.exception(f"解密失败")
                     return "decrypt error"
                 
                 encrypt_func = lambda x: channel.crypto.encrypt_message(
@@ -46,11 +46,11 @@ class Query:
                     params["timestamp"]
                 )
             else:
-                # logger.debug("[明文消息]")
+                # App.logger.debug("[明文消息]")
                 message = data
             
             msg = parse_message(message)
-            # logger.debug(f"消息类型: {msg.type}, 用户: {msg.source}")
+            # App().logger.debug(f"消息类型: {msg.type}, 用户: {msg.source}")
             if msg.type in ["text", "voice", "image"]:
                 wechatmp_msg = WeChatMPMessage(msg, client=channel.client)
                 from_user = wechatmp_msg.from_user_id
@@ -65,21 +65,21 @@ class Query:
                 if (
                     channel.cache_dict.get(from_user) is None
                     and from_user not in channel.running
-                    or content and content.startswith("#")
+                    or content and content.startswith(Config().get("plugin_trigger_prefix", "&"))
                     and message_id not in channel.request_cnt  # insert the godcmd
                 ):
                     # The first query begin
-                    if msg.type == "voice" and wechatmp_msg.ctype == ContextType.TEXT and conf().get("voice_reply_voice", False):
+                    if msg.type == "voice" and wechatmp_msg.ctype == ContextType.TEXT and Config().get("voice_reply_voice", False):
                         context = channel._compose_context(wechatmp_msg.ctype, content, isgroup=False, desire_rtype=ReplyType.VOICE, msg=wechatmp_msg)
                     else:
                         context = channel._compose_context(wechatmp_msg.ctype, content, isgroup=False, msg=wechatmp_msg)
-                    # logger.debug(f"wechatmp_msg：{wechatmp_msg}")
+                    # App().logger.debug(f"wechatmp_msg：{wechatmp_msg}")
 
                     if supported and context:
                         channel.running.add(from_user)
                         channel.produce(context)
                     else:
-                        trigger_prefix = conf().get("single_chat_prefix", [""])[0]
+                        trigger_prefix = Config().get("single_chat_prefix", [""])[0]
                         if trigger_prefix or not supported:
                             if trigger_prefix:
                                 reply_text = textwrap.dedent(
@@ -95,7 +95,7 @@ class Query:
                                     请跟我说话吧。"""
                                 )
                         else:
-                            logger.error(f"[wechatmp] unknown error")
+                            App().logger.error(f"[wechatmp] unknown error")
                             reply_text = textwrap.dedent(
                                 """\
                                 未知错误，请稍后再试"""
@@ -108,7 +108,7 @@ class Query:
                 # Because the interval is 5 seconds, here assumed that do not have multithreading problems.
                 request_cnt = channel.request_cnt.get(message_id, 0) + 1
                 channel.request_cnt[message_id] = request_cnt
-                # logger.debug(
+                # App().logger.debug(
                 #     "[wechatmp] Request {} from {} {} {}:{}\ncontent:{}".format(
                 #         request_cnt, from_user, message_id, params.get("REMOTE_ADDR"), params.get("REMOTE_PORT"), content
                 #     )
@@ -124,8 +124,8 @@ class Query:
                         break
 
                 reply_text = ""
-                logger.debug(f"task_running: {task_running}")
-                logger.debug(f"request_cnt: {request_cnt}")
+                App().logger.debug(f"task_running: {task_running}")
+                App().logger.debug(f"request_cnt: {request_cnt}")
                 if task_running:
                     if request_cnt < 3:
                         # waiting for timeout (the POST request will be closed by Wechat official server)
@@ -134,7 +134,7 @@ class Query:
                         return "success"
                     else:  # request_cnt == 3:
                         # return timeout message
-                        logger.debug(f"time out")
+                        App().logger.debug(f"time out")
                         reply_text = "【正在思考中，回复任意文字尝试获取回复】"
                         replyPost = create_reply(reply_text, msg)
                         return encrypt_func(replyPost.render())
@@ -167,7 +167,7 @@ class Query:
                         reply_text = splits[0] + continue_text
                         channel.cache_dict[from_user].append(("text", splits[1]))
 
-                    logger.info(
+                    App().logger.info(
                         "[wechatmp] Request {} do send to {} {}: {}\n{}".format(
                             request_cnt,
                             from_user,
@@ -182,7 +182,7 @@ class Query:
                 elif reply_type == "voice":
                     media_id = reply_content
                     asyncio.run_coroutine_threadsafe(channel.delete_media(media_id), channel.delete_media_loop)
-                    logger.debug(
+                    App().logger.debug(
                         "[wechatmp] Request {} do send to {} {}: {} voice media_id {}".format(
                             request_cnt,
                             from_user,
@@ -198,7 +198,7 @@ class Query:
                 elif reply_type == "image":
                     media_id = reply_content
                     asyncio.run_coroutine_threadsafe(channel.delete_media(media_id), channel.delete_media_loop)
-                    logger.debug(
+                    App().logger.debug(
                         "[wechatmp] Request {} do send to {} {}: {} image media_id {}".format(
                             request_cnt,
                             from_user,
@@ -212,17 +212,17 @@ class Query:
                     return encrypt_func(replyPost.render())
 
             elif msg.type == "event":
-                logger.debug("[wechatmp] Event {} from {}".format(msg.event, msg.source))
+                App().logger.debug("[wechatmp] Event {} from {}".format(msg.event, msg.source))
                 if msg.event in ["subscribe", "subscribe_scan"]:
-                    reply_text = subscribe_msg()
+                    reply_text = Config().subscribe_msg()
                     if reply_text:
                         replyPost = create_reply(reply_text, msg)
                         return encrypt_func(replyPost.render())
                 else:
                     return "success"
             else:
-                logger.debug("暂且不处理")
+                App().logger.debug("暂且不处理")
             return "success"
         except Exception as exc:
-            logger.exception(f"处理请求时发生未捕获异常")
+            App().logger.exception(f"处理请求时发生未捕获异常")
             return "server error"
