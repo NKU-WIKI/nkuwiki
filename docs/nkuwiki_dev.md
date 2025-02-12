@@ -205,52 +205,71 @@ end note
 ### 项目结构树
 ```plaintext
 nkuwiki/
-├── core/               # 核心基础设施
-│   ├── auth/          # 统一认证服务
-│   │   ├── duckdb_operator.py
-│   │   ├── seaweedfs_client.py
-│   │   └── redis_manager.py
+├── core/               # 核心
 │   ├── agent/         # Agent核心模块
-│   │   ├── coze_integration.py    # Coze平台交互
-│   │   ├── other_platform_integration.py # 其他平台交互
-│   │   └── plugin_manager.py # 插件管理系统
+│   │   ├── coze/          # Coze平台集成
+│   │   │   ├── coze_agent.py     # Agent实现
+│   │   │   ├── coze_integration.py # API集成
+│   │   │   └── coze_session.py   # 会话管理
+│   │   ├── agent.py          # Agent抽象基类
+│   │   ├── session_manager.py # 全局会话管理
+│   │   └── agent_factory.py  # Agent工厂
+│   ├── bridge/          # 连接agent和服务的桥梁
+│   │   ├── bridge.py  # 桥梁
+│   │   │   ├── context.py # 上下文
+│   │   │   ├── reply.py # 回复
+│   │   │   └── ...
+│   ├── auth/          # 认证服务
+│   │   ├── duckdb_operator.py  # DuckDB操作
+│   │   └── redis_manager.py    # Redis连接管理
 │   └── utils/         # 公共工具库
-│       ├── anti_spider/  # 反反爬工具
-│       └── quality/      # 质量评估工具
-│
-├── etl/
-│   ├── crawler/       # 爬虫统一管理（extraction）
-│   │   ├── base_crawler.py # 爬虫基类
-│   │   ├── website.py      # 网站爬虫
+│       ├── common/        # 通用工具
+│       │   ├── expired_dict.py  # 带过期字典
+│       │   ├── string_utils.py   # 字符串处理
+│       │   ├── const.py         # 常量定义
+│       │   └── dequeue.py       # 双端队列实现
+│       ├── plugins/       # 插件系统
+│       │   ├── plugin_manager.py # 插件管理器
+│       │   └── ... 
+│       ├── translate/     # 翻译工具
+│       │   ├── factory.py # 翻译工厂
+│       │   └── ...
+│       ├── voice/         # 语音工具
+│       │   ├── factory.py # 语音工厂
+│       │   └── ...
+│       └── anti_crawler/  # 反爬工具
+│           ├── factory.py # 反爬工厂
+│           └── ...
+├── etl/               # 数据采集处理管道
+│   ├── crawler/       # 爬虫管理
+│   │   ├── base_crawler.py  # 爬虫基类
 │   │   ├── wechat.py        # 微信公众号爬虫
-│   │   ├── campus_market.py  # 校园集市爬虫
-│   │   ├── xiaohongshu.py    # 小红书爬虫
-│   │   ├── weibo.py          # 微博爬虫
-│   │   ├── douyin.py         # 抖音爬虫
-│   │   ├── bilibili.py       # B站爬虫
-│   │   └── zhihu.py          # 知乎爬虫
-│   └── pipelines/     # 处理管道（transformation+loading）
-│       ├── quality_control/ # 质量管控
-│       └── data_export/    # 数据导出
-│
+│   │   └── init_script.js   # 反检测脚本
+│   └── pipeline/      # 数据处理管道
+│       ├── data_export.py   # 数据导出
+│       └── merge_json.py    # 数据合并
 ├── services/
-│   ├── wechat/        # 微信公众号服务
-│   │   ├── message_router.py # 消息路由
-│   │   ├── celery_app.py  # 使用Celery替代Prefect
-│   │   ├── contrib_task.py # 用户贡献处理
-│   │   ├── task_manager.py # 任务调度
-│   │   ├── task_processor.py # 任务处理
-│   │   └── admin.py # 管理后台
-│   └── website/       # 网站服务
-│       └── website_service.py # 网站服务
-│
+│   ├── terminal/      # 终端服务
+│   ├── website/       # 网站服务
+│   ├── wechatmp/      # 微信公众号服务
+│   │   ├── wechatmp_channel.py  # 主通道逻辑
+│   │   ├── passive_reply.py    # 被动回复处理
+│   │   ├── active_reply.py     # 主动回复处理 
+│   │   └── common.py          # 公共方法
+│   ├── chat_channel.py     # 通用聊天通道
+│   ├── chat_message.py     # 聊天消息处理
+│   └── channel_factory.py   # 通道管理
 └── infra/
     ├── deploy/        # 部署配置
-    │   └── docker-compose.yml
+    │   └── scripts/    # 部署脚本
+    │       ├── start.sh     # 启动脚本
+    │       ├── shutdown.sh # 关闭脚本
+    │       └── restart.sh  # 重启脚本
+    ├── app.py           # 主程序
     └── monitoring/    # 监控体系
         ├── loki/      # 日志管理
         └── pyroscope/ # 持续性能分析
-
+├── config.py  # 全局配置管理  
 
 /data/                  # 服务器根目录独立存储
 ├── raw/                # 原始数据
