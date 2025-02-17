@@ -10,7 +10,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki
-ExecStart=/usr/bin/python3 ./infra/deploy/app.py
+ExecStart=/usr/local/bin/python3.12 ./app.py
 Restart=always
 RestartSec=3
 StandardOutput=file:/var/log/nkuwiki.log
@@ -33,4 +33,7 @@ sudo systemctl enable nkuwiki.service
 sudo systemctl start nkuwiki.service
 
 # 6. 验证服务状态
+
+sleep 10
+
 systemctl status nkuwiki.service

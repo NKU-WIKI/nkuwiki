@@ -7,7 +7,7 @@ from singleton_decorator import singleton
 # 此处的配置值无实际意义，程序不会读取此处的配置，仅用于提示格式，请将配置加入到config.json中
 available_setting = {
     # 支持的部署通道
-    "support_channel": ["terminal", "wechatmp"],
+    "support_channel": ["terminal", "wechatmp", "wechatmp_service"],
     # openai api配置
     "open_ai_api_key": "",  # openai api key
     # openai apibase，当use_azure_chatgpt为true时，需要设置对应的api base
