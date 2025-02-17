@@ -75,7 +75,7 @@ class CozeAgent(Agent):
             total_docs = 0
             event_counter = defaultdict(int)
             
-            with requests.post(url, headers=headers, json=payload, stream=True, timeout=30) as response:
+            with requests.post(url, headers=headers, json=payload, stream=True, timeout=10000) as response:
                 response.raise_for_status()
                 
                 for line in response.iter_lines():

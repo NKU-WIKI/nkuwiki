@@ -39,27 +39,27 @@ async def wechat_handler(request: Request):
     """处理微信服务器验证和消息推送"""
     params = dict(request.query_params)
     data = await request.body()
-    
+    # print(params)
+    # print(data)
     # 微信服务器验证（GET请求）
     if request.method == "GET":
-        # App().logger.debug("收到微信服务器验证请求")
+        App().logger.debug("收到微信服务器验证请求")
         return PlainTextResponse(content=params.get("echostr", ""))
     
     # 消息处理（POST请求）
     # App().logger.debug("收到微信消息")
-    
+    # print(request)
     # 根据配置选择处理器
     if Config().get("channel_type") == "wechatmp":
         from services.wechatmp.passive_reply import Query
-    else:
+    else: 
         from services.wechatmp.active_reply import Query
-    
     handler = Query()
     return await handler.process(params, data)
 
 @singleton
 class WechatMPChannel(ChatChannel):
-    def __init__(self, passive_reply=True):
+    def __init__(self, passive_reply=False):
         super().__init__()
         self.passive_reply = passive_reply
         self.NOT_SUPPORT_REPLYTYPE = []
@@ -332,11 +332,13 @@ class WechatMPChannel(ChatChannel):
     def _success_callback(self, session_id, context, **kwargs):
         App().logger.debug("[wechatmp] Success to generate reply, msgId={}".format(context["msg"].msg_id))
         receiver = context["receiver"]
-        if receiver in self.running:
-            self.running.remove(receiver)
+        if self.passive_reply:
+            if receiver in self.running:
+                self.running.remove(receiver)
 
     def _fail_callback(self, session_id, exception, context, **kwargs):
         App().logger.exception("[wechatmp] Fail to generate reply to user, msgId={}, exception={}".format(context["msg"].msg_id, exception))
         receiver = context["receiver"]
-        if receiver in self.running:
-            self.running.remove(receiver)
+        if self.passive_reply:
+            if receiver in self.running:
+                self.running.remove(receiver)
