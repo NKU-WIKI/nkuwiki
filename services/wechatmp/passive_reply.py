@@ -1,16 +1,17 @@
 import asyncio
 import time
 
-from wechatpy import parse_message
-from wechatpy.replies import TextReply, ImageReply, VoiceReply, create_reply
 import textwrap
+from wechatpy import parse_message
+from wechatpy.replies import ImageReply, VoiceReply, create_reply
 from core.bridge.context import *
 from core.bridge.reply import *
+from core.utils.common.string_utils import split_string_by_utf8_length
+
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_channel import WechatMPChannel
 from services.wechatmp.wechatmp_message import WeChatMPMessage
 
-from core.utils.common.string_utils import split_string_by_utf8_length
 from app import App
 from config import Config
 

@@ -1,6 +1,5 @@
 # 基础
 loguru
-python-dotenv
 singleton_decorator
 
 # 服务器
@@ -9,6 +8,7 @@ uvicorn[standard]
 pydantic
 wechatpy
 cryptography
+tiktoken
 
 #数据库
 mysql-connector-python
@@ -16,4 +16,4 @@ mysql-connector-python
 # 爬虫
 requests
 playwright
-beautifulsoup4
+pytz

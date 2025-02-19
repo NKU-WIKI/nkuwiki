@@ -1,18 +1,17 @@
 from __init__ import *
-import re
 
-"""
-爬虫基类
-包含通用请求处理、反反爬策略等
-"""
-
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / '.env')
+Config.load_config()
 
 class BaseCrawler():
-    def __init__(self, name, debug = False, headless = False):
-        """
-        传入名称、是否调试模式、是否无头模式
-        """
+    """通用爬虫基类，封装常用爬取方法和反反爬策略
+    
+    Attributes:
+        debug: 调试模式开关
+        headless: 无头模式开关
+        process_name: 爬虫实例名称
+        content_type: 内容分类标识
+    """
+    def __init__(self, name: str, debug: bool = False, headless: bool = False) -> None:       
         self.debug = debug
         self.headless = headless
         log_day_str = '{time:%Y-%m-%d}'
@@ -38,10 +37,7 @@ class BaseCrawler():
         self.scraped_links_file = 'scraped_links.json'  # 已抓取链接文件
         self.cookies_file = 'cookies.txt'  # cookies文件，用于保存登录信息
         self.tz = pytz.timezone('Asia/Shanghai')  # 设置时区
-
-
-        # 初始化Playwright
-        self.playwright = sync_playwright().start()
+        self.playwright = sync_playwright().start()  # 初始化Playwright
         self.browser = self.playwright.chromium.launch(headless=self.headless)
         self.context = self.browser.new_context(
             user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
@@ -54,19 +50,12 @@ class BaseCrawler():
             service_workers='block',
             permissions=[]  # 禁用所有权限请求
         )
-
-
-
-        # 从环境变量读取代理池配置
-        self.proxy_pool = os.getenv("PROXY_POOL", "http://127.0.0.1:7897").split(',')
+        self.proxy_pool = Config().get("PROXY_POOL", "http://127.0.0.1:7897").split(',')
         self.current_proxy = None
-
-
         # 初始化代理
         self.rotate_proxy()
         # 确保在初始化代理后创建page对象
         self.page = self.context.new_page()
-
         self.min_sleep_microsec = 3000  # 最小休眠时间
         self.max_sleep_microsec = 8000  # 最大休眠时间
         self.max_retry = 5  # 最大重试次数
@@ -123,10 +112,8 @@ class BaseCrawler():
     """
     通用函数
     """
-    def random_sleep(self):
-        """
-        随机休眠一段时间
-        """
+    def random_sleep(self) -> None:
+        """执行随机延迟，模拟人类操作"""
         if(self.debug): 
             pass
         else:
@@ -135,7 +122,7 @@ class BaseCrawler():
             # 随机休眠一段时间
             time.sleep(random.uniform(self.min_sleep_microsec, self.max_sleep_microsec)/1000.0)
 
-    def read_cookies(self, timeout=6*3600):
+    def read_cookies(self, timeout: int = 6*3600) -> tuple[int, Optional[Dict[str, str]]]:
         """
         从文件中读取cookies，timeout为cookies有效期，默认6小时
         """
@@ -155,7 +142,7 @@ class BaseCrawler():
                     return cookie_ts, cookies
         return 0, None
     
-    def save_cookies(self, cookies):
+    def save_cookies(self, cookies: Dict[str, str]) -> None:
         """
         保存cookies到文件
         """
@@ -166,10 +153,8 @@ class BaseCrawler():
             lines += f'{k}: {v}\n'
         f.write_text(lines) 
 
-    def inject_anti_detection_script(self):
-        """
-        注入反检测脚本
-        """
+    def inject_anti_detection_script(self) -> None:
+        """注入反检测JavaScript代码"""
         try:
             # 读取初始化脚本
             init_script_path = Path(__file__).resolve().parent / 'init_script.js'
@@ -180,7 +165,7 @@ class BaseCrawler():
         except Exception as e:
             self.logger.error(f"Failed to inject anti-detection script: {e}")
 
-    def init_cookies(self, cookies, go_base_url=True):
+    def init_cookies(self, cookies: Dict[str, str], go_base_url: bool = True) -> None:
         """
         初始化cookies，go_base_url为是否打开基础URL，默认False，即打开cookie_init_url
         """
@@ -213,7 +198,7 @@ class BaseCrawler():
             self.counter['error'] += 1  # 错误计数器加1
             self.logger.error(e)  # 记录错误日志
 
-    def update_scraped_articles(self, scraped_links, articles):
+    def update_scraped_articles(self, scraped_links: List[str], articles: List[Dict[str, Any]]) -> None:
         """
         保存已抓取文章，articles为新增抓取文章
         """
@@ -249,16 +234,15 @@ class BaseCrawler():
                 clean_title = clean_filename(article['title'])
                 save_path = save_dir / clean_title
                 meta = {
-                    "link": article['link'],
-                    "nickname": article['nickname'],
+                    "original_url": article['original_url'],
+                    "author": article['author'],
                     "publish_time": article['publish_time'],
-                    "run_time": datetime.now().isoformat(),
+                    "scrape_time": datetime.now().isoformat(),
                     "title": article['title'],
-                    "author": article.get('author'),
-                    "read_count": article.get('read_count', 0),
-                    "like_count": article.get('like_count', 0),
-                    "content_type": self.content_type,
-                    "file_path": str(save_path)
+                    # "read_count": article.get('read_count', 0),
+                    # "like_count": article.get('like_count', 0),
+                    "content_type": self.content_type
+                    # "file_path": str(save_path)
                 }
                 try:
                     with open(save_path.with_suffix('.json'), 'w', encoding='utf-8', errors='ignore') as f:
@@ -273,7 +257,7 @@ class BaseCrawler():
         total_f = self.base_dir / self.scraped_links_file
         total_f.write_text(json.dumps(scraped_links, ensure_ascii=False, indent=0))
 
-    def get_scraped_links(self):
+    def get_scraped_links(self) -> List[str]:
         """
         获取已抓取链接
         """
@@ -287,7 +271,7 @@ class BaseCrawler():
                     pass
         return []
 
-    def save_counter(self, start_time):
+    def save_counter(self, start_time: float) -> None:
         """
         保存计数器，start_time为开始时间
         """
@@ -313,34 +297,34 @@ class BaseCrawler():
         except Exception as e:
             self.logger.error(f"保存计数器失败: {str(e)}")
 
-    def remove_disclosures(self, pdf_path, match):
-        """
-        使用 pdfplumber 检查文本，使用 PyPDF2 修改并保存 PDF，match为匹配文本
-        """
-        try:
-            # 提取文本以找到 match 起始页
-            start_deleting_from = None
-            with pdfplumber.open(pdf_path) as pdf:
-                for i, page in enumerate(pdf.pages):
-                    text = page.extract_text()
-                    if match in text:
-                        start_deleting_from = i
-                        break
+    # def remove_disclosures(self, pdf_path: Path, match: str) -> None:
+    #     """
+    #     使用 pdfplumber 检查文本，使用 PyPDF2 修改并保存 PDF，match为匹配文本
+    #     """
+    #     try:
+    #         # 提取文本以找到 match 起始页
+    #         start_deleting_from = None
+    #         with pdfplumber.open(pdf_path) as pdf:
+    #             for i, page in enumerate(pdf.pages):
+    #                 text = page.extract_text()
+    #                 if match in text:
+    #                     start_deleting_from = i
+    #                     break
 
-            # 如果找到 match，删除相应页面
-            if start_deleting_from is not None:
-                reader = PdfReader(pdf_path)
-                writer = PdfWriter()
-                for i in range(start_deleting_from):
-                    writer.add_page(reader.pages[i])
+    #         # 如果找到 match，删除相应页面
+    #         if start_deleting_from is not None:
+    #             reader = PdfReader(pdf_path)
+    #             writer = PdfWriter()
+    #             for i in range(start_deleting_from):
+    #                 writer.add_page(reader.pages[i])
 
-                with open(pdf_path, "wb") as f:
-                    writer.write(f)
-        except Exception as e:
-            self.counter['error'] += 1  # 错误计数器加1
-            self.logger.error(f"An error occurred while cleaning {pdf_path}: {e}")  # 记录错误日志
+    #             with open(pdf_path, "wb") as f:
+    #                 writer.write(f)
+    #     except Exception as e:
+    #         self.counter['error'] += 1  # 错误计数器加1
+    #         self.logger.error(f"An error occurred while cleaning {pdf_path}: {e}")  # 记录错误日志
 
-    def close(self):
+    def close(self) -> None:
         """显式关闭浏览器"""
         try:
             self.browser.close()
@@ -348,7 +332,7 @@ class BaseCrawler():
         except Exception as e:
             self.logger.error(f"Browser close failed: {e}")
 
-    def rotate_proxy(self):
+    def rotate_proxy(self) -> None:
         """从代理池中随机选择可用代理"""
         if self.proxy_pool:
             self.current_proxy = random.choice(self.proxy_pool)
@@ -367,7 +351,7 @@ class BaseCrawler():
                 service_workers='block',
                 permissions=[]  # 禁用所有权限请求
             )
-    def check_proxy_health(self, proxy):
+    def check_proxy_health(self, proxy: str) -> bool:
         """检查代理是否可用"""
         try:
             test_url = "http://www.gstatic.com/generate_204"
@@ -381,11 +365,11 @@ class BaseCrawler():
             self.logger.warning(f"代理 {proxy} 不可用: {str(e)}")
             return False
 
-    def get_healthy_proxies(self):
+    def get_healthy_proxies(self) -> List[str]:
         """获取可用代理列表"""
         return [p for p in self.proxy_pool if self.check_proxy_health(p)]
 
-    def safe_write_file(self, path, content):
+    def safe_write_file(self, path: Path, content: str) -> bool:
         """安全地写入文件，处理权限和锁问题"""
         try:
             # 创建临时文件

@@ -4,7 +4,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import mysql.connector
 from typing import List, Dict, Any
 from datetime import datetime
@@ -12,7 +12,7 @@ from config import Config
 from loguru import logger
 
 
-logger.add(Path(__file__).parent / "logs" / "coze_integration.log", rotation="1 day",retention="3 months", level = "INFO")
+logger.add(Path(__file__).parent / "logs" / "coze_datasource.log", rotation="1 day",retention="3 months", level = "INFO")
 
 
 def get_conn(use_database=True):
@@ -55,28 +55,32 @@ app = FastAPI(
 )
 
 class HiAgentRequest(BaseModel):
-    query: str
-    top_k: int = 5
+    query: str = Field(..., description="用户查询的问题内容")
+    top_k: int = Field(5, description="返回结果数量", ge=1, le=20)
 
 class Document(BaseModel):
     content: str
     metadata: dict
 
 class QueryRequest(BaseModel):
-    sql: str
+    sql: str = Field(..., example="SELECT * FROM table WHERE id = %(id)s", 
+                   description="参数化SQL语句，使用%(param)s格式")
     class Config:
-        extra = "allow"  # 允许接收额外字段
+        extra = "allow"
 
 class QueryResult(BaseModel):
-    columns: List[str]
-    data: List[Dict[str, Any]]
+    columns: List[str] = Field(..., example=["id", "name"], description="数据列名称")
+    data: List[Dict[str, Any]] = Field(..., example=[{"id":1}], description="行数据字典列表")
 
 
 
-@app.post("/query", response_model=QueryResult)
+@app.post("/query", response_model=QueryResult,
+         summary="执行原始SQL查询",
+         description="支持参数化查询，使用%(name)s占位符格式",
+         response_description="包含列名和行数据的查询结果")
 async def execute_query(request: QueryRequest):
     """
-    通用SQL查询接口（POST版）
+    通用SQL查询接口
     - 示例请求体：
     {
         "sql": "SELECT * FROM table WHERE name = %(name)s",
@@ -108,7 +112,11 @@ async def execute_query(request: QueryRequest):
     except Exception as e:
         logger.error(f"服务器错误: {str(e)}")
 
-@app.post("/v1/retrieve")
+@app.post("/v1/retrieve",
+         summary="标准文档检索接口",
+         description="基于自然语言匹配微信文章内容",
+         response_description="包含文档内容和元数据的结果列表",
+         response_model=Dict[str, List[Document]])
 async def hiagent_retrieve(request: HiAgentRequest):
     """HiAgent标准检索接口"""
     try:

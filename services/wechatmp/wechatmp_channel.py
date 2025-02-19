@@ -1,29 +1,31 @@
-# -*- coding: utf-8 -*-
-import asyncio
-import imghdr
 import io
 import os
-import threading
 import time
-
+import asyncio
+import imghdr
+import threading
 import requests
+
+import uvicorn
 from wechatpy.crypto import WeChatCrypto
 from wechatpy.exceptions import WeChatClientException
 from collections import defaultdict
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
-import uvicorn
 
+from app import App
+from config import Config
+Config.load_config()
 from core.bridge.context import *
 from core.bridge.reply import *
+from core.utils.common.singleton import singleton
+from core.utils.common.string_utils import split_string_by_utf8_length, remove_markdown_symbol
+from core.utils.voice.audio_convert import any_to_mp3, split_audio
 from services.chat_channel import ChatChannel
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_client import WechatMPClient
-from app import App
-from core.utils.common.singleton import singleton
-from core.utils.common.string_utils import split_string_by_utf8_length, remove_markdown_symbol
-from config import Config
-from core.utils.voice.audio_convert import any_to_mp3, split_audio
+
+
 
 # If using SSL, uncomment the following lines, and modify the certificate path.
 # from cheroot.server import HTTPServer
@@ -35,12 +37,17 @@ from core.utils.voice.audio_convert import any_to_mp3, split_audio
 app = FastAPI()
 
 @app.api_route("/wx", methods=["GET", "POST"], response_class=PlainTextResponse)
-async def wechat_handler(request: Request):
-    """处理微信服务器验证和消息推送"""
+async def wechat_handler(request: Request) -> PlainTextResponse:
+    """处理微信服务器验证和消息推送
+    
+    Args:
+        request: FastAPI请求对象，包含查询参数和请求体
+        
+    Returns:
+        PlainTextResponse: 验证请求返回明文响应，消息处理返回XML响应
+    """
     params = dict(request.query_params)
     data = await request.body()
-    # print(params)
-    # print(data)
     # 微信服务器验证（GET请求）
     if request.method == "GET":
         App().logger.debug("收到微信服务器验证请求")
@@ -48,7 +55,6 @@ async def wechat_handler(request: Request):
     
     # 消息处理（POST请求）
     # App().logger.debug("收到微信消息")
-    # print(request)
     # 根据配置选择处理器
     if Config().get("channel_type") == "wechatmp":
         from services.wechatmp.passive_reply import Query
@@ -59,10 +65,18 @@ async def wechat_handler(request: Request):
 
 @singleton
 class WechatMPChannel(ChatChannel):
-    def __init__(self, passive_reply=False):
+    """微信公众号消息处理通道
+    
+    Attributes:
+        passive_reply: 是否使用被动回复模式
+        client: 微信客户端实例
+        crypto: 微信消息加解密工具
+    """
+    
+    def __init__(self, passive_reply: bool = False):
         super().__init__()
-        self.passive_reply = passive_reply
-        self.NOT_SUPPORT_REPLYTYPE = []
+        self.passive_reply: bool = passive_reply
+        self.NOT_SUPPORT_REPLYTYPE: list = []
         appid = Config().get("wechatmp_app_id")
         secret = Config().get("wechatmp_app_secret")
         token = Config().get("wechatmp_token")
@@ -73,11 +87,11 @@ class WechatMPChannel(ChatChannel):
             self.crypto = WeChatCrypto(token, aes_key, appid)
         if self.passive_reply:
             # Cache the reply to the user's first message
-            self.cache_dict = defaultdict(list)
+            self.cache_dict: defaultdict[str, list] = defaultdict(list)
             # Record whether the current message is being processed
-            self.running = set()
+            self.running: set[str] = set()
             # Count the request from wechat official server by message_id
-            self.request_cnt = dict()
+            self.request_cnt: dict[str, int] = dict()
             # The permanent media need to be deleted to avoid media number limit
             self.delete_media_loop = asyncio.new_event_loop()
             t = threading.Thread(target=self.start_loop, args=(self.delete_media_loop,))
@@ -111,7 +125,16 @@ class WechatMPChannel(ChatChannel):
         self.client.material.delete(media_id)
         App().logger.info("[wechatmp] permanent media {} has been deleted".format(media_id))
 
-    def send(self, reply: Reply, context: Context):
+    def send(self, reply: Reply, context: Context) -> None:
+        """发送回复消息到微信平台
+        
+        Args:
+            reply: 回复消息对象，包含消息类型和内容
+            context: 消息上下文，包含接收者等信息
+            
+        Raises:
+            WeChatClientException: 微信API调用异常
+        """
         receiver = context["receiver"]
         if self.passive_reply:
             if reply.type in [ReplyType.TEXT, ReplyType.INFO, ReplyType.ERROR, ReplyType.IMAGE, ReplyType.VOICE]:
@@ -329,14 +352,27 @@ class WechatMPChannel(ChatChannel):
                 App().logger.info("[wechatmp] Do send video to {}".format(receiver))
         return
 
-    def _success_callback(self, session_id, context, **kwargs):
+    def _success_callback(self, session_id: str, context: Context, **kwargs) -> None:
+        """消息处理成功回调
+        
+        Args:
+            session_id: 会话ID
+            context: 消息上下文
+        """
         App().logger.debug("[wechatmp] Success to generate reply, msgId={}".format(context["msg"].msg_id))
         receiver = context["receiver"]
         if self.passive_reply:
             if receiver in self.running:
                 self.running.remove(receiver)
 
-    def _fail_callback(self, session_id, exception, context, **kwargs):
+    def _fail_callback(self, session_id: str, exception: Exception, context: Context, **kwargs) -> None:
+        """消息处理失败回调
+        
+        Args:
+            session_id: 会话ID 
+            exception: 异常对象
+            context: 消息上下文
+        """
         App().logger.exception("[wechatmp] Fail to generate reply to user, msgId={}, exception={}".format(context["msg"].msg_id, exception))
         receiver = context["receiver"]
         if self.passive_reply:
