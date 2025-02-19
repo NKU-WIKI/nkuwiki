@@ -10,6 +10,7 @@ config.json
 *.log
 *.log.*
 logs/
+log/
 
 # 数据文件
 data/

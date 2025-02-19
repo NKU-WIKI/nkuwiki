@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+pydantic
+mysql-connector-python
+loguru
+requests
+singleton_decorator
+wechatpy
+cryptography

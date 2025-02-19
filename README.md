@@ -5,7 +5,7 @@
 ## 🚀 立即体验
 
 - 🔗 网站：https://coze.nankai.edu.cn/product/llm/chat/cuh2gospkp8br093l2eg
-- 🔎 微信公众号：nkuwiki
+- 🔎 微信服务号：nkuwiki知识社区（旧号nkuwiki已弃用）
 
 ## 📇 目录
 

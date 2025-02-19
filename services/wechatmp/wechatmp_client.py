@@ -5,7 +5,7 @@ from wechatpy.client import WeChatClient
 from wechatpy.exceptions import APILimitedException
 
 from services.wechatmp.common import *
-from infra.deploy.app import logger
+from app import App
 
 
 class WechatMPClient(WeChatClient):
@@ -36,14 +36,14 @@ class WechatMPClient(WeChatClient):
         try:
             return super()._request(method, url_or_endpoint, **kwargs)
         except APILimitedException as e:
-            logger.error("[wechatmp] API quata has been used up. {}".format(e))
+            App().logger.error("[wechatmp] API quata has been used up. {}".format(e))
             if self.last_clear_quota_time == -1 or time.time() - self.last_clear_quota_time > 60:
                 with self.clear_quota_lock:
                     if self.last_clear_quota_time == -1 or time.time() - self.last_clear_quota_time > 60:
                         self.last_clear_quota_time = time.time()
                         response = self.clear_quota_v2()
-                        logger.debug("[wechatmp] API quata has been cleard, {}".format(response))
+                        App().logger.debug("[wechatmp] API quata has been cleard, {}".format(response))
                 return super()._request(method, url_or_endpoint, **kwargs)
             else:
-                logger.error("[wechatmp] last clear quota time is {}, less than 60s, skip clear quota")
+                App().logger.error("[wechatmp] last clear quota time is {}, less than 60s, skip clear quota")
                 raise e

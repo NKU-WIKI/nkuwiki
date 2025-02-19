@@ -288,3 +288,4 @@ class Wechat(BaseCrawler):
 if __name__ == "__main__":
     wechat = Wechat(nicknames = "CLUB_OFFICIAL_ACCOUNT", debug=False, headless=False)  # 初始化
     wechat.scrape(max_article_num=500, total_max_article_num=1e10)   # max_article_num最大抓取数量
+# 原为logger.error

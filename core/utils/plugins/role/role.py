@@ -7,10 +7,12 @@ import plugins
 from bridge.bridge import Bridge
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
-from common import const
-from common.log import logger
-from config import conf
-from plugins import *
+from core.utils.common import const
+from app import App
+from config import Config   
+from core.utils.plugins import *
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
 
 
 class RolePlay:
@@ -54,24 +56,24 @@ class Role(Plugin):
                     self.roles[role["title"].lower()] = role
                     for tag in role["tags"]:
                         if tag not in self.tags:
-                            logger.warning(f"[Role] unknown tag {tag} ")
+                            App().logger.warning(f"[Role] unknown tag {tag} ")
                             self.tags[tag] = (tag, [])
                         self.tags[tag][1].append(role)
                 for tag in list(self.tags.keys()):
                     if len(self.tags[tag][1]) == 0:
-                        logger.debug(f"[Role] no role found for tag {tag} ")
+                        App().logger.debug(f"[Role] no role found for tag {tag} ")
                         del self.tags[tag]
 
             if len(self.roles) == 0:
                 raise Exception("no role found")
             self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
             self.roleplays = {}
-            logger.info("[Role] inited")
+            App().logger.info("[Role] inited")
         except Exception as e:
             if isinstance(e, FileNotFoundError):
-                logger.warn(f"[Role] init failed, {config_path} not found, ignore or see https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/role .")
+                App().logger.warn(f"[Role] init failed, {config_path} not found, ignore or see https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/role .")
             else:
-                logger.warn("[Role] init failed, ignore or see https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/role .")
+                App().logger.warn("[Role] init failed, ignore or see https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/role .")
             raise e
 
     def get_role(self, name, find_closest=True, min_sim=0.35):
@@ -100,7 +102,7 @@ class Role(Plugin):
             return
         btype = Bridge().get_bot_type("chat")
         if btype not in [const.OPEN_AI, const.CHATGPT, const.CHATGPTONAZURE, const.QWEN_DASHSCOPE, const.XUNFEI, const.BAIDU, const.ZHIPU_AI, const.MOONSHOT, const.MiniMax, const.LINKAI]:
-            logger.debug(f'不支持的bot: {btype}')
+            App().logger.debug(f'不支持的bot: {btype}')
             return
         agent = Bridge().get_bot("chat")
         content = e_context["context"].content[:]
@@ -108,7 +110,7 @@ class Role(Plugin):
         desckey = None
         customize = False
         sessionid = e_context["context"]["session_id"]
-        trigger_prefix = conf().get("plugin_trigger_prefix", "$")
+        trigger_prefix = Config().get("plugin_trigger_prefix", "$")
         if clist[0] == f"{trigger_prefix}停止扮演":
             if sessionid in self.roleplays:
                 self.roleplays[sessionid].reset()
@@ -151,7 +153,7 @@ class Role(Plugin):
             return
         elif sessionid not in self.roleplays:
             return
-        logger.debug("[Role] on_handle_context. content: %s" % content)
+        App().logger.debug("[Role] on_handle_context. content: %s" % content)
         if desckey is not None:
             if len(clist) == 1 or (len(clist) > 1 and clist[1].lower() in ["help", "帮助"]):
                 reply = Reply(ReplyType.INFO, self.get_help_text(verbose=True))
@@ -190,7 +192,7 @@ class Role(Plugin):
         help_text = "让机器人扮演不同的角色。\n"
         if not verbose:
             return help_text
-        trigger_prefix = conf().get("plugin_trigger_prefix", "$")
+        trigger_prefix = Config().get("plugin_trigger_prefix", "$")
         help_text = f"使用方法:\n{trigger_prefix}角色" + " 预设角色名: 设定角色为{预设角色名}。\n" + f"{trigger_prefix}role" + " 预设角色名: 同上，但使用英文设定。\n"
         help_text += f"{trigger_prefix}设定扮演" + " 角色设定: 设定自定义角色人设为{角色设定}。\n"
         help_text += f"{trigger_prefix}停止扮演: 清除设定的角色。\n"

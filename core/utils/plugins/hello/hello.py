@@ -1,13 +1,15 @@
 # encoding:utf-8
-
+import json
+import os
 import plugins
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
-from channel.chat_message import ChatMessage
-from common.log import logger
-from plugins import *
-from config import conf
-
+from services.chat_message import ChatMessage
+from core.utils.plugins import *
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
+from app import App
+from config import Config
 
 @plugins.register(
     name="Hello",
@@ -35,10 +37,10 @@ class Hello(Plugin):
             self.group_welc_prompt = self.config.get("group_welc_prompt", self.group_welc_prompt)
             self.group_exit_prompt = self.config.get("group_exit_prompt", self.group_exit_prompt)
             self.patpat_prompt = self.config.get("patpat_prompt", self.patpat_prompt)
-            logger.info("[Hello] inited")
+            App().logger.info("[Hello] inited")
             self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
         except Exception as e:
-            logger.error(f"[Hello]初始化异常：{e}")
+            App().logger.error(f"[Hello]初始化异常：{e}")
             raise "[Hello] init failed, ignore "
 
     def on_handle_context(self, e_context: EventContext):
@@ -52,13 +54,13 @@ class Hello(Plugin):
         msg: ChatMessage = e_context["context"]["msg"]
         group_name = msg.from_user_nickname
         if e_context["context"].type == ContextType.JOIN_GROUP:
-            if "group_welcome_msg" in conf() or group_name in self.group_welc_fixed_msg:
+            if "group_welcome_msg" in Config() or group_name in self.group_welc_fixed_msg:
                 reply = Reply()
                 reply.type = ReplyType.TEXT
                 if group_name in self.group_welc_fixed_msg:
                     reply.content = self.group_welc_fixed_msg.get(group_name, "")
                 else:
-                    reply.content = conf().get("group_welcome_msg", "")
+                    reply.content = Config().get("group_welcome_msg", "")
                 e_context["reply"] = reply
                 e_context.action = EventAction.BREAK_PASS  # 事件结束，并跳过处理context的默认逻辑
                 return
@@ -70,7 +72,7 @@ class Hello(Plugin):
             return
         
         if e_context["context"].type == ContextType.EXIT_GROUP:
-            if conf().get("group_chat_exit_group"):
+            if Config().get("group_chat_exit_group"):
                 e_context["context"].type = ContextType.TEXT
                 e_context["context"].content = self.group_exit_prompt.format(nickname=msg.actual_user_nickname)
                 e_context.action = EventAction.BREAK  # 事件结束，进入默认处理逻辑
@@ -87,7 +89,7 @@ class Hello(Plugin):
             return
 
         content = e_context["context"].content
-        logger.debug("[Hello] on_handle_context. content: %s" % content)
+        App().logger.debug("[Hello] on_handle_context. content: %s" % content)
         if content == "Hello":
             reply = Reply()
             reply.type = ReplyType.TEXT
@@ -116,7 +118,7 @@ class Hello(Plugin):
         return help_text
 
     def _load_config_template(self):
-        logger.debug("No Hello plugin config.json, use plugins/hello/config.json.template")
+        App().logger.debug("No Hello plugin config.json, use plugins/hello/config.json.template")
         try:
             plugin_config_path = os.path.join(self.path, "config.json.template")
             if os.path.exists(plugin_config_path):
@@ -124,4 +126,4 @@ class Hello(Plugin):
                     plugin_conf = json.load(f)
                     return plugin_conf
         except Exception as e:
-            logger.exception(e)
+            App().logger.exception(e)

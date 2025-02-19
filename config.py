@@ -1,16 +1,13 @@
-# encoding:utf-8
-import json
 import os
 import pickle
+import json
 import copy
-from core.utils.common import const
-from infra.deploy.app import logger
-
-## 将所有可用的配置项写在字典里, 请使用小写字母
+from singleton_decorator import singleton
+from loguru import logger
 # 此处的配置值无实际意义，程序不会读取此处的配置，仅用于提示格式，请将配置加入到config.json中
 available_setting = {
     # 支持的部署通道
-    "support_channel": ["terminal", "wechatmp"],
+    "support_channel": ["terminal", "wechatmp", "wechatmp_service"],
     # openai api配置
     "open_ai_api_key": "",  # openai api key
     # openai apibase，当use_azure_chatgpt为true时，需要设置对应的api base
@@ -159,7 +156,7 @@ available_setting = {
     "subscribe_msg": "",  # 订阅消息, 支持: wechatmp, wechatmp_service, wechatcom_app
     "appdata_dir": "",  # 数据目录
     # 插件配置
-    "plugin_trigger_prefix": "$",  # 规范插件提供聊天相关指令的前缀，建议不要和管理员指令前缀"#"冲突
+    "plugin_trigger_prefix": "&",  # 规范插件提供聊天相关指令的前缀，建议不要和管理员指令前缀"#"冲突
     # 是否使用全局插件配置
     "use_global_plugin_config": False,
     "max_media_send_count": 3,  # 单次最大发送媒体资源的个数
@@ -184,9 +181,17 @@ available_setting = {
     "enable_knowledge_integration": True,
     "max_knowledge_display": 3,
     "max_knowledge_length": 100,
-    "response_mode": "blocking"
+    "response_mode": "blocking",
+    # 新增数据库配置项
+    "db_host": "localhost",
+    "db_port": 3306,
+    "db_user": "root", 
+    "db_password": "",
+    "db_name": "mysql",
+    "data_path": ""
 }
 
+@singleton
 class Config(dict):
     def __init__(self, d=None):
         super().__init__()
@@ -211,9 +216,23 @@ class Config(dict):
         except KeyError:
             return default
         except Exception as e:
-            logger.exception(f"[config] 配置获取异常")
+            self.logger.exception(f"[config] 配置获取异常")
             return default
-
+        
+    def get_root():
+        return os.path.dirname(os.path.abspath(__file__))
+    
+    def read_file(path):
+        with open(path, mode="r", encoding="utf-8") as f:
+            return f.read()
+        
+    def get_appdata_dir(self):
+        data_path = os.path.join(self.get_root(), self.get("appdata_dir", ""))
+        if not os.path.exists(data_path):
+            self.logger.info("[INIT] data path not exists, create it: {}".format(data_path))
+            os.makedirs(data_path)
+        return data_path
+    
     # Make sure to return a dictionary to ensure atomic
     def get_user_data(self, user) -> dict:
         if self.user_datas.get(user) is None:
@@ -222,146 +241,132 @@ class Config(dict):
 
     def load_user_datas(self):
         try:
-            with open(os.path.join(get_appdata_dir(), "user_datas.pkl"), "rb") as f:
+            with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "rb") as f:
                 self.user_datas = pickle.load(f)
-                logger.info("[Config] User datas loaded.")
+                self.logger.info("[Config] User datas loaded.")
         except FileNotFoundError as e:
-            logger.debug("[Config] User datas file not found, ignore.")
+            self.logger.debug("[Config] User datas file not found, ignore.")
         except Exception as e:
-            logger.debug("[Config] User datas error")
+            self.logger.debug("[Config] User datas error")
             self.user_datas = {}
 
     def save_user_datas(self):
         try:
-            with open(os.path.join(get_appdata_dir(), "user_datas.pkl"), "wb") as f:
-                pickle.dump(self.user_datas, f)
-                logger.info("[Config] User datas saved.")
+            import copy
+            # 创建深拷贝避免修改原始数据
+            save_data = copy.deepcopy(self.user_datas)
+            # 过滤文件对象等不可序列化内容
+            for user in list(save_data.keys()):
+                for key in list(save_data[user].keys()):
+                    if not isinstance(save_data[user][key], (str, int, float, bool, list, dict)):
+                        del save_data[user][key]
+            
+            with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "wb") as f:
+                pickle.dump(save_data, f)
+                self.logger.info("[Config] User datas saved.")
         except Exception as e:
-            logger.debug("[Config] User datas error")
+            self.logger.error(f"[Config] 保存用户数据失败: {str(e)}")
 
-def drag_sensitive(config):
-    try:
-        if isinstance(config, str):
-            conf_dict: dict = json.loads(config)
-            conf_dict_copy = copy.deepcopy(conf_dict)
-            for key in conf_dict_copy:
-                if "key" in key or "secret" in key:
-                    if isinstance(conf_dict_copy[key], str):
-                        conf_dict_copy[key] = conf_dict_copy[key][0:3] + "*" * 5 + conf_dict_copy[key][-3:]
-            return json.dumps(conf_dict_copy, indent=4)
+    def drag_sensitive(self):
+        try:
+            if isinstance(self, str):
+                conf_dict: dict = json.loads(self)
+                conf_dict_copy = copy.deepcopy(conf_dict)
+                for key in conf_dict_copy:
+                    if "key" in key or "secret" in key:
+                        if isinstance(conf_dict_copy[key], str):
+                            conf_dict_copy[key] = conf_dict_copy[key][0:3] + "*" * 5 + conf_dict_copy[key][-3:]
+                return json.dumps(conf_dict_copy, indent=4)
 
-        elif isinstance(config, dict):
-            config_copy = copy.deepcopy(config)
-            for key in config:
-                if "key" in key or "secret" in key:
-                    if isinstance(config_copy[key], str):
-                        config_copy[key] = config_copy[key][0:3] + "*" * 5 + config_copy[key][-3:]
-            return config_copy
-    except Exception as e:
-        logger.exception(e)
-        return config
-    return config
+            elif isinstance(self, dict):
+                # 创建配置字典副本时排除不可序列化的属性
+                config_copy = copy.deepcopy({k: v for k, v in self.items()})
+                for key in config_copy:
+                    if "key" in key or "secret" in key:
+                        if isinstance(config_copy[key], str):
+                            config_copy[key] = config_copy[key][0:3] + "*" * 5 + config_copy[key][-3:]
+                return config_copy
+            else:  # 处理Config实例的情况
+                config_copy = copy.deepcopy(dict(self))
+                # 过滤不可序列化的实例属性
+                config_copy.pop('logger', None)
+                config_copy.pop('user_datas', None)
+                return config_copy
+        except Exception as e:
+            self.logger.exception(e)
+            return self
+        
+    def write_plugin_config(self, pconf: dict):
+        """
+        写入插件全局配置
+        :param pconf: 全量插件配置
+        """
+        global plugin_config
+        for k in pconf:
+            plugin_config[k.lower()] = pconf[k]
 
-config = Config()
-
-def load_config():
-    global config
-    config_path = os.path.join(os.path.dirname(__file__), "config.json")
-    try:
-        with open(config_path, "r", encoding="utf-8-sig") as f:
-            config_str = f.read()
-            config_data = json.loads(config_str)
-            config_data = {k.lower(): v for k, v in config_data.items()}
-            logger.debug("[config] 处理后的配置数据: {}".format(config_data))  # 调试输出
-            config = Config(config_data)
-    except json.JSONDecodeError as e:
-        logger.exception(f"[config] 配置文件格式错误")
-
-    # override config with environment variables.
-    # Some online deployment platforms (e.g. Railway) deploy project from github directly. So you shouldn't put your secrets like api key in a config file, instead use environment variables to override the default config.
-    for name, value in os.environ.items():
-        name = name.lower()
-        if name in available_setting:
-            logger.info("[config] override config by environ args: {}={}".format(name, value))
-            try:
-                config[name] = eval(value)
-            except:
-                if value == "false":
-                    config[name] = False
-                elif value == "true":
-                    config[name] = True
-                else:
-                    config[name] = value
-    logger.debug("[config] load config: {}".format(drag_sensitive(config)))
-    config.load_user_datas()
-    return config
-
-def get_root():
-    return os.path.dirname(os.path.abspath(__file__))
+    def remove_plugin_config(name: str):
+        """
+        移除待重新加载的插件全局配置
+        :param name: 待重载的插件名
+        """
+        global plugin_config
+        plugin_config.pop(name.lower(), None)
 
 
-def read_file(path):
-    with open(path, mode="r", encoding="utf-8") as f:
-        return f.read()
+    def pconf(plugin_name: str) -> dict:
+        """
+        根据插件名称获取配置
+        :param plugin_name: 插件名称
+        :return: 该插件的配置项
+        """
+        return plugin_config.get(plugin_name.lower())
+    
+    def subscribe_msg(self):
+        trigger_prefix = self.get("single_chat_prefix", [""])[0]
+        msg = self.get("subscribe_msg", "")
+        return msg.format(trigger_prefix=trigger_prefix)
+    
+    def load_config(self, logger = logger):
+        self.logger = logger
+        config_path = os.path.join(os.path.dirname(__file__), "config.json")
+        try:
+            with open(config_path, "r", encoding="utf-8-sig") as f:
+                config_str = f.read()
+                config_data = json.loads(config_str)
+                config_data = {k.lower(): v for k, v in config_data.items()}
+                self.update(config_data)
+        except json.JSONDecodeError as e:
+            self.logger.exception(f"[config] 配置文件格式错误")
 
+        for name, value in os.environ.items():
+            name = name.lower()
+            if name in available_setting:
+                # self.logger.info("[config] override config by environ args: {}={}".format(name, value))
+                try:
+                    self[name] = eval(value)
+                except:
+                    if value == "false":
+                        self[name] = False
+                    elif value == "true":
+                        self[name] = True
+                    else:
+                        self[name] = value
+        self.logger.debug("[config] load config: {}".format(self.drag_sensitive()))
+        self.load_user_datas()
+        return self
 
-def conf():
-    return config
-
-
-def get_appdata_dir():
-    data_path = os.path.join(get_root(), conf().get("appdata_dir", ""))
-    if not os.path.exists(data_path):
-        logger.info("[INIT] data path not exists, create it: {}".format(data_path))
-        os.makedirs(data_path)
-    return data_path
-
-
-def subscribe_msg():
-    trigger_prefix = conf().get("single_chat_prefix", [""])[0]
-    msg = conf().get("subscribe_msg", "")
-    return msg.format(trigger_prefix=trigger_prefix)
-
-
-# global plugin config
 plugin_config = {}
-
-
-def write_plugin_config(pconf: dict):
-    """
-    写入插件全局配置
-    :param pconf: 全量插件配置
-    """
-    global plugin_config
-    for k in pconf:
-        plugin_config[k.lower()] = pconf[k]
-
-def remove_plugin_config(name: str):
-    """
-    移除待重新加载的插件全局配置
-    :param name: 待重载的插件名
-    """
-    global plugin_config
-    plugin_config.pop(name.lower(), None)
-
-
-def pconf(plugin_name: str) -> dict:
-    """
-    根据插件名称获取配置
-    :param plugin_name: 插件名称
-    :return: 该插件的配置项
-    """
-    return plugin_config.get(plugin_name.lower())
-
 
 # 全局配置，用于存放全局生效的状态
 global_config = {"admin_users": []}
 
 
-def get_model_config(model_name: str) -> dict:
-    """安全获取模型配置"""
-    config = conf().get(model_name)
-    if not isinstance(config, dict):
-        logger.warning(f"模型{model_name}配置格式错误，预期字典类型")
-        return {}
-    return config
+# def get_model_config(model_name: str) -> dict:
+#     """安全获取模型配置"""
+#     global plugin_config
+#     config = plugin_config.get(model_name)
+#     if not isinstance(config, dict):
+#         App().logger.warning(f"模型{model_name}配置格式错误，预期字典类型")
+#         return {}
+#     return config

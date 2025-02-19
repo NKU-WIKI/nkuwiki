@@ -3,7 +3,7 @@ import os
 import re
 from urllib.parse import urlparse
 from PIL import Image
-from infra.deploy.app import logger     
+from app import App
 
 def fsize(file):
     if isinstance(file, io.BytesIO):
@@ -21,19 +21,22 @@ def fsize(file):
 
 
 def compress_imgfile(file, max_size):
-    if fsize(file) <= max_size:
-        return file
-    file.seek(0)
-    img = Image.open(file)
-    rgb_image = img.convert("RGB")
-    quality = 95
-    while True:
-        out_buf = io.BytesIO()
-        rgb_image.save(out_buf, "JPEG", quality=quality)
-        if fsize(out_buf) <= max_size:
-            return out_buf
-        quality -= 5
-
+    try:
+        if fsize(file) <= max_size:
+            return file
+        file.seek(0)
+        img = Image.open(file)
+        rgb_image = img.convert("RGB")
+        quality = 95
+        while True:
+            out_buf = io.BytesIO()
+            rgb_image.save(out_buf, "JPEG", quality=quality)
+            if fsize(out_buf) <= max_size:
+                return out_buf
+            quality -= 5
+    except Exception as e:
+        App().logger.error(f"Image processing error: {str(e)}")
+        return None
 
 def split_string_by_utf8_length(string, max_length, max_split=0):
     encoded = string.encode("utf-8")
@@ -67,7 +70,7 @@ def convert_webp_to_png(webp_image):
         png_image.seek(0)
         return png_image
     except Exception as e:
-        logger.exception(f"Failed to convert WEBP to PNG")
+        App.logger.exception(f"Failed to convert WEBP to PNG")
         raise
 
 

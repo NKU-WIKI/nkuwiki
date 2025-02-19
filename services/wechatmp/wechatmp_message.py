@@ -3,7 +3,7 @@
 from core.bridge.context import ContextType
 from services.chat_message import ChatMessage
 from core.utils.common.tmp_dir import TmpDir
-from infra.deploy.app import logger
+from app import App
 
 class WeChatMPMessage(ChatMessage):
     def __init__(self, msg, client=None):
@@ -27,7 +27,7 @@ class WeChatMPMessage(ChatMessage):
                         with open(self.content, "wb") as f:
                             f.write(response.content)
                     else:
-                        logger.error(f"[wechatmp] Failed to download voice file, {response.content}")
+                        App().logger.error(f"[wechatmp] Failed to download voice file, {response.content}")
 
                 self._prepare_fn = download_voice
             else:
@@ -44,7 +44,7 @@ class WeChatMPMessage(ChatMessage):
                     with open(self.content, "wb") as f:
                         f.write(response.content)
                 else:
-                    logger.error(f"[wechatmp] Failed to download image file, {response.content}")
+                    App().logger.error(f"[wechatmp] Failed to download image file, {response.content}")
 
             self._prepare_fn = download_image
         else:

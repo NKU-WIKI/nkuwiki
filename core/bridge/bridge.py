@@ -2,9 +2,9 @@ from core.agent.agent_factory import create_agent
 from core.bridge.context import Context
 from core.bridge.reply import Reply
 from core.utils.common import const
-from infra.deploy.app import logger
+from app import App
 from core.utils.common.singleton import singleton
-from config import conf
+from config import Config
 from core.utils.translate.factory import create_translator
 from core.utils.voice.factory import create_voice
 
@@ -14,19 +14,19 @@ class Bridge(object):
     def __init__(self):
         self.agent_type = {
             "chat": const.COZE,
-            "voice_to_text": conf().get("voice_to_text", "openai"),
-            "text_to_voice": conf().get("text_to_voice", "google"),
-            "translate": conf().get("translate", "baidu"),
+            "voice_to_text": Config().get("voice_to_text", "openai"),
+            "text_to_voice": Config().get("text_to_voice", "google"),
+            "translate": Config().get("translate", "baidu"),
         }
         # 这边取配置的模型
-        agent_type = conf().get("agent_type")
+        agent_type = Config().get("agent_type")
         if agent_type:
             self.agent_type["chat"] = agent_type
         else:
-            model_type = conf().get("model") or const.GPT35
+            model_type = Config().get("model") or const.GPT35
             if model_type in ["text-davinci-003"]:
                 self.agent_type["chat"] = const.OPEN_AI
-            if conf().get("use_azure_chatgpt", False):
+            if Config().get("use_azure_chatgpt", False):
                 self.agent_type["chat"] = const.CHATGPTONAZURE
             if model_type in ["wenxin", "wenxin-4"]:
                 self.agent_type["chat"] = const.BAIDU
