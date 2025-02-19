@@ -3,7 +3,7 @@ import pickle
 import json
 import copy
 from singleton_decorator import singleton
-
+from loguru import logger
 # 此处的配置值无实际意义，程序不会读取此处的配置，仅用于提示格式，请将配置加入到config.json中
 available_setting = {
     # 支持的部署通道
@@ -181,7 +181,14 @@ available_setting = {
     "enable_knowledge_integration": True,
     "max_knowledge_display": 3,
     "max_knowledge_length": 100,
-    "response_mode": "blocking"
+    "response_mode": "blocking",
+    # 新增数据库配置项
+    "db_host": "localhost",
+    "db_port": 3306,
+    "db_user": "root", 
+    "db_password": "",
+    "db_name": "mysql",
+    "data_path": ""
 }
 
 @singleton
@@ -320,7 +327,7 @@ class Config(dict):
         msg = self.get("subscribe_msg", "")
         return msg.format(trigger_prefix=trigger_prefix)
     
-    def load_config(self, logger):
+    def load_config(self, logger = logger):
         self.logger = logger
         config_path = os.path.join(os.path.dirname(__file__), "config.json")
         try:
