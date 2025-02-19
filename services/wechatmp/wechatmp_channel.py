@@ -25,8 +25,6 @@ from services.chat_channel import ChatChannel
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_client import WechatMPClient
 
-
-
 # If using SSL, uncomment the following lines, and modify the certificate path.
 # from cheroot.server import HTTPServer
 # from cheroot.ssl.builtin import BuiltinSSLAdapter
