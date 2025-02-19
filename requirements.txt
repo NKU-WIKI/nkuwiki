@@ -1,4 +1,3 @@
-# 核心依赖
 fastapi
 uvicorn[standard]
 python-dotenv
@@ -8,27 +7,4 @@ loguru
 requests
 singleton_decorator
 wechatpy
-
-# 数据库相关
-sqlalchemy
-aiomysql
-
-# 数据处理
-pytz
-python-dateutil
-pdfplumber
-PyPDF2
-
-# 爬虫相关
-playwright
-beautifulsoup4
-
-# 安全认证
-python-multipart
-pyopenssl
 cryptography
-
-# 其他工具
-chardet
-python-slugify
-pydub 
