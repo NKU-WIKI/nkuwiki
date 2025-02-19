@@ -10,7 +10,7 @@ After=network.target
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki
-ExecStart=/usr/bin/python3 ./infra/deploy/app.py
+ExecStart=/usr/bin/python3 .app.py
 Restart=always
 RestartSec=3
 StandardOutput=file:/var/log/nkuwiki.log
