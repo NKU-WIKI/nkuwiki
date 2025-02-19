@@ -1,20 +1,37 @@
+"""微信数据导出到MySQL的ETL流程模块
+
+包含功能：
+- 数据库初始化
+- JSON数据清洗处理
+- 批量数据导入
+- 数据查询验证
+"""
+
+import re
+from loguru import logger
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent)) 
 
 import mysql.connector
 import json
-import glob
 from pathlib import Path
 from typing import Dict
 from config import Config
 Config().load_config()
-from loguru import logger
-import re
+
 
 logger.add("logs/data_export.log", rotation="1 day", retention="3 months", level="INFO")
 
-def get_conn(use_database=True):
+def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
+    """获取MySQL数据库连接
+    
+    Args:
+        use_database: 是否连接指定数据库，默认为True
+        
+    Returns:
+        MySQLConnection: 数据库连接对象
+    """
     config = {
         "host": Config().get("db_host"),
         "port": Config().get("db_port"),
@@ -28,7 +45,15 @@ def get_conn(use_database=True):
     return mysql.connector.connect(**config)
 
 def init_database():
-    """分步初始化数据库"""
+    """分步初始化数据库
+    
+    步骤：
+    1. 创建数据库（如果不存在）
+    2. 执行所有SQL文件创建表结构
+    
+    Raises:
+        Exception: 任一阶段失败时抛出异常
+    """
     try:
         # 第一步：连接无数据库状态
         with get_conn(use_database=False) as conn:
@@ -62,7 +87,18 @@ def init_database():
         raise
 
 def process_file(file_path: str) -> Dict:
-    """处理单个JSON文件并返回清洗后的数据"""
+    """处理单个JSON文件并返回清洗后的数据
+    
+    Args:
+        file_path: JSON文件路径
+        
+    Returns:
+        dict: 清洗后的结构化数据
+        
+    Raises:
+        ValueError: 缺少必要字段时抛出
+        JSONDecodeError: JSON解析失败时抛出
+    """
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             data = json.load(f)
@@ -85,8 +121,18 @@ def process_file(file_path: str) -> Dict:
         logger.error(f"文件 {file_path} 不是有效的JSON: {str(e)}")
         raise
 
-def export_wechat_to_mysql(n):
-    """将微信JSON数据导入MySQL数据库"""
+def export_wechat_to_mysql(n: int):
+    """将微信JSON数据导入MySQL数据库
+    
+    Args:
+        n: 最大导入数量限制
+        
+    流程：
+    1. 初始化数据库
+    2. 加载元数据文件
+    3. 批量插入数据（支持断点续传）
+    4. 使用upsert方式更新重复记录
+    """
     
     # 初始化数据库
     init_database()
@@ -158,7 +204,15 @@ def export_wechat_to_mysql(n):
         logger.info("数据导入完成")
 
 def query_table(table_name: str, limit: int = 1000) -> list:
-    """查询指定表内容"""
+    """查询指定表内容
+    
+    Args:
+        table_name: 要查询的表名
+        limit: 返回结果最大条数，默认1000
+        
+    Returns:
+        list: 查询结果列表，元素为字典形式的记录
+    """
     try:
         with get_conn() as conn:
             with conn.cursor(dictionary=True) as cursor:

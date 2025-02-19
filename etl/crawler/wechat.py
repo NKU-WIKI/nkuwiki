@@ -1,31 +1,42 @@
 from __init__ import *
 from base_crawler import BaseCrawler
-from dotenv import load_dotenv
 
-# 强制重新加载.env文件
-load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent.parent / '.env', override=True)
-# 微信公众号
+Config.load_config()
+
 class Wechat(BaseCrawler):
-    def __init__(self, nicknames = "UNIVERSITY_OFFICIAL_ACCOUNT", debug = False, headless = False):
+    """微信公众号文章爬虫
+    
+    Attributes:
+        authors: 环境变量名称，包含要爬取的公众号昵称列表
+        debug: 调试模式开关
+        headless: 是否使用无头浏览器模式
+    """
+    def __init__(self, authors: str = "UNIVERSITY_OFFICIAL_ACCOUNT", debug: bool = False, headless: bool = False) -> None:
         # 确保在初始化时重新读取环境变量
         self.name = "wechat"
+        super().__init__(name=self.name, debug=debug, headless=headless)
         self.base_url = "https://mp.weixin.qq.com/"  # 基础URL
         self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
         # 从环境变量中获取昵称并过滤空值
-        self.nicknames = [
+        self.authors = [
             name.strip() 
-            for name in os.getenv(nicknames, '').split(',') 
+            for name in Config().get(authors, '').split(',') 
             if name.strip()
         ]
-        if not self.nicknames:
-            raise ValueError(f"Environment variable {nicknames} is not set or is empty")
-        print("nicknames: ", self.nicknames)
-        print("nicknames: ", self.nicknames)
-        super().__init__(name=self.name, debug=debug, headless=headless)
+        if not self.authors:
+            self.logger.error(f"Config {authors} is not set or is empty")
+        
+        self.logger.info(f"authors: {self.authors}")
 
-    def login_for_cookies(self):
-        """
-        登录并获取cookies
+    def login_for_cookies(self) -> dict[str, str]:
+        """登录微信公众号平台获取cookies
+        
+        Returns:
+            包含登录cookies的字典
+            
+        Raises:
+            TimeoutError: 登录超时（5分钟未扫码）
+            Exception: 其他登录异常
         """
         try:
             # 注入脚本
@@ -49,15 +60,25 @@ class Wechat(BaseCrawler):
             self.context.clear_cache()
             raise e
 
-    def scrape_articles_from_nicknames(self, scraped_links, max_article_num, total_max_article_num):
-        """
-        从公众号名称获取文章链接
+    def scrape_articles_from_authors(self, scraped_original_urls: set, max_article_num: int, 
+                                     total_max_article_num: int) -> list[dict]:
+        """从指定公众号列表抓取文章元数据
+        
+        Args:
+            scraped_original_urls: 已抓取链接集合（用于去重）
+            max_article_num: 单个公众号最大抓取数量
+            total_max_article_num: 总最大抓取数量
+            
+        Returns:
+            包含文章信息的字典列表，格式:
+            [{
+                'author': 公众号名称,
+                'publish_time': 发布时间,
+                'title': 文章标题,
+                'original_url': 文章链接
+            }]
         """
         total_articles = []
-        
-        # 设置较短的默认超时时间
-        self.page.set_default_timeout(6000)  # 设置为6秒
-        
         
         # 设置较短的默认超时时间
         self.page.set_default_timeout(6000)  # 设置为6秒
@@ -68,18 +89,10 @@ class Wechat(BaseCrawler):
                 state='attached', 
                 timeout=3000
             )
-            new_content_button = self.page.wait_for_selector('div[class="new-creation__menu-item"]', 
-                state='attached', 
-                timeout=3000
-            )
         except Exception as e:
             self.page.screenshot(path='viewport.png', full_page=True)
             self.counter['error'] += 1
-            self.logger.error(f'get articles from {self.nicknames} error, {type(e)}: {e}')
-            return total_articles
-
-            self.counter['error'] += 1
-            self.logger.error(f'get articles from {self.nicknames} error, {type(e)}: {e}')
+            self.logger.error(f'get articles from {self.authors} error, {type(e)}: {e}')
             return total_articles
 
         # 增加操作重试机制
@@ -92,11 +105,8 @@ class Wechat(BaseCrawler):
                 if attempt == max_retries - 1:
                     self.logger.error(f"点击失败，已重试 {max_retries} 次，跳过")
                     return total_articles
-                    self.logger.error(f"点击失败，已重试 {max_retries} 次，跳过")
-                    return total_articles
                 self.logger.warning(f"点击失败，重试 {attempt+1}/{max_retries}")
                 self.page.reload()
-
         try:
             self.context.wait_for_event('page')
             new_page = self.context.pages[-1]
@@ -109,7 +119,7 @@ class Wechat(BaseCrawler):
             self.counter['error'] += 1
             self.logger.error(f'get articles error, {type(e)}: {e}')
             return total_articles
-        for nickname in self.nicknames:
+        for author in self.authors:
             self.random_sleep()
             try:
                 self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button', 
@@ -124,7 +134,7 @@ class Wechat(BaseCrawler):
                     'input[placeholder="输入文章来源的账号名称或微信号，回车进行搜索"]',
                     timeout=3000
                 )
-                search_account_field.fill(nickname)
+                search_account_field.fill(author)
             except Exception as e:
                 self.logger.error(f'Failed to find search field,{str(e)}')
                 break
@@ -147,7 +157,7 @@ class Wechat(BaseCrawler):
                 account_selector.click()
 
             except Exception as e:
-                self.logger.error(f'failed to click account, {nickname} seems does not exist')
+                self.logger.error(f'failed to click account, {author} seems does not exist')
                 continue
             self.random_sleep()
             # 获取页码信息
@@ -166,52 +176,58 @@ class Wechat(BaseCrawler):
                 try:
                     self.random_sleep()
                     article_titles_elements = self.page.query_selector_all('div[class="inner_link_article_title"] > span:nth-of-type(2)')
-                    article_dates_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(1)')
-                    article_links_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(2) > a[href]')
+                    article_publish_times_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(1)')
+                    article_original_urls_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(2) > a[href]')
                     cnt = 0
                     for i in range(len(article_titles_elements)):
                         article_title = str(article_titles_elements[i].inner_text())
-                        article_date = str(article_dates_elements[i].inner_text())
-                        article_link = str(article_links_elements[i].get_attribute('href'))
-                        if(article_link not in scraped_links):
+                        article_publish_time = str(article_publish_times_elements[i].inner_text())
+                        article_original_url = str(article_original_urls_elements[i].get_attribute('href'))
+                        if(article_original_url not in scraped_original_urls):
                             articles.append({
-                                'nickname': nickname,
-                                'publish_time': article_date,
+                                'author': author,
+                                'publish_time': article_publish_time,
                                 'title': article_title,
-                                'link': article_link
+                                'original_url': article_original_url
                             })
                             cnt += 1
                     page += 1
-                    self.logger.debug(f'scraped {cnt} articles from {nickname}')
+                    self.logger.debug(f'scraped {cnt} articles from {author}')
                     try: 
                         # 通过文本内容定位"下一页"按钮
                         next_page_button = self.page.get_by_text("下一页")
                         next_page_button.click()
                     except Exception as e:
                         self.counter['error'] += 1
-                        self.logger.warning(f'Page: {page}, Next Button error, {type(e)}: {e}, nickname: {nickname}')
+                        self.logger.warning(f'Page: {page}, Next Button error, {type(e)}: {e}, author: {author}')
                         break
                 except Exception as e:
                     self.counter['error'] += 1
-                    self.logger.error(f'Page: {page}, Get article links error, {type(e)}: {e}, nickname: {nickname}')
+                    self.logger.error(f'Page: {page}, Get article links error, {type(e)}: {e}, author: {author}')
                     break  # 如果处理页面出错，跳出当前账号的处理
 
-            self.update_scraped_articles(scraped_links, articles)
-            self.logger.info(f'save {len(articles)} articles from {nickname}')
+            self.update_scraped_articles(scraped_original_urls, articles)
+            self.logger.info(f'save {len(articles)} articles from {author}')
             total_articles.extend(articles)
             if len(total_articles) >= total_max_article_num:
                 break
 
-        self.logger.info(f'save total {len(total_articles)} articles from {self.nicknames}')
+        self.logger.info(f'save total {len(total_articles)} articles from {self.authors}')
         return total_articles
 
-    def download_article(self, article, add_scraped_records):
+    def download_article(self, article: dict, add_scraped_records: list) -> None:
+        """下载单篇文章内容并保存元数据
+        
+        Args:
+            article: 文章信息字典（需包含link/title/date等字段）
+            add_scraped_records: 用于记录已成功下载的链接列表
+        """
         # 下载文章
         file_url = ''
         try:
             # 创建新页面下载文章
             article_page = self.context.new_page()
-            article_page.goto(article['link'])
+            article_page.goto(article['original_url'])
             self.counter['visit'] += 1
             self.random_sleep()
             
@@ -222,14 +238,14 @@ class Wechat(BaseCrawler):
                 metadata['run_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # 记录运行时间
                 metadata['publish_time'] = article['date']  # 记录发布时间
                 metadata['title'] = article['title']  # 记录标题
-                metadata['nickname'] = article['nickname']  # 记录作者
-                metadata['original_url'] = article['link']  # 记录原始链接
+                metadata['author'] = article['author']  # 记录作者
+                metadata['original_url'] = article['original_url']  # 记录原始链接
                 metadata['content_type'] = self.content_type  # 记录内容类型
                 year_month = article['date'][0:7].replace('-', '')  # 获取年月
-                metadata['file_path'] = f'{year_month}/{file_name}.html'  # 记录文件路径
+                # metadata['file_path'] = f'{year_month}/{file_name}.html'  # 记录文件路径
                 dir_path = self.base_dir / year_month  # 获取目录路径
-                self.headers['Referer'] = article['link']  # 设置Referer头  
-                resp = requests.get(article['link'], headers=self.headers, cookies=None)  # 发送HTTP请求下载文件
+                self.headers['Referer'] = article['original_url']  # 设置Referer头  
+                resp = requests.get(article['original_url'], headers=self.headers, cookies=None)  # 发送HTTP请求下载文件
                 file_len = len(resp.content)  # 获取文件长度
                 dir_path.mkdir(parents=True, exist_ok=True)  # 创建目录
                 data_path = dir_path / f'{file_name}.html'  # 获取文件路径
@@ -238,8 +254,8 @@ class Wechat(BaseCrawler):
                 if resp.status_code == 200 and file_len > 1000:  # 如果请求成功且文件长度大于1000字节
                     current_time_ms = int(time.time() * 1000)  # 获取当前时间戳
                     self.update_f.write(f"{metadata['file_path']}\t{current_time_ms}\n")  # 写入更新文件
-                    self.logger.info(f"Success download: {metadata['file_path']}, article_link: {article['link']}, file_url: {file_url}")  # 记录日志
-                    add_scraped_records.append(article['link'])  # 添加到已抓取链接列表
+                    self.logger.info(f"Success download: {metadata['file_path']}, article_original_url: {article['original_url']}, file_url: {file_url}")  # 记录日志
+                    add_scraped_records.append(article['original_url'])  # 添加到已抓取链接列表
                     self.counter['download'] += 1  # 下载计数器加1
                     metadata['download_status'] = 'success'
                 else:
@@ -253,9 +269,18 @@ class Wechat(BaseCrawler):
                 article_page.close()
         except Exception as e:
             self.counter['error'] += 1
-            self.logger.error(f'get article_link error, {type(e)}: {e}, url: {article["link"]}')
+            self.logger.error(f'get article_original_url error, {type(e)}: {e}, url: {article["original_url"]}')
 
-    def scrape(self, max_article_num = 5, total_max_article_num = 20):
+    def scrape(self, max_article_num: int = 5, total_max_article_num: int = 20) -> None:
+        """执行完整爬取流程
+        
+        Args:
+            max_article_num: 单个公众号最大抓取数量（默认5）
+            total_max_article_num: 总最大抓取数量（默认20）
+            
+        Note:
+            生产环境需设置debug=False避免反爬检测
+        """
         cookie_ts, cookies = self.read_cookies(timeout=2.5*24*3600)  # 读取cookies
         if cookies is None:
             cookies = self.login_for_cookies()  # 登录并获取cookies 
@@ -270,22 +295,23 @@ class Wechat(BaseCrawler):
             #     self.logger.error(f'last run not end, last_run_ts: {last_run_ts}')  # 记录错误日志
             #     return
             lock_path.write_text(str(int(start_time)))  # 写入锁文件
-            scraped_links = self.get_scraped_links()  # 获取已抓取链接
-            self.scrape_articles_from_nicknames(scraped_links, max_article_num, total_max_article_num)  # 获取文章链接   # 保存已抓取文章
+            scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
+            self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num)  
             lock_path.unlink()  # 删除锁文件
         else:
-            scraped_links = self.get_scraped_links()  # 获取已抓取链接
-            self.scrape_articles_from_nicknames(scraped_links, max_article_num, total_max_article_num)  # 获取文章链接  
+            scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
+            self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num)  
     
-        self.save_counter(start_time)  #
-        self.update_f.close()  # 关闭更新文件
+        self.save_counter(start_time)  
+        self.update_f.close()  
             
     def download(self):
+        # TODO: 添加下载实现
         pass
+
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
 if __name__ == "__main__":
-    wechat = Wechat(nicknames = "CLUB_OFFICIAL_ACCOUNT", debug=False, headless=False)  # 初始化
+    wechat = Wechat(authors = "CLUB_OFFICIAL_ACCOUNT", debug=False, headless=False)  # 初始化
     wechat.scrape(max_article_num=500, total_max_article_num=1e10)   # max_article_num最大抓取数量
-# 原为logger.error
