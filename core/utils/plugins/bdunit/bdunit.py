@@ -9,8 +9,10 @@ import requests
 import plugins
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
-from common.log import logger
-from plugins import *
+from infra.deploy.app import logger
+from core.utils.plugins import *
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
 
 """利用百度UNIT实现智能对话
     如果命中意图，返回意图对应的回复，否则返回继续交付给下个插件处理

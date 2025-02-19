@@ -7,7 +7,7 @@ import openai
 
 from bridge.reply import Reply, ReplyType
 from common.log import logger
-from config import conf
+from app import conf
 from voice.voice import Voice
 import requests
 from common import const

@@ -1,15 +1,19 @@
+import json
 import plugins
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
-from plugins import *
+from core.utils.plugins import *
 from .midjourney import MJBot
 from .summary import LinkSummary
 from bridge import bridge
-from common.expired_dict import ExpiredDict
-from common import const
+from core.utils.common.expired_dict import ExpiredDict
+from core.utils.common import const
 import os
 from .utils import Util
-from config import plugin_config, conf
+from app import plugin_config, write_plugin_config, conf
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
+from app import App
 
 
 @plugins.register(
@@ -32,7 +36,7 @@ class LinkAI(Plugin):
         self.sum_config = {}
         if self.config:
             self.sum_config = self.config.get("summary")
-        logger.info(f"[LinkAI] inited, config={self.config}")
+        App().logger.info(f"[LinkAI] inited, config={self.config}")
 
     def on_handle_context(self, e_context: EventContext):
         """
@@ -283,7 +287,7 @@ class LinkAI(Plugin):
         return help_text
 
     def _load_config_template(self):
-        logger.debug("No LinkAI plugin config.json, use plugins/linkai/config.json.template")
+        App().logger.debug("No LinkAI plugin config.json, use plugins/linkai/config.json.template")
         try:
             plugin_config_path = os.path.join(self.path, "config.json.template")
             if os.path.exists(plugin_config_path):
@@ -294,7 +298,7 @@ class LinkAI(Plugin):
                     write_plugin_config({"linkai": plugin_conf})
                     return plugin_conf
         except Exception as e:
-            logger.exception(e)
+            App().logger.exception(e)
 
     def reload(self):
         self.config = super().load_config()

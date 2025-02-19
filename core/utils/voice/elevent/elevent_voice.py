@@ -6,7 +6,7 @@ from bridge.reply import Reply, ReplyType
 from common.log import logger
 from common.tmp_dir import TmpDir
 from voice.voice import Voice
-from config import conf
+from app import conf
 
 XI_API_KEY = conf().get("xi_api_key")
 client = ElevenLabs(api_key=XI_API_KEY)

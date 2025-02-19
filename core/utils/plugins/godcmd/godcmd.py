@@ -7,14 +7,16 @@ import string
 import logging
 from typing import Tuple
 
-import bridge.bridge
-import plugins
-from bridge.bridge import Bridge
-from bridge.context import ContextType
-from bridge.reply import Reply, ReplyType
-from common import const
-from config import conf, load_config, global_config
-from plugins import *
+import core.bridge.bridge
+from core.bridge.bridge import Bridge
+from core.bridge.context import ContextType
+from core.bridge.reply import Reply, ReplyType
+from core.utils.common import const
+from core.utils.plugins.plugin_manager import plugins  # 导入全局实例
+from core.utils.plugins.plugin import Plugin
+from core.utils.plugins.event import Event, EventAction, EventContext
+from app import App
+from config import Config   
 
 # 定义指令集
 COMMANDS = {
@@ -135,14 +137,16 @@ ADMIN_COMMANDS = {
 
 
 # 定义帮助函数
+trigger_prefix = Config().get("plugin_trigger_prefix", "&")
+
 def get_help_text(isadmin, isgroup):
     help_text = "通用指令\n"
     for cmd, info in COMMANDS.items():
-        if cmd in ["auth", "set_openai_api_key", "reset_openai_api_key", "set_gpt_model", "reset_gpt_model", "gpt_model"]:  # 不显示帮助指令
+        if cmd in ["auth"]:  # 仅过滤认证指令
             continue
-        if cmd == "id" and conf().get("channel_type", "wx") not in ["wxy", "wechatmp"]:
+        if cmd == "id" and Config().get("channel_type", "wx") not in ["wxy", "wechatmp"]:
             continue
-        alias = ["#" + a for a in info["alias"][:1]]
+        alias = [trigger_prefix + a for a in info["alias"][:1]]
         help_text += f"{','.join(alias)} "
         if "args" in info:
             args = [a for a in info["args"]]
@@ -150,18 +154,18 @@ def get_help_text(isadmin, isgroup):
         help_text += f": {info['desc']}\n"
 
     # 插件指令
-    plugins = PluginManager().list_plugins()
+    all_plugins = plugins.list_plugins()  # 重命名变量避免冲突
     help_text += "\n可用插件"
-    for plugin in plugins:
-        if plugins[plugin].enabled and not plugins[plugin].hidden:
-            namecn = plugins[plugin].namecn
+    for plugin in all_plugins:
+        if all_plugins[plugin].enabled and not all_plugins[plugin].hidden:
+            namecn = all_plugins[plugin].namecn
             help_text += "\n%s:" % namecn
-            help_text += PluginManager().instances[plugin].get_help_text(verbose=False).strip()
+            help_text += all_plugins.instances[plugin].get_help_text(verbose=False).strip()
 
     if ADMIN_COMMANDS and isadmin:
         help_text += "\n\n管理员指令：\n"
         for cmd, info in ADMIN_COMMANDS.items():
-            alias = ["#" + a for a in info["alias"][:1]]
+            alias = [trigger_prefix + a for a in info["alias"][:1]]
             help_text += f"{','.join(alias)} "
             if "args" in info:
                 args = [a for a in info["args"]]
@@ -191,10 +195,10 @@ class Godcmd(Plugin):
                     json.dump(gconf, f, indent=4)
         if gconf["password"] == "":
             self.temp_password = "".join(random.sample(string.digits, 4))
-            logger.info("[Godcmd] 因未设置口令，本次的临时口令为%s。" % self.temp_password)
+            App().logger.info("[Godcmd] 因未设置口令，本次的临时口令为%s。" % self.temp_password)
         else:
             self.temp_password = None
-        custom_commands = conf().get("clear_memory_commands", [])
+        custom_commands = Config().get("clear_memory_commands", [])
         for custom_command in custom_commands:
             if custom_command and custom_command.startswith("#"):
                 custom_command = custom_command[1:]
@@ -203,26 +207,22 @@ class Godcmd(Plugin):
 
         self.password = gconf["password"]
         self.admin_users = gconf["admin_users"]  # 预存的管理员账号，这些账号不需要认证。itchat的用户名每次都会变，不可用
-        global_config["admin_users"] = self.admin_users
+        Config().global_config["admin_users"] = self.admin_users
         self.isrunning = True  # 机器人是否运行中
 
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
-        logger.info("[Godcmd] inited")
+        App().logger.info(f"[Godcmd] 事件处理器已注册: {self.handlers}")
 
     def on_handle_context(self, e_context: EventContext):
-        context_type = e_context["context"].type
-        if context_type != ContextType.TEXT:
-            if not self.isrunning:
-                e_context.action = EventAction.BREAK_PASS
-            return
-
         content = e_context["context"].content
-        logger.debug("[Godcmd] on_handle_context. content: %s" % content)
-        if content.startswith("#"):
+        App().logger.debug(f"[Godcmd] 收到消息: {content}")  # 新增
+        
+        if content.startswith(trigger_prefix):
+            App().logger.debug(f"[Godcmd] 识别到指令前缀: {trigger_prefix}")
             if len(content) == 1:
                 reply = Reply()
                 reply.type = ReplyType.ERROR
-                reply.content = f"空指令，输入#help查看指令列表\n"
+                reply.content = f"空指令，输入{trigger_prefix}help查看指令列表\n"
                 e_context["reply"] = reply
                 e_context.action = EventAction.BREAK_PASS
                 return
@@ -231,8 +231,8 @@ class Godcmd(Plugin):
             user = e_context["context"]["receiver"]
             session_id = e_context["context"]["session_id"]
             isgroup = e_context["context"].get("isgroup", False)
-            bottype = Bridge().get_bot_type("chat")
-            agent = Bridge().get_bot("chat")
+            bottype = Bridge().get_agent_type("chat")
+            agent = Bridge().get_agent("chat")
             # 将命令和参数分割
             command_parts = content[1:].strip().split()
             cmd = command_parts[0]
@@ -246,19 +246,24 @@ class Godcmd(Plugin):
                 cmd = next(c for c, info in COMMANDS.items() if cmd in info["alias"])
                 if cmd == "auth":
                     ok, result = self.authenticate(user, args, isadmin, isgroup)
-                elif cmd == "help" or cmd == "helpp":
+                elif cmd == "help":  # 独立处理help指令
                     if len(args) == 0:
                         ok, result = True, get_help_text(isadmin, isgroup)
                     else:
-                        # This can replace the helpp command
-                        plugins = PluginManager().list_plugins()
+                        ok, result = False, f"参数错误，正确格式：{trigger_prefix}help"
+                elif cmd == "helpp":  # 独立处理helpp指令
+                    if len(args) == 0:
+                        ok, result = False, f"请提供插件名，格式：{trigger_prefix}helpp 插件名"
+                    else:
+                        # 原有的helpp处理逻辑
+                        all_plugins = plugins.list_plugins()
                         query_name = args[0].upper()
                         # search name and namecn
-                        for name, plugincls in plugins.items():
+                        for name, plugincls in all_plugins.items():
                             if not plugincls.enabled:
                                 continue
                             if query_name == name or query_name == plugincls.namecn:
-                                ok, result = True, PluginManager().instances[name].get_help_text(isgroup=isgroup, isadmin=isadmin, verbose=True)
+                                ok, result = True, all_plugins.instances[name].get_help_text(isgroup=isgroup, isadmin=isadmin, verbose=True)
                                 break
                         if not ok:
                             result = "插件不存在或未启用"
@@ -266,48 +271,48 @@ class Godcmd(Plugin):
                     if not isadmin and not self.is_admin_in_group(e_context["context"]):
                         ok, result = False, "需要管理员权限执行"
                     elif len(args) == 0:
-                        model = conf().get("model") or const.GPT35
+                        model = Config().get("model") or const.GPT35
                         ok, result = True, "当前模型为: " + str(model)
                     elif len(args) == 1:
                         if args[0] not in const.MODEL_LIST:
                             ok, result = False, "模型名称不存在"
                         else:
-                            conf()["model"] = self.model_mapping(args[0])
+                            Config().set("model", self.model_mapping(args[0]))
                             Bridge().reset_bot()
-                            model = conf().get("model") or const.GPT35
+                            model = Config().get("model") or const.GPT35
                             ok, result = True, "模型设置为: " + str(model)
                 elif cmd == "id":
                     ok, result = True, user
                 elif cmd == "set_openai_api_key":
                     if len(args) == 1:
-                        user_data = conf().get_user_data(user)
+                        user_data = Config().get_user_data(user)
                         user_data["openai_api_key"] = args[0]
                         ok, result = True, "你的OpenAI私有api_key已设置为" + args[0]
                     else:
                         ok, result = False, "请提供一个api_key"
                 elif cmd == "reset_openai_api_key":
                     try:
-                        user_data = conf().get_user_data(user)
+                        user_data = Config().get_user_data(user)
                         user_data.pop("openai_api_key")
                         ok, result = True, "你的OpenAI私有api_key已清除"
                     except Exception as e:
                         ok, result = False, "你没有设置私有api_key"
                 elif cmd == "set_gpt_model":
                     if len(args) == 1:
-                        user_data = conf().get_user_data(user)
+                        user_data = Config().get_user_data(user)
                         user_data["gpt_model"] = args[0]
                         ok, result = True, "你的GPT模型已设置为" + args[0]
                     else:
                         ok, result = False, "请提供一个GPT模型"
                 elif cmd == "gpt_model":
-                    user_data = conf().get_user_data(user)
-                    model = conf().get("model")
+                    user_data = Config().get_user_data(user)
+                    model = Config().get("model")
                     if "gpt_model" in user_data:
                         model = user_data["gpt_model"]
                     ok, result = True, "你的GPT模型为" + str(model)
                 elif cmd == "reset_gpt_model":
                     try:
-                        user_data = conf().get_user_data(user)
+                        user_data = Config().get_user_data(user)
                         user_data.pop("gpt_model")
                         ok, result = True, "你的GPT模型已重置"
                     except Exception as e:
@@ -321,7 +326,7 @@ class Godcmd(Plugin):
                         ok, result = True, "会话已重置"
                     else:
                         ok, result = False, "当前对话机器人不支持重置会话"
-                logger.debug("[Godcmd] command: %s by %s" % (cmd, user))
+                App().logger.debug("[Godcmd] command: %s by %s" % (cmd, user))
             elif any(cmd in info["alias"] for info in ADMIN_COMMANDS.values()):
                 if isadmin:
                     if isgroup:
@@ -335,7 +340,7 @@ class Godcmd(Plugin):
                             self.isrunning = True
                             ok, result = True, "服务已恢复"
                         elif cmd == "reconf":
-                            load_config()
+                            Config().load_config()
                             ok, result = True, "配置已重载"
                         elif cmd == "resetall":
                             if bottype in [const.OPEN_AI, const.CHATGPT, const.CHATGPTONAZURE, const.LINKAI,
@@ -346,26 +351,23 @@ class Godcmd(Plugin):
                             else:
                                 ok, result = False, "当前对话机器人不支持重置会话"
                         elif cmd == "debug":
-                            if logger.getEffectiveLevel() == logging.DEBUG:  # 判断当前日志模式是否DEBUG
-                                logger.setLevel(logging.INFO)
+                            if App().logger.getEffectiveLevel() == logging.DEBUG:  # 判断当前日志模式是否DEBUG
+                                App().logger.setLevel(logging.INFO)
                                 ok, result = True, "DEBUG模式已关闭"
                             else:
-                                logger.setLevel(logging.DEBUG)
+                                App().logger.setLevel(logging.DEBUG)
                                 ok, result = True, "DEBUG模式已开启"
                         elif cmd == "plist":
-                            plugins = PluginManager().list_plugins()
+                            all_plugins = plugins.list_plugins()
                             ok = True
                             result = "插件列表：\n"
-                            for name, plugincls in plugins.items():
+                            for plugincls in all_plugins:
                                 result += f"{plugincls.name}_v{plugincls.version} {plugincls.priority} - "
-                                if plugincls.enabled:
-                                    result += "已启用\n"
-                                else:
-                                    result += "未启用\n"
+                                result += "已启用\n" if plugincls.enabled else "未启用\n"
                         elif cmd == "scanp":
-                            new_plugins = PluginManager().scan_plugins()
+                            new_plugins = all_plugins.scan_plugins()
                             ok, result = True, "插件扫描完成"
-                            PluginManager().activate_plugins()
+                            all_plugins.activate_plugins()
                             if len(new_plugins) > 0:
                                 result += "\n发现新插件：\n"
                                 result += "\n".join([f"{p.name}_v{p.version}" for p in new_plugins])
@@ -375,7 +377,7 @@ class Godcmd(Plugin):
                             if len(args) != 2:
                                 ok, result = False, "请提供插件名和优先级"
                             else:
-                                ok = PluginManager().set_plugin_priority(args[0], int(args[1]))
+                                ok = all_plugins.set_plugin_priority(args[0], int(args[1]))
                                 if ok:
                                     result = "插件" + args[0] + "优先级已设置为" + args[1]
                                 else:
@@ -384,7 +386,7 @@ class Godcmd(Plugin):
                             if len(args) != 1:
                                 ok, result = False, "请提供插件名"
                             else:
-                                ok = PluginManager().reload_plugin(args[0])
+                                ok = all_plugins.reload_plugin(args[0])
                                 if ok:
                                     result = "插件配置已重载"
                                 else:
@@ -393,12 +395,12 @@ class Godcmd(Plugin):
                             if len(args) != 1:
                                 ok, result = False, "请提供插件名"
                             else:
-                                ok, result = PluginManager().enable_plugin(args[0])
+                                ok, result = all_plugins.enable_plugin(args[0])
                         elif cmd == "disablep":
                             if len(args) != 1:
                                 ok, result = False, "请提供插件名"
                             else:
-                                ok = PluginManager().disable_plugin(args[0])
+                                ok = all_plugins.disable_plugin(args[0])
                                 if ok:
                                     result = "插件已禁用"
                                 else:
@@ -407,35 +409,30 @@ class Godcmd(Plugin):
                             if len(args) != 1:
                                 ok, result = False, "请提供插件名或.git结尾的仓库地址"
                             else:
-                                ok, result = PluginManager().install_plugin(args[0])
+                                ok, result = all_plugins.install_plugin(args[0])
                         elif cmd == "uninstallp":
                             if len(args) != 1:
                                 ok, result = False, "请提供插件名"
                             else:
-                                ok, result = PluginManager().uninstall_plugin(args[0])
+                                ok, result = all_plugins.uninstall_plugin(args[0])
                         elif cmd == "updatep":
                             if len(args) != 1:
                                 ok, result = False, "请提供插件名"
                             else:
-                                ok, result = PluginManager().update_plugin(args[0])
-                        logger.debug("[Godcmd] admin command: %s by %s" % (cmd, user))
+                                ok, result = all_plugins.update_plugin(args[0])
+                        App().logger.debug("[Godcmd] admin command: %s by %s" % (cmd, user))
                 else:
                     ok, result = False, "需要管理员权限才能执行该指令"
             else:
-                trigger_prefix = conf().get("plugin_trigger_prefix", "$")
-                if trigger_prefix == "#":  # 跟插件聊天指令前缀相同，继续递交
-                    return
-                ok, result = False, f"未知指令：{cmd}\n查看指令列表请输入#help \n"
+                ok, result = False, f"未知指令：{cmd}\n查看指令列表请输入{trigger_prefix}help \n"
 
             reply = Reply()
-            if ok:
-                reply.type = ReplyType.INFO
-            else:
-                reply.type = ReplyType.ERROR
+            reply.type = ReplyType.INFO
             reply.content = result
             e_context["reply"] = reply
 
-            e_context.action = EventAction.BREAK_PASS  # 事件结束，并跳过处理context的默认逻辑
+            App().logger.debug(f"[Godcmd] 最终回复内容: {result}")
+            e_context.action = EventAction.BREAK_PASS
         elif not self.isrunning:
             e_context.action = EventAction.BREAK_PASS
 
@@ -452,11 +449,11 @@ class Godcmd(Plugin):
         password = args[0]
         if password == self.password:
             self.admin_users.append(userid)
-            global_config["admin_users"].append(userid)
+            Config().global_config["admin_users"].append(userid)
             return True, "认证成功"
         elif password == self.temp_password:
             self.admin_users.append(userid)
-            global_config["admin_users"].append(userid)
+            Config().global_config["admin_users"].append(userid)
             return True, "认证成功，请尽快设置口令"
         else:
             return False, "认证失败"
@@ -464,12 +461,10 @@ class Godcmd(Plugin):
     def get_help_text(self, isadmin=False, isgroup=False, **kwargs):
         return get_help_text(isadmin, isgroup)
 
-
     def is_admin_in_group(self, context):
         if context["isgroup"]:
-            return context.kwargs.get("msg").actual_user_id in global_config["admin_users"]
+            return context.kwargs.get("msg").actual_user_id in Config().global_config["admin_users"]
         return False
-
 
     def model_mapping(self, model) -> str:
         if model == "gpt-4-turbo":
@@ -477,7 +472,7 @@ class Godcmd(Plugin):
         return model
 
     def reload(self):
-        gconf = pconf(self.name)
+        gconf = Config().pconf(self.name)
         if gconf:
             if gconf.get("password"):
                 self.password = gconf["password"]

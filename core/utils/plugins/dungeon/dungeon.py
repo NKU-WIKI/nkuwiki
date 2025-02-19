@@ -6,9 +6,11 @@ from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
 from common import const
 from common.expired_dict import ExpiredDict
-from common.log import logger
-from config import conf
-from plugins import *
+from app import App
+from config import Config
+from core.utils.plugins import *
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
 
 
 # https://github.com/bupticybee/ChineseAiDungeonChatGPT
@@ -53,10 +55,10 @@ class Dungeon(Plugin):
     def __init__(self):
         super().__init__()
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
-        logger.info("[Dungeon] inited")
+        App().logger.info("[Dungeon] inited")
         # 目前没有设计session过期事件，这里先暂时使用过期字典
-        if conf().get("expires_in_seconds"):
-            self.games = ExpiredDict(conf().get("expires_in_seconds"))
+        if Config().get("expires_in_seconds"):
+            self.games = ExpiredDict(Config().get("expires_in_seconds"))
         else:
             self.games = dict()
 
@@ -70,8 +72,8 @@ class Dungeon(Plugin):
         content = e_context["context"].content[:]
         clist = e_context["context"].content.split(maxsplit=1)
         sessionid = e_context["context"]["session_id"]
-        logger.debug("[Dungeon] on_handle_context. content: %s" % clist)
-        trigger_prefix = conf().get("plugin_trigger_prefix", "$")
+        App().logger.debug("[Dungeon] on_handle_context. content: %s" % clist)
+        trigger_prefix = Config().get("plugin_trigger_prefix", "$")
         if clist[0] == f"{trigger_prefix}停止冒险":
             if sessionid in self.games:
                 self.games[sessionid].reset()
@@ -99,7 +101,7 @@ class Dungeon(Plugin):
         help_text = "可以和机器人一起玩文字冒险游戏。\n"
         if kwargs.get("verbose") != True:
             return help_text
-        trigger_prefix = conf().get("plugin_trigger_prefix", "$")
+        trigger_prefix = Config().get("plugin_trigger_prefix", "$")
         help_text = f"{trigger_prefix}开始冒险 " + "背景故事: 开始一个基于{背景故事}的文字冒险，之后你的所有消息会协助完善这个故事。\n" + f"{trigger_prefix}停止冒险: 结束游戏。\n"
         if kwargs.get("verbose") == True:
             help_text += f"\n命令例子: '{trigger_prefix}开始冒险 你在树林里冒险，指不定会从哪里蹦出来一些奇怪的东西，你握紧手上的手枪，希望这次冒险能够找到一些值钱的东西，你往树林深处走去。'"

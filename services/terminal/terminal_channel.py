@@ -4,8 +4,8 @@ from core.bridge.context import *
 from core.bridge.reply import Reply, ReplyType
 from services.chat_channel import ChatChannel, check_prefix
 from services.chat_message import ChatMessage
-from core.utils.common.log import logger
-from config import conf
+from app import App
+from config import Config
 
 
 class TerminalMessage(ChatMessage):
@@ -62,7 +62,7 @@ class TerminalChannel(ChatChannel):
 
     def startup(self):
         context = Context()
-        logger.setLevel("WARN")
+        App.logger.setLevel("WARN")
         print("\nPlease input your question:\nUser:", end="")
         sys.stdout.flush()
         msg_id = 0
@@ -73,7 +73,7 @@ class TerminalChannel(ChatChannel):
                 print("\nExiting...")
                 sys.exit()
             msg_id += 1
-            trigger_prefixs = conf().get("single_chat_prefix", [""])
+            trigger_prefixs = Config.get("single_chat_prefix", [""])
             if check_prefix(prompt, trigger_prefixs) is None:
                 prompt = trigger_prefixs[0] + prompt  # 给没触发的消息加上触发前缀
 

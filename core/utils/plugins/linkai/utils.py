@@ -1,9 +1,8 @@
 import requests
-from common.log import logger
-from config import global_config
+from app import App
+from config import Config
 from bridge.reply import Reply, ReplyType
 from plugins.event import EventContext, EventAction
-from config import conf
 
 class Util:
     @staticmethod
@@ -16,12 +15,12 @@ class Util:
         context = e_context["context"]
         if context["isgroup"]:
             actual_user_id = context.kwargs.get("msg").actual_user_id
-            for admin_user in global_config["admin_users"]:
+            for admin_user in Config().global_config["admin_users"]:
                 if actual_user_id and actual_user_id in admin_user:
                     return True
             return False
         else:
-            return context["receiver"] in global_config["admin_users"]
+            return context["receiver"] in Config().global_config["admin_users"]
 
     @staticmethod
     def set_reply_text(content: str, e_context: EventContext, level: ReplyType = ReplyType.ERROR):
@@ -32,9 +31,9 @@ class Util:
     @staticmethod
     def fetch_app_plugin(app_code: str, plugin_name: str) -> bool:
         try:
-            headers = {"Authorization": "Bearer " + conf().get("linkai_api_key")}
+            headers = {"Authorization": "Bearer " + Config().get("linkai_api_key")}
             # do http request
-            base_url = conf().get("linkai_api_base", "https://api.link-ai.tech")
+            base_url = Config().get("linkai_api_base", "https://api.link-ai.tech")
             params = {"app_code": app_code}
             res = requests.get(url=base_url + "/v1/app/info", params=params, headers=headers, timeout=(5, 10))
             if res.status_code == 200:
@@ -44,7 +43,7 @@ class Util:
                         return True
                 return False
             else:
-                logger.warning(f"[LinkAI] find app info exception, res={res}")
+                App().logger.warning(f"[LinkAI] find app info exception, res={res}")
                 return False
         except Exception as e:
             return False

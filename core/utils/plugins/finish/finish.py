@@ -3,10 +3,11 @@
 import plugins
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
-from common.log import logger
-from config import conf
-from plugins import *
-
+from config import Config
+from app import App
+from core.utils.plugins import *
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
 
 @plugins.register(
     name="Finish",
@@ -20,15 +21,15 @@ class Finish(Plugin):
     def __init__(self):
         super().__init__()
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
-        logger.info("[Finish] inited")
+        App.logger.info("[Finish] inited")
 
     def on_handle_context(self, e_context: EventContext):
         if e_context["context"].type != ContextType.TEXT:
             return
 
         content = e_context["context"].content
-        logger.debug("[Finish] on_handle_context. content: %s" % content)
-        trigger_prefix = conf().get("plugin_trigger_prefix", "$")
+        App.logger.debug("[Finish] on_handle_context. content: %s" % content)
+        trigger_prefix = Config().get("plugin_trigger_prefix", "$")
         if content.startswith(trigger_prefix):
             reply = Reply()
             reply.type = ReplyType.ERROR

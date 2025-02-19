@@ -6,8 +6,10 @@ import requests
 import plugins
 from bridge.context import ContextType
 from bridge.reply import Reply, ReplyType
-from common.log import logger
-from plugins import *
+from infra.deploy.app import logger
+from core.utils.plugins import *
+from core.utils.plugins import Plugin
+from core.bridge.context import EventContext, Event, EventAction
 
 
 @plugins.register(

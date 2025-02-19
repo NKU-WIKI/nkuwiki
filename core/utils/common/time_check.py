@@ -1,12 +1,12 @@
 import re
 import time
-import config
-from infra.deploy.app import logger
+import app
+from app import App
 
 
 def time_checker(f):
     def _time_checker(self, *args, **kwargs):
-        _config = config.conf()
+        _config = app.Config()
         chat_time_module = _config.get("chat_time_module", False)
 
         if chat_time_module:
@@ -16,7 +16,7 @@ def time_checker(f):
             time_regex = re.compile(r"^([01]?[0-9]|2[0-4])(:)([0-5][0-9])$")
 
             if not (time_regex.match(chat_start_time) and time_regex.match(chat_stop_time)):
-                logger.warning("时间格式不正确，请在config.json中修改CHAT_START_TIME/CHAT_STOP_TIME。")
+                App().logger.warning("时间格式不正确，请在config.json中修改CHAT_START_TIME/CHAT_STOP_TIME。")
                 return None
 
             now_time = time.strptime(time.strftime("%H:%M"), "%H:%M")
@@ -34,7 +34,7 @@ def time_checker(f):
                 if args and pattern.match(args[0].content):
                     f(self, *args, **kwargs)
                 else:
-                    logger.info("非服务时间内，不接受访问")
+                    App().logger.info("非服务时间内，不接受访问")
                     return None
         else:
             f(self, *args, **kwargs)  # 未开启时间模块则直接回答
