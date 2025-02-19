@@ -5,6 +5,7 @@
 
 # 配置文件
 config.json
+package.json
 
 # 日志文件
 *.log

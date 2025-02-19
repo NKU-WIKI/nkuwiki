@@ -1,7 +1,16 @@
+# -*- coding: utf-8 -*-
+"""消息处理核心模块，实现多会话并发控制和插件化消息处理流程。
+
+包含主要组件：
+- ChatChannel: 消息处理主通道，实现消息队列管理、并发控制、插件事件触发
+- 上下文处理流程：消息预处理 -> 插件处理 -> 回复生成 -> 回复装饰 -> 回复发送
+- 线程池管理：使用BoundedSemaphore实现会话级并发控制
+"""
 import os
 import re
 import threading
 import time
+from typing import Optional, List
 from asyncio import CancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
 
@@ -11,20 +20,29 @@ from services.channel import Channel
 from core.utils.common.dequeue import Dequeue
 from core.utils.common import memory
 from core.utils.plugins import *
-from config import Config
-from app import App
 from core.utils.plugins.plugin_manager import PluginManager
 from core.utils.plugins.event import Event, EventContext
-try:
-    from core.utils.voice.audio_convert import any_to_wav
-except Exception as e:
-    pass
+from core.utils.voice.audio_convert import any_to_wav
+from config import Config
+from app import App
 
 handler_pool = ThreadPoolExecutor(max_workers=8)  # 处理消息的线程池
 
-
-# 抽象类, 它包含了与消息通道无关的通用处理逻辑
 class ChatChannel(Channel):
+    """消息处理通道，实现多会话的并发控制和插件化处理流程。
+    
+    特性：
+    - 基于会话ID的并发控制（信号量机制）
+    - 双端队列实现消息优先级处理
+    - 插件系统支持四阶段事件处理（接收/处理/装饰/发送）
+    - 支持语音、文本、图片等多种消息类型处理
+    
+    Attributes:
+        name (str): 当前登录用户名称
+        user_id (str): 当前登录用户ID
+        sessions (dict): 会话状态存储 {session_id: (Dequeue, Semaphore)}
+        futures (dict): 任务未来对象存储 {session_id: [Future]}
+    """
     name = None  # 登录的用户名
     user_id = None  # 登录的用户id
     futures = {}  # 记录每个session_id提交到线程池的future对象, 用于重置会话时把没执行的future取消掉，正在执行的不会被取消
@@ -36,8 +54,17 @@ class ChatChannel(Channel):
         _thread.setDaemon(True)
         _thread.start()
 
-    # 根据消息构造context，消息内容相关的触发项写在这里
-    def _compose_context(self, ctype: ContextType, content, **kwargs):
+    def _compose_context(self, ctype: ContextType, content: str, **kwargs) -> Optional[Context]:
+        """构建消息处理上下文。
+        
+        Args:
+            ctype: 上下文类型
+            content: 消息内容
+            kwargs: 扩展参数
+            
+        Returns:
+            Context: 处理后的上下文对象，None表示过滤消息
+        """
         context = Context(ctype, content)
         context.kwargs = kwargs
         # context首次传入时，origin_ctype是None,
@@ -92,7 +119,7 @@ class ChatChannel(Channel):
                 return None
 
         # 根据配置的模型类型设置处理逻辑
-        current_model = Config().get("model") or "gpt-3.5-turbo"
+        current_model = Config().get("model")
         if current_model.startswith("coze"):
             context["bot_type"] = "coze"
             context["coze_api_key"] = Config().get("coze_api_key")
@@ -179,23 +206,34 @@ class ChatChannel(Channel):
                 context["desire_rtype"] = ReplyType.VOICE
         return context
 
-    def _handle(self, context: Context):
+    def _handle(self, context: Context) -> None:
+        """处理上下文主流程，包含异常处理。
+        
+        Args:
+            context: 消息上下文对象
+        """
         if context is None or not context.content:
             return
             # logger.debug("[chat_channel] ready to handle context: {}".format(context))
         # reply的构建步骤
         reply = self._generate_reply(context)
-
         # logger.debug("[chat_channel] ready to decorate reply: {}".format(reply))
-
         # reply的包装步骤
         if reply and reply.content:
             reply = self._decorate_reply(context, reply)
-
             # reply的发送步骤
             self._send_reply(context, reply)
 
     def _generate_reply(self, context: Context, reply: Reply = Reply()) -> Reply:
+        """生成消息回复，触发插件处理逻辑。
+        
+        Args:
+            context: 消息上下文
+            reply: 初始回复对象
+            
+        Returns:
+            Reply: 处理后的回复对象
+        """
         e_context = PluginManager().emit_event(
             EventContext(
                 Event.ON_HANDLE_CONTEXT,
@@ -252,6 +290,7 @@ class ChatChannel(Channel):
         return reply
 
     def _decorate_reply(self, context: Context, reply: Reply) -> Reply:
+        """装饰回复内容，添加前缀/后缀，处理语音转换等。"""
         if reply and reply.type:
             e_context = PluginManager().emit_event(
                 EventContext(
@@ -290,7 +329,8 @@ class ChatChannel(Channel):
                 App().logger.warning("[chat_channel] desire_rtype: {}, but reply type: {}".format(context.get("desire_rtype"), reply.type))
             return reply
 
-    def _send_reply(self, context: Context, reply: Reply):
+    def _send_reply(self, context: Context, reply: Reply) -> None:
+        """发送回复的最终处理，触发插件预处理。"""
         if reply and reply.type:
             e_context = PluginManager().emit_event(
                 EventContext(
@@ -338,7 +378,8 @@ class ChatChannel(Channel):
 
         return func
 
-    def produce(self, context: Context):
+    def produce(self, context: Context) -> None:
+        """生产消息到处理队列，实现优先级入队。"""
         session_id = context["session_id"]
         with self.lock:
             if session_id not in self.sessions:
@@ -352,8 +393,8 @@ class ChatChannel(Channel):
             else:
                 self.sessions[session_id][0].put(context)
 
-    # 消费者函数，单独线程，用于从消息队列中取出消息并处理
-    def consume(self):
+    def consume(self) -> None:
+        """消费消息队列的守护线程，调度任务到线程池。"""
         while True:
             with self.lock:
                 session_ids = list(self.sessions.keys())
@@ -401,7 +442,8 @@ class ChatChannel(Channel):
                 self.sessions[session_id][0] = Dequeue()
 
 
-def check_prefix(content, prefix_list):
+def check_prefix(content: str, prefix_list: List[str]) -> Optional[str]:
+    """检查内容是否包含指定前缀。"""
     if not prefix_list:
         return None
     for prefix in prefix_list:
@@ -410,7 +452,8 @@ def check_prefix(content, prefix_list):
     return None
 
 
-def check_contain(content, keyword_list):
+def check_contain(content: str, keyword_list: List[str]) -> Optional[bool]:
+    """检查内容是否包含任意关键词。"""
     if not keyword_list:
         return None
     for ky in keyword_list:
