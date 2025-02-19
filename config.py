@@ -4,7 +4,7 @@ import json
 import copy
 from singleton_decorator import singleton
 from loguru import logger
-# 此处的配置值无实际意义，程序不会读取此处的配置，仅用于提示格式，请将配置加入到config.json中
+# 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
     # 支持的部署通道
     "support_channel": ["terminal", "wechatmp", "wechatmp_service"],
@@ -183,17 +183,34 @@ available_setting = {
     "max_knowledge_length": 100,
     "response_mode": "blocking",
     # 新增数据库配置项
-    "db_host": "localhost",
-    "db_port": 3306,
-    "db_user": "root", 
-    "db_password": "",
-    "db_name": "mysql",
-    "data_path": ""
+    "db_host": "localhost",  # 数据库主机地址，类型str，默认"localhost"
+    "db_port": 3306,  # 数据库端口，类型int，默认3306
+    "db_user": "root",  # 数据库用户名，类型str，默认"root"
+    "db_password": "",  # 数据库密码，类型str，默认为空
+    "db_name": "mysql",  # 数据库名称，类型str，默认"mysql"
+    "data_path": "",  # 数据存储路径，类型str，默认为空
+    "proxy_pool": "http://127.0.0.1:7897",  # 代理池地址，类型str，URL格式
+    # 微信公众号配置项
+    "UNOFFICIAL_ACCOUNT": "",  # 非官方公众号ID，类型str，默认为空
+    "UNIVERSITY_OFFICIAL_ACCOUNT": "",  # 大学官方公众号ID，类型str，默认为空
+    "SCHOOL_OFFICIAL_ACCOUNT": "",  # 学院官方公众号ID，类型str，默认为空
+    "CLUB_OFFICIAL_ACCOUNT": ""  # 社团公众号ID，类型str，默认为空
 }
 
 @singleton
 class Config(dict):
+    """配置管理单例类，继承字典类型实现配置存储
+    
+    属性:
+        user_datas: 用户数据存储字典
+        logger: 日志记录器实例
+    """
     def __init__(self, d=None):
+        """初始化配置实例
+        
+        Args:
+            d: 初始配置字典，默认为None
+        """
         super().__init__()
         self.update(available_setting)
         if d is None:
@@ -205,12 +222,22 @@ class Config(dict):
         self.user_datas = {}
 
     def __getitem__(self, key):
+        """重写字典获取项方法，实现配置键名大小写不敏感"""
         key = key.lower()  # 统一转小写
         if key not in available_setting:
             raise Exception(f"无效配置项：{key}")
         return super().__getitem__(key)
 
     def get(self, key, default=None):
+        """安全获取配置项方法
+        
+        Args:
+            key: 配置键名
+            default: 默认返回值，默认为None
+            
+        Returns:
+            配置项值或默认值
+        """
         try:
             return self[key.lower()]  # 统一转小写
         except KeyError:
@@ -219,27 +246,55 @@ class Config(dict):
             self.logger.exception(f"[config] 配置获取异常")
             return default
         
+    @staticmethod
     def get_root():
+        """获取配置文件根目录路径
+        
+        Returns:
+            str: 当前文件的绝对路径目录
+        """
         return os.path.dirname(os.path.abspath(__file__))
     
+    @staticmethod
     def read_file(path):
+        """读取文件内容
+        
+        Args:
+            path: 文件路径
+            
+        Returns:
+            str: 文件内容字符串
+        """
         with open(path, mode="r", encoding="utf-8") as f:
             return f.read()
         
     def get_appdata_dir(self):
+        """获取应用数据存储目录，自动创建不存在的目录
+        
+        Returns:
+            str: 数据存储目录路径
+        """
         data_path = os.path.join(self.get_root(), self.get("appdata_dir", ""))
         if not os.path.exists(data_path):
             self.logger.info("[INIT] data path not exists, create it: {}".format(data_path))
             os.makedirs(data_path)
         return data_path
     
-    # Make sure to return a dictionary to ensure atomic
     def get_user_data(self, user) -> dict:
+        """获取指定用户数据字典
+        
+        Args:
+            user: 用户标识符
+            
+        Returns:
+            dict: 用户数据字典
+        """
         if self.user_datas.get(user) is None:
             self.user_datas[user] = {}
         return self.user_datas[user]
 
     def load_user_datas(self):
+        """从持久化存储加载用户数据"""
         try:
             with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "rb") as f:
                 self.user_datas = pickle.load(f)
@@ -251,11 +306,10 @@ class Config(dict):
             self.user_datas = {}
 
     def save_user_datas(self):
+        """持久化保存用户数据到文件"""
         try:
             import copy
-            # 创建深拷贝避免修改原始数据
             save_data = copy.deepcopy(self.user_datas)
-            # 过滤文件对象等不可序列化内容
             for user in list(save_data.keys()):
                 for key in list(save_data[user].keys()):
                     if not isinstance(save_data[user][key], (str, int, float, bool, list, dict)):
@@ -268,6 +322,11 @@ class Config(dict):
             self.logger.error(f"[Config] 保存用户数据失败: {str(e)}")
 
     def drag_sensitive(self):
+        """生成脱敏后的配置信息
+        
+        Returns:
+            dict: 脱敏处理后的配置字典
+        """
         try:
             if isinstance(self, str):
                 conf_dict: dict = json.loads(self)
@@ -279,16 +338,14 @@ class Config(dict):
                 return json.dumps(conf_dict_copy, indent=4)
 
             elif isinstance(self, dict):
-                # 创建配置字典副本时排除不可序列化的属性
                 config_copy = copy.deepcopy({k: v for k, v in self.items()})
                 for key in config_copy:
                     if "key" in key or "secret" in key:
                         if isinstance(config_copy[key], str):
                             config_copy[key] = config_copy[key][0:3] + "*" * 5 + config_copy[key][-3:]
                 return config_copy
-            else:  # 处理Config实例的情况
+            else:
                 config_copy = copy.deepcopy(dict(self))
-                # 过滤不可序列化的实例属性
                 config_copy.pop('logger', None)
                 config_copy.pop('user_datas', None)
                 return config_copy
@@ -297,37 +354,54 @@ class Config(dict):
             return self
         
     def write_plugin_config(self, pconf: dict):
-        """
-        写入插件全局配置
-        :param pconf: 全量插件配置
+        """写入插件全局配置
+        
+        Args:
+            pconf: 全量插件配置字典
         """
         global plugin_config
         for k in pconf:
             plugin_config[k.lower()] = pconf[k]
 
     def remove_plugin_config(name: str):
-        """
-        移除待重新加载的插件全局配置
-        :param name: 待重载的插件名
+        """移除待重新加载的插件配置
+        
+        Args:
+            name: 插件名称
         """
         global plugin_config
         plugin_config.pop(name.lower(), None)
 
-
     def pconf(plugin_name: str) -> dict:
-        """
-        根据插件名称获取配置
-        :param plugin_name: 插件名称
-        :return: 该插件的配置项
+        """获取指定插件配置
+        
+        Args:
+            plugin_name: 插件名称
+            
+        Returns:
+            dict: 插件配置字典
         """
         return plugin_config.get(plugin_name.lower())
     
     def subscribe_msg(self):
+        """生成订阅消息模板
+        
+        Returns:
+            str: 格式化后的订阅消息
+        """
         trigger_prefix = self.get("single_chat_prefix", [""])[0]
         msg = self.get("subscribe_msg", "")
         return msg.format(trigger_prefix=trigger_prefix)
     
     def load_config(self, logger = logger):
+        """加载配置文件并初始化配置
+        
+        Args:
+            logger: 日志记录器实例，默认为全局logger
+            
+        Returns:
+            self: 配置实例
+        """
         self.logger = logger
         config_path = os.path.join(os.path.dirname(__file__), "config.json")
         try:
@@ -342,7 +416,6 @@ class Config(dict):
         for name, value in os.environ.items():
             name = name.lower()
             if name in available_setting:
-                # self.logger.info("[config] override config by environ args: {}={}".format(name, value))
                 try:
                     self[name] = eval(value)
                 except:

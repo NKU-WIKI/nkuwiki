@@ -1,19 +1,41 @@
-import asyncio
-import time
 from wechatpy import parse_message
 from core.bridge.context import *
 from core.bridge.reply import *
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_channel import WechatMPChannel
 from services.wechatmp.wechatmp_message import WeChatMPMessage
-from wechatpy.replies import TextReply, ImageReply, VoiceReply, create_reply
+from wechatpy.replies import create_reply
 from app import App
 from config import Config
 
 
 # This class is instantiated once per query
 class Query:
+    """微信公众平台主动消息处理类
+    
+    每个请求会独立实例化，处理单次微信服务器回调
+    生命周期：请求处理完成后立即释放
+    """
+    
     async def process(self, params: dict, data: bytes) -> str:
+        """处理微信服务器回调请求的核心方法
+        
+        Args:
+            params: URL查询参数，包含 signature/timestamp/nonce 等验证参数
+            data: 原始请求体数据（可能为加密消息）
+            
+        Returns:
+            str: 返回给微信服务器的响应内容，可能是明文或加密格式
+            
+        Raises:
+            隐式异常: 方法内部已捕获所有异常并记录日志
+            
+        处理流程:
+        1. 验证服务器有效性
+        2. 解密加密消息（AES模式）
+        3. 解析消息类型并分发给对应处理器
+        4. 生成符合微信要求的响应格式
+        """
         try:
             # 处理微信服务器验证（GET请求）
             if "echostr" in params:
