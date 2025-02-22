@@ -1,6 +1,6 @@
 from __init__ import *
 
-Config.load_config()
+Config().load_config()
 
 class BaseCrawler():
     """通用爬虫基类，封装常用爬取方法和反反爬策略
@@ -8,10 +8,9 @@ class BaseCrawler():
     Attributes:
         debug: 调试模式开关
         headless: 无头模式开关
-        process_name: 爬虫实例名称
-        content_type: 内容分类标识
+        platform: 平台名称
     """
-    def __init__(self, name: str, debug: bool = False, headless: bool = False) -> None:       
+    def __init__(self, platform: str, debug: bool = False, headless: bool = False) -> None:       
         self.debug = debug
         self.headless = headless
         log_day_str = '{time:%Y-%m-%d}'
@@ -23,18 +22,18 @@ class BaseCrawler():
         # 确保目录存在并有正确权限
         self.base_data_dir.mkdir(parents=True, exist_ok=True)
         self.base_log_dir.mkdir(parents=True, exist_ok=True)
-        self.process_name = name
-        self.content_type = name
+        self.process_name = platform
+        self.platform = platform
         logger.add(f'{self.base_log_dir}/{self.process_name}.{log_day_str}.log', rotation="1 day", retention='3 months', level="INFO")# 配置日志记录器
         self.logger = logger
-        self.base_dir = Path(self.base_data_dir) / self.content_type
+        self.base_dir = Path(self.base_data_dir) / self.platform
         self.base_dir.mkdir(exist_ok=True, parents=True)  # 创建目录，如果目录不存在
         self.counter = Counter()  # 初始化计数器
         self.lock_file = 'lock.txt'  # 锁文件，用于防止重复运行
         self.counter_file = 'counter.txt'  # 计数器文件，用于记录运行统计
         self.update_file = 'update.txt'  # 更新文件，用于记录更新信息
         self.update_f = open(self.base_dir / self.update_file, 'a+', encoding='utf-8')  # 打开更新文件
-        self.scraped_links_file = 'scraped_links.json'  # 已抓取链接文件
+        self.scraped_urls_file = 'scraped_urls.json'  # 已抓取链接文件
         self.cookies_file = 'cookies.txt'  # cookies文件，用于保存登录信息
         self.tz = pytz.timezone('Asia/Shanghai')  # 设置时区
         self.playwright = sync_playwright().start()  # 初始化Playwright
@@ -225,24 +224,24 @@ class BaseCrawler():
             
             return clean_name
 
-        total_f = self.base_dir / self.scraped_links_file
+        total_f = self.base_dir / self.scraped_urls_file
         for article in articles:    
-            if(article['link'] not in scraped_links):
+            if(article['original_url'] not in scraped_links):
                 year_month = article['publish_time'][0:7].replace('-', '')
                 save_dir = self.base_dir / year_month
                 save_dir.mkdir(exist_ok=True, parents=True)
                 clean_title = clean_filename(article['title'])
                 save_path = save_dir / clean_title
                 meta = {
+                    "platform": self.platform,
                     "original_url": article['original_url'],
+                    "title": article['title'],
                     "author": article['author'],
                     "publish_time": article['publish_time'],
-                    "scrape_time": datetime.now().isoformat(),
-                    "title": article['title'],
+                    "scrape_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "content_type": self.content_type
                     # "read_count": article.get('read_count', 0),
                     # "like_count": article.get('like_count', 0),
-                    "content_type": self.content_type
-                    # "file_path": str(save_path)
                 }
                 try:
                     with open(save_path.with_suffix('.json'), 'w', encoding='utf-8', errors='ignore') as f:
@@ -253,15 +252,15 @@ class BaseCrawler():
                     temp_path = save_path.with_name(f"temp_{save_path.name}")
                     with open(temp_path.with_suffix('.json'), 'w', encoding='utf-8', errors='ignore') as f:
                         json.dump(meta, f, ensure_ascii=False, indent=2)
-                scraped_links.append(article['link'])
-        total_f = self.base_dir / self.scraped_links_file
+                scraped_links.append(article['original_url'])
+        total_f = self.base_dir / self.scraped_urls_file
         total_f.write_text(json.dumps(scraped_links, ensure_ascii=False, indent=0))
 
-    def get_scraped_links(self) -> List[str]:
+    def get_scraped_original_urls(self) -> List[str]:
         """
         获取已抓取链接
         """
-        total_f = self.base_dir / self.scraped_links_file
+        total_f = self.base_dir / self.scraped_urls_file
         if total_f.exists():
             content = total_f.read_text()
             if len(content) > 0:  
