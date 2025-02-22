@@ -162,10 +162,12 @@ nkuwiki/
 │   │   ├── base_crawler.py  # 爬虫基类
 │   │   ├── wechat.py        # 微信公众号爬虫
 │   │   └── init_script.js   # 反检测脚本
-│   └── pipeline/      # 数据处理管道
-│       ├── data_export.py   # 数据导出到mysql
-│       ├── merge_json.py    # 数据合并
-│       └── coze_datasource.py  # Coze知识库同步
+│   ├── pipeline/      # 数据处理管道
+│   │    ├── data_export.py   # 数据导出到mysql
+│   │    ├── merge_json.py    # 数据合并
+│   │    └── coze_datasource.py  # Coze知识库同步
+│   └── tables/          # 数据库表结构
+│       └── wechat_articles.sql  # 微信公众号文章表
 ├── services/
 │   ├── terminal/      # 终端服务
 │   ├── website/       # 网站服务
