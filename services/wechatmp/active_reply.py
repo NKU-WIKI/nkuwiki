@@ -1,9 +1,9 @@
-from wechatpy import parse_message
 from core.bridge.context import *
 from core.bridge.reply import *
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_channel import WechatMPChannel
 from services.wechatmp.wechatmp_message import WeChatMPMessage
+from wechatpy import parse_message
 from wechatpy.replies import create_reply
 from app import App
 from config import Config
@@ -84,8 +84,7 @@ class Query:
             
             # 解析微信消息
             msg = parse_message(message)
-            # App().logger.info(f"[消息处理] 类型={msg.type} 用户={msg.source}")
-            
+           
             # 文本/语音/图片消息处理
             if msg.type in ["text", "voice", "image"]:
                 wechatmp_msg = WeChatMPMessage(msg, client=channel.client)
@@ -95,7 +94,7 @@ class Query:
                     isgroup=False,
                     msg=wechatmp_msg
                 )
-                
+                App().logger.info(f"[收到消息] 类型={msg.type}，内容={msg.content}，用户id={wechatmp_msg.other_user_id}，用户名={wechatmp_msg.other_user_nickname}")
                 # 语音消息特殊处理
                 if wechatmp_msg.ctype == ContextType.VOICE and Config().get("voice_reply_voice"):
                     context["desire_rtype"] = ReplyType.VOICE

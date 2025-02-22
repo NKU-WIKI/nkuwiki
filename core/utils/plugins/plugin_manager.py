@@ -12,7 +12,6 @@ from core.utils.common.sorted_dict import SortedDict
 from config import Config
 from core.utils.plugins.plugin import Plugin
 from core.utils.plugins.event import EventContext, EventAction, Event
-from pathlib import Path    
 from loguru import logger   
 @singleton
 class PluginManager:

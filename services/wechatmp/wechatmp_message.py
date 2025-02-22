@@ -1,7 +1,5 @@
 """微信公众平台消息处理模块，将微信消息转换为统一消息格式"""
 
-# -*- coding: utf-8 -*-#
-
 from core.bridge.context import ContextType
 from services.chat_message import ChatMessage
 from core.utils.common.tmp_dir import TmpDir
