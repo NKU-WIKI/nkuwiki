@@ -5,7 +5,7 @@
 
 # 配置文件
 config.json
-package.json
+plugins.json
 
 # 日志文件
 *.log
@@ -38,7 +38,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-chatgpt-on-wechat/
 
 # 测试相关
 .coverage

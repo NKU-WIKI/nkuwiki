@@ -4,6 +4,7 @@ import json
 import copy
 from singleton_decorator import singleton
 from loguru import logger
+
 # 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
     # 支持的部署通道
@@ -14,7 +15,7 @@ available_setting = {
     "open_ai_api_base": "https://api.openai.com/v1",
     "proxy": "",  # openai使用的代理
     # chatgpt模型， 当use_azure_chatgpt为true时，其名称为Azure上model deployment名称
-    "model": "gpt-3.5-turbo",  # 可选择: gpt-4o, pt-4o-mini, gpt-4-turbo, claude-3-sonnet, wenxin, moonshot, qwen-turbo, xunfei, glm-4, minimax, gemini等模型，全部可选模型详见common/const.py文件
+    "model": "coze",  # 可选择: gpt-4o, pt-4o-mini, gpt-4-turbo, claude-3-sonnet, wenxin, moonshot, qwen-turbo, xunfei, glm-4, minimax, gemini等模型，全部可选模型详见common/const.py文件
     "use_azure_chatgpt": False,  # 是否使用azure的chatgpt
     "azure_deployment_id": "",  # azure 模型部署名称
     "azure_api_version": "",  # azure api版本
@@ -173,16 +174,19 @@ available_setting = {
     "linkai_api_base": "https://api.link-ai.tech",  # linkAI服务地址
     "web_port": 9899,
     # coze配置
-    "agent_type": "coze",  
     "coze_api_key": "",
-    "coze_app_id": "",
-    "coze_api_base": "",
-    "coze_user_id": "default_user",
+    "coze_bot_id": "",
+    "coze_api_base": "https://api.coze.cn/open_api/v2",
+    # hiagent配置
+    "hiagent_api_key": "",
+    "hiagent_app_id": "",
+    "hiagent_api_base": "https://coze.nankai.edu.cn/api/proxy/api/v1",
+    "hiagent_user_id": "default_user",
     "enable_knowledge_integration": True,
     "max_knowledge_display": 3,
     "max_knowledge_length": 100,
     "response_mode": "blocking",
-    # 新增数据库配置项
+    # 数据库配置项
     "db_host": "localhost",  # 数据库主机地址，类型str，默认"localhost"
     "db_port": 3306,  # 数据库端口，类型int，默认3306
     "db_user": "root",  # 数据库用户名，类型str，默认"root"
@@ -220,6 +224,7 @@ class Config(dict):
         for k, v in d.items():
             self[k] = v
         self.user_datas = {}
+        self.plugin_config = {}
 
     def __getitem__(self, key):
         """重写字典获取项方法，实现配置键名大小写不敏感"""
@@ -357,22 +362,20 @@ class Config(dict):
         """写入插件全局配置
         
         Args:
-            pconf: 全量插件配置字典
+            pconf: 插件配置字典
         """
-        global plugin_config
         for k in pconf:
-            plugin_config[k.lower()] = pconf[k]
+            self.plugin_config[k.lower()] = pconf[k]
 
-    def remove_plugin_config(name: str):
+    def remove_plugin_config(self, name: str):
         """移除待重新加载的插件配置
         
         Args:
             name: 插件名称
         """
-        global plugin_config
-        plugin_config.pop(name.lower(), None)
+        self.plugin_config.pop(name.lower(), None)
 
-    def pconf(plugin_name: str) -> dict:
+    def pconf(self, plugin_name: str) -> dict:
         """获取指定插件配置
         
         Args:
@@ -381,7 +384,7 @@ class Config(dict):
         Returns:
             dict: 插件配置字典
         """
-        return plugin_config.get(plugin_name.lower())
+        return self.plugin_config.get(plugin_name.lower())
     
     def subscribe_msg(self):
         """生成订阅消息模板
@@ -412,27 +415,14 @@ class Config(dict):
                 self.update(config_data)
         except json.JSONDecodeError as e:
             self.logger.exception(f"[config] 配置文件格式错误")
-
-        for name, value in os.environ.items():
-            name = name.lower()
-            if name in available_setting:
-                try:
-                    self[name] = eval(value)
-                except:
-                    if value == "false":
-                        self[name] = False
-                    elif value == "true":
-                        self[name] = True
-                    else:
-                        self[name] = value
         self.logger.debug("[config] load config: {}".format(self.drag_sensitive()))
         self.load_user_datas()
         return self
 
-plugin_config = {}
-
 # 全局配置，用于存放全局生效的状态
-global_config = {"admin_users": []}
+# global_config = {
+#     "admin_users": []
+# }
 
 
 # def get_model_config(model_name: str) -> dict:
