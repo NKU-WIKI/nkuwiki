@@ -194,13 +194,6 @@ class ChatChannel(Channel):
             if "desire_rtype" not in context and Config().get("always_reply_voice") and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                 context["desire_rtype"] = ReplyType.VOICE
 
-            # Coze模型专用处理
-            if context.get("bot_type") == "coze":
-                # 移除Coze不支持的参数
-                if "desire_rtype" in context:
-                    del context["desire_rtype"]
-                # 强制使用文本模式
-                context.type = ContextType.TEXT
         elif context.type == ContextType.VOICE:
             if "desire_rtype" not in context and Config().get("voice_reply_voice") and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                 context["desire_rtype"] = ReplyType.VOICE

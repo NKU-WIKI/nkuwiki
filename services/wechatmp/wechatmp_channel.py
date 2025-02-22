@@ -15,7 +15,6 @@ from fastapi.responses import PlainTextResponse
 
 from app import App
 from config import Config
-Config.load_config()
 from core.bridge.context import *
 from core.bridge.reply import *
 from core.utils.common.singleton import singleton

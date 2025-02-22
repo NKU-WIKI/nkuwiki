@@ -8,9 +8,6 @@ from pathlib import Path
 from services import channel_factory
 from singleton_decorator import singleton
 from core.utils.plugins.plugin_manager import PluginManager
-
-config = Config()
-
 @singleton
 class App:
     """应用核心类，采用单例模式管理全局状态
@@ -33,13 +30,14 @@ class App:
         self.logger.add(f'{self.base_log_dir}/app_{log_day_str}.log',
                  rotation="1 day", retention='3 months', level="INFO")
         
-        config.load_config(self.logger)
+        Config().load_config(self.logger)
+        PluginManager().load_plugins()
         self._setup_signal_handlers()
         
         self.channel_factory = channel_factory
-        self.support_channel = config.get("support_channel")
-        self.channel_name = config.get("channel_type")
-        self.model = config.get("model")
+        self.support_channel = Config().get("support_channel")
+        self.channel_name = Config().get("channel_type")
+        self.model = Config().get("model")
 
     def _setup_signal_handlers(self):
         """设置信号处理函数，用于优雅退出"""
@@ -64,7 +62,6 @@ class App:
     def run(self):
         """启动主运行循环，加载插件并初始化指定渠道"""
         if self.channel_name in self.support_channel:
-            PluginManager().load_plugins()
             channel = self.channel_factory.create_channel(self.channel_name)
             self.logger.info(f"Starting channel {self.channel_name}...")
             channel.startup()

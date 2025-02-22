@@ -9,6 +9,10 @@ pydantic
 wechatpy
 cryptography
 tiktoken
+openai
+httpx
+tiktoken
+dulwich
 
 #数据库
 mysql-connector-python

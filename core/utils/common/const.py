@@ -105,3 +105,4 @@ MODEL_LIST = MODEL_LIST + GITEE_AI_MODEL_LIST
 FEISHU = "feishu"
 DINGTALK = "dingtalk"
 COZE = "coze"
+HIAGENT = "hiagent"

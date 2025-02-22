@@ -10,7 +10,10 @@ def create_agent(agent_type):
     :param agent_type: agent type code
     :return: agent instance
     """
-    if agent_type == const.COZE:
+    if agent_type == const.HIAGENT:
+        from core.agent.hiagent.hiagent_agent import HiagentAgent
+        return HiagentAgent()
+    elif agent_type == const.COZE:
         from core.agent.coze.coze_agent import CozeAgent
         return CozeAgent()
     else:
