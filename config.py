@@ -195,10 +195,10 @@ available_setting = {
     "data_path": "",  # 数据存储路径，类型str，默认为空
     "proxy_pool": "http://127.0.0.1:7897",  # 代理池地址，类型str，URL格式
     # 微信公众号配置项
-    "UNOFFICIAL_ACCOUNT": "",  # 非官方公众号ID，类型str，默认为空
-    "UNIVERSITY_OFFICIAL_ACCOUNT": "",  # 大学官方公众号ID，类型str，默认为空
-    "SCHOOL_OFFICIAL_ACCOUNT": "",  # 学院官方公众号ID，类型str，默认为空
-    "CLUB_OFFICIAL_ACCOUNT": ""  # 社团公众号ID，类型str，默认为空
+    "unofficial_account": "",  # 非官方公众号ID，类型str，默认为空
+    "university_official_account": "",  # 大学官方公众号ID，类型str，默认为空
+    "school_official_account": "",  # 学院官方公众号ID，类型str，默认为空
+    "club_official_account": ""  # 社团公众号ID，类型str，默认为空
 }
 
 @singleton

@@ -18,6 +18,7 @@ import json
 from pathlib import Path
 from typing import Dict
 from config import Config
+from mysql.connector.constants import ClientFlag
 Config().load_config()
 
 
@@ -38,8 +39,12 @@ def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
         "user": Config().get("db_user"),
         "password": Config().get("db_password"),
         "charset": 'utf8mb4',
-        "unix_socket": '/var/run/mysqld/mysqld.sock'
+        "unix_socket": '/var/run/mysqld/mysqld.sock',
+        "client_flags": [ClientFlag.MULTI_STATEMENTS]  # 使用新的标志名称
     }
+    # 如果是远程连接服务器数据库host改成服务器ip，
+    # config["host"] = {服务器ip}
+    # 或者在config.json中修改
     if use_database:
         config["database"] = Config().get("db_name")
     return mysql.connector.connect(**config)
@@ -71,16 +76,19 @@ def init_database():
             with conn.cursor() as cur:
                 sql_dir = Path(__file__).parent.parent / "tables"
                 for sql_file in sorted(sql_dir.glob('*.sql')):
-                    # 提取表名
                     sql_content = sql_file.read_text(encoding='utf-8')
-                    table_name = re.search(r"CREATE TABLE (?:IF NOT EXISTS )?(\w+)", sql_content).group(1)
-                    logger.info(f"正在创建表: {table_name}")
                     
-                    # 执行SQL
-                    for result in cur.execute(sql_content, multi=True):
-                        if result.with_rows:
-                            logger.debug(f"执行结果: {result.fetchall()}")
-                conn.commit()
+                    # 分割SQL语句并逐条执行
+                    for statement in sql_content.split(';'):
+                        statement = statement.strip()
+                        if statement:
+                            try:
+                                cur.execute(statement)
+                            except mysql.connector.Error as err:
+                                logger.error(f"执行SQL失败: {err}\n{statement}")
+                                conn.rollback()
+                                raise
+                    conn.commit()
         logger.info(f"数据库表结构初始化完成，共建立 {len(list(sql_dir.glob('*.sql')))} 张表")
     except Exception as e:
         logger.exception(f"数据库表结构初始化失败")
@@ -104,17 +112,17 @@ def process_file(file_path: str) -> Dict:
             data = json.load(f)
         
         # 修改必要字段验证
-        required_fields = ['run_time', 'publish_time', 'title', 'nickname', 'original_url']
+        required_fields = ['scrape_time', 'publish_time', 'title', 'author', 'original_url']
         for field in required_fields:
             if field not in data:
                 raise ValueError(f"缺少必要字段: {field}")
 
         # 数据清洗
         return {
-            "run_time": data["run_time"].replace(" ", "T"),
+            "scrape_time": data["scrape_time"].replace(" ", "T"),
             "publish_time": data["publish_time"],
             "title": str(data.get("title", "")).strip(),
-            "nickname": str(data.get("nickname", "")).strip(),
+            "author": str(data.get("author", "")).strip(),
             "original_url": data["original_url"]
         }
     except json.JSONDecodeError as e:
@@ -139,10 +147,15 @@ def export_wechat_to_mysql(n: int):
 
     # 读取所有匹配的元数据文件
     metadata_dir = Path(Config().get("data_path")) / "processed"
-    metadata_files = list(metadata_dir.glob("wechat_metadata*.json"))
+    
+    # 修改后：使用正则表达式匹配带日期的元数据文件
+    metadata_files = [
+        f for f in metadata_dir.glob("*.json") 
+        if re.match(r"^wechat_metadata_\d{8}\.json$", f.name)
+    ]
     
     if not metadata_files:
-        logger.error("未找到元数据文件：wechat_metadata*.json")
+        logger.error("未找到符合格式的元数据文件，文件名应为：wechat_metadata_YYYYMMDD.json")
         return
 
     # 合并多个元数据文件
@@ -170,28 +183,27 @@ def export_wechat_to_mysql(n: int):
         with conn.cursor() as cursor:
             for i, data in enumerate(process_data, 1):
                 try:
-                    # 直接使用元数据中的字段
-                    for field in ['run_time', 'publish_time', 'title', 'nickname', 'original_url']:
-                        if field not in data:
-                            raise ValueError(f"元数据缺少字段: {field}")
-
+                    # 修改后：添加content_type字段
                     data_batch.append((
-                        data["run_time"].replace(" ", "T"),
                         data["publish_time"],
                         str(data.get("title", "")).strip(),
-                        str(data.get("nickname", "")).strip(),
-                        data["original_url"]
+                        str(data.get("author", "")).strip(),
+                        data["original_url"],
+                        data["platform"],
+                        data.get("content_type")  # 新增content_type字段
                     ))
 
                     if i % batch_size == 0 or i == len(process_data):
                         cursor.executemany("""
                             INSERT INTO wechat_articles 
-                            (run_time, publish_time, title, nickname, original_url)
-                            VALUES (%s, %s, %s, %s, %s)
+                            (publish_time, title, author, original_url, platform, content_type)
+                            VALUES (%s, %s, %s, %s, %s, %s)
                             ON DUPLICATE KEY UPDATE 
                                 title=VALUES(title),
                                 publish_time=VALUES(publish_time),
-                                nickname=VALUES(nickname)
+                                author=VALUES(author),
+                                platform=VALUES(platform),
+                                content_type=VALUES(content_type)  # 新增更新字段
                         """, data_batch)
                         conn.commit()
                         data_batch = []
@@ -224,6 +236,41 @@ def query_table(table_name: str, limit: int = 1000) -> list:
         logger.error(f"查询表 {table_name} 失败: {str(e)}")
         return []
 
+def delete_table(table_name: str) -> bool:
+    """删除指定数据库表
+    
+    Args:
+        table_name: 要删除的表名
+        
+    Returns:
+        bool: 删除是否成功
+        
+    Raises:
+        mysql.connector.Error: 数据库操作失败时抛出
+    """
+    try:
+        # 验证表名格式（防止SQL注入）
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+            raise ValueError(f"非法表名: {table_name}")
+            
+        with get_conn() as conn:
+            with conn.cursor() as cursor:
+                # 使用字符串格式化（需先验证表名）
+                cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+                conn.commit()
+                logger.warning(f"成功删除表: {table_name}")
+                return True
+    except mysql.connector.Error as e:
+        logger.error(f"删除表 {table_name} 失败: {str(e)}")
+        raise
+    except ValueError as e:
+        logger.error(f"表名验证失败: {str(e)}")
+        return False
+    except Exception as e:
+        logger.error(f"发生未知错误: {str(e)}")
+        return False
+
 if __name__ == "__main__":
-    # export_wechat_to_mysql(n = 10)
-    print(query_table('wechat_articles', 5))  # 测试查询功能
+    # delete_table("wechat_articles")
+    export_wechat_to_mysql(n = 10)
+    # print(query_table('wechat_articles', 5))  # 测试查询功能
