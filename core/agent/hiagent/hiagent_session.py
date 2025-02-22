@@ -2,8 +2,8 @@ from app import App
 from config import Config
 from core.agent.session_manager import Session
 
-class CozeSession(Session):
-    def __init__(self, session_id, system_prompt=None, model="coze-pro"):
+class HiAgentSession(Session):
+    def __init__(self, session_id, system_prompt=None, model="hiagent-pro"):
         super().__init__(session_id, system_prompt)
         self.model = model
         self.conversation_id = None  # 已存在的会话ID存储字段
@@ -14,7 +14,7 @@ class CozeSession(Session):
     def reset(self):
         super().reset()
         self.conversation_id = None  # 重置会话时会清空ID
-        # Coze需要的系统提示格式
+        # HiAgent需要的系统提示格式
         self.messages = [{
             "role": "system",
             "content": self.system_prompt,
@@ -25,7 +25,7 @@ class CozeSession(Session):
         self.messages.append({
             "role": "user",
             "content": query,
-            "user_id": Config().get("coze_user_id")  # 添加用户ID
+            "user_id": Config().get("hiagent_user_id")  # 添加用户ID
         })
         # 保持历史记录长度
         if len(self.messages) > self.max_history * 2 + 1:
@@ -47,7 +47,7 @@ class CozeSession(Session):
                     return msg["content"]
             return ""  # 如果没有找到用户消息，返回空字符串
         except Exception as e:
-            App().logger.exception(f"[COZE] 获取最后查询失败: {str(e)}")
+            App().logger.exception(f"[HIAGENT] 获取最后查询失败: {str(e)}")
             return ""
 
     def discard_exceeding(self, max_tokens, cur_tokens=None):
@@ -59,7 +59,7 @@ class CozeSession(Session):
                 try:
                     import tiktoken
                 except ImportError:
-                    App().logger.error("[COZE] 请先安装tiktoken: pip install tiktoken")
+                    App().logger.error("[HIAGENT] 请先安装tiktoken: pip install tiktoken")
                     raise
                 
                 try:
@@ -97,7 +97,7 @@ class CozeSession(Session):
             return total_tokens
             
         except Exception as e:
-            App().logger.exception(f"[COZE] Token计算异常: {str(e)}，使用字符长度估算")
+            App().logger.exception(f"[HIAGENT] Token计算异常: {str(e)}，使用字符长度估算")
             # 回退到简单字符数估算 (1 token ≈ 4个英文字符)
             total_chars = sum(len(msg["content"]) for msg in self.messages)
             estimated_tokens = total_chars // 4
@@ -110,4 +110,4 @@ class CozeSession(Session):
             return estimated_tokens
 
     def connect(self):
-        App().logger.debug("Connecting to Coze API")
+        App().logger.debug("Connecting to HiAgent API")

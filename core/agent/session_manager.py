@@ -67,7 +67,7 @@ class SessionManager(object):
         try:
             max_tokens = Config().get("conversation_max_tokens", 1000)
             total_tokens = session.discard_exceeding(max_tokens, None)
-            # logger.info("prompt tokens used={}".format(total_tokens))
+            App().logger.debug("prompt tokens used={}".format(total_tokens))
         except Exception as e:
             App().logger.exception("Exception when counting tokens precisely for prompt: {}".format(str(e)))
         return session
