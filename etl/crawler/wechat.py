@@ -1,23 +1,24 @@
 from __init__ import *
 from base_crawler import BaseCrawler
 
-Config.load_config()
+Config().load_config()
 
 class Wechat(BaseCrawler):
     """微信公众号文章爬虫
     
     Attributes:
-        authors: 环境变量名称，包含要爬取的公众号昵称列表
+        authors: 配置名称，包含要爬取的公众号昵称列表
         debug: 调试模式开关
         headless: 是否使用无头浏览器模式
     """
-    def __init__(self, authors: str = "UNIVERSITY_OFFICIAL_ACCOUNT", debug: bool = False, headless: bool = False) -> None:
+    def __init__(self, authors: str = "university_official_account", debug: bool = False, headless: bool = False) -> None:
         # 确保在初始化时重新读取环境变量
-        self.name = "wechat"
-        super().__init__(name=self.name, debug=debug, headless=headless)
+        self.platform = "wechat"
+        self.content_type = "article"
         self.base_url = "https://mp.weixin.qq.com/"  # 基础URL
+        super().__init__(platform=self.platform, debug=debug, headless=headless)
         self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
-        # 从环境变量中获取昵称并过滤空值
+        # 从配置中获取昵称并过滤空值
         self.authors = [
             name.strip() 
             for name in Config().get(authors, '').split(',') 
@@ -42,16 +43,25 @@ class Wechat(BaseCrawler):
             # 注入脚本
             self.inject_anti_detection_script()
             self.page.goto(self.base_url)
+            self.random_sleep()
             max_wait = 300  # 最大等待5分钟
+            
+            # 立即检查是否已登录（二维码元素不存在）
+            if not self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
+                self.logger.info('检测到已登录状态')
+                self.random_sleep()
+                return {cookie['name']: cookie['value'] for cookie in self.context.cookies()}
+
             while max_wait > 0:
-                # 检查二维码元素是否消失来判断是否登录成功
-                if not self.page.query_selector('div[class="login__type__container__scan__qrcode"]'):
-                    time.sleep(10)
+                self.logger.info('请扫描二维码登录...')
+                # 持续监测二维码元素是否存在
+                if not self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
+                    time.sleep(5)  # 给登录后页面加载留出时间
                     self.logger.info('登录成功')
                     return {cookie['name']: cookie['value'] for cookie in self.context.cookies()}
-                self.logger.info('请扫描二维码登录...')
                 time.sleep(5)
                 max_wait -= 5
+                
             if max_wait <= 0:
                 raise TimeoutError("登录超时")
         except Exception as e:
@@ -313,5 +323,5 @@ class Wechat(BaseCrawler):
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
 if __name__ == "__main__":
-    wechat = Wechat(authors = "CLUB_OFFICIAL_ACCOUNT", debug=False, headless=False)  # 初始化
-    wechat.scrape(max_article_num=500, total_max_article_num=1e10)   # max_article_num最大抓取数量
+    wechat = Wechat(authors = "club_official_account", debug=False, headless=False)  # 初始化
+    wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量

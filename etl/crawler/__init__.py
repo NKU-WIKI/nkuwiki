@@ -13,6 +13,8 @@ import random
 from loguru import logger  
 from collections import Counter  
 from playwright.sync_api import sync_playwright  
+import sys
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import Config
 from typing import Dict, List, Optional, Any
 # import pdfplumber  
