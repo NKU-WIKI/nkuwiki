@@ -17,6 +17,7 @@ class Wechat(BaseCrawler):
         self.content_type = "article"
         self.base_url = "https://mp.weixin.qq.com/"  # 基础URL
         super().__init__(platform=self.platform, debug=debug, headless=headless)
+        self.page = self.context.new_page()
         self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
         # 从配置中获取昵称并过滤空值
         self.authors = [
