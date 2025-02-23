@@ -53,8 +53,6 @@ class BaseCrawler():
         self.current_proxy = None
         # 初始化代理
         self.rotate_proxy()
-        # 确保在初始化代理后创建page对象
-        self.page = self.context.new_page()
         self.min_sleep_microsec = 3000  # 最小休眠时间
         self.max_sleep_microsec = 8000  # 最大休眠时间
         self.max_retry = 5  # 最大重试次数
@@ -81,10 +79,6 @@ class BaseCrawler():
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"macOS"',
         }
-
-        # 增加鼠标移动轨迹模拟
-        self.page.mouse.move(random.randint(0, 100), random.randint(0, 100))
-
         # 增加代理健康检查
         def check_proxy_health(proxy):
             try:
