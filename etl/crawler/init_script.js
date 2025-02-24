@@ -69,9 +69,9 @@ Object.defineProperty(HTMLCanvasElement.prototype, 'toDataURL', {
 // 模拟 Connection 信息
 Object.defineProperty(navigator, 'connection', {
     get: () => ({
+        downlink: 10 + Math.random() * 5,
         effectiveType: '4g',
-        rtt: 50,
-        downlink: 10,
+        rtt: 50 + Math.floor(Math.random() * 100),
         saveData: false
     })
 });
@@ -174,4 +174,47 @@ delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
         if (this === Function.prototype.bind) return 'function bind() { [native code] }';
         return oldToString.call(this);
     };
-})(); 
+})();
+
+// 覆盖更多WebGL属性
+WebGLRenderingContext.prototype.getParameter = function(parameter) {
+    if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+    if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 3060 Ti Direct3D11 vs_5_0 ps_5_0, D3D11)';
+    return WebGLRenderingContext.prototype.getParameter.apply(this, [parameter]);
+};
+
+// 覆盖更多navigator属性
+Object.defineProperty(navigator, 'userAgent', {
+    get: () => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36'
+});
+
+// 新浪财经特定检测点覆盖
+delete window.__fxdriver_unwrapped;
+delete window._Selenium_IDE_Recorder;
+delete window._selenium;
+delete window.callPhantom;
+delete window.phantom;
+
+// 添加更多自动化特征字符串删除
+const pattern = /(selenium|webdriver|phantomjs|appium|automation|cdc_)/i;
+Object.getOwnPropertyNames(window).forEach(prop => {
+    if (pattern.test(prop)) {
+        delete window[prop];
+    }
+});
+
+// 覆盖新浪财经使用的屏幕检测
+Object.defineProperty(window.screen, 'availHeight', { 
+    get: () => 1080 
+});
+Object.defineProperty(window.screen, 'availWidth', { 
+    get: () => 1920 
+});
+
+// 模拟新浪财经的鼠标轨迹检测
+const originalMove = MouseEvent.prototype.move;
+MouseEvent.prototype.move = function(x, y) {
+    const jitterX = x + Math.random() * 3 - 1.5;
+    const jitterY = y + Math.random() * 3 - 1.5;
+    return originalMove.call(this, jitterX, jitterY);
+}; 

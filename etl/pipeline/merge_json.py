@@ -72,8 +72,8 @@ if __name__ == "__main__":
     project_root = Path(__file__).resolve().parent.parent.parent
     
     # 设置输入和输出路径，相对于项目根目录
-    search_directory = project_root / 'etl/data/raw/wechat'
-    output_file = project_root / 'etl/data/processed' / f'wechat_metadata_{datetime.now().strftime("%Y%m%d")}.json'
+    search_directory = project_root / 'etl/data/raw/sina_finance'
+    output_file = project_root / 'etl/data/processed' / f'sina_finance_{datetime.now().strftime("%Y%m%d")}.json'
     
     # 添加路径验证调试信息
     print(f"项目根目录: {project_root}")

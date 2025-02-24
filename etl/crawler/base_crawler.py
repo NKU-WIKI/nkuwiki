@@ -10,9 +10,10 @@ class BaseCrawler():
         headless: 无头模式开关
         platform: 平台名称
     """
-    def __init__(self, platform: str, debug: bool = False, headless: bool = False) -> None:       
+    def __init__(self, platform: str, debug: bool = False, headless: bool = False, use_proxy: bool = False) -> None:       
         self.debug = debug
         self.headless = headless
+        self.use_proxy = use_proxy  
         log_day_str = '{time:%Y-%m-%d}'
         # 使用Path对象处理路径，避免跨平台问题
         base_path = Path(__file__).resolve().parent.parent
@@ -33,26 +34,63 @@ class BaseCrawler():
         self.counter_file = 'counter.txt'  # 计数器文件，用于记录运行统计
         self.update_file = 'update.txt'  # 更新文件，用于记录更新信息
         self.update_f = open(self.base_dir / self.update_file, 'a+', encoding='utf-8')  # 打开更新文件
-        self.scraped_urls_file = 'scraped_urls.json'  # 已抓取链接文件
+        self.scraped_original_urls_file = 'scraped_original_urls.json'  # 已抓取链接文件
         self.cookies_file = 'cookies.txt'  # cookies文件，用于保存登录信息
         self.tz = pytz.timezone('Asia/Shanghai')  # 设置时区
-        self.playwright = sync_playwright().start()  # 初始化Playwright
-        self.browser = self.playwright.chromium.launch(headless=self.headless)
+        self.playwright = sync_playwright().start()
+        self.browser = self.playwright.chromium.launch(
+            channel="chrome",
+            headless=headless,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-infobars",  # 禁用Chrome提示栏
+                "--no-sandbox",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--ignore-certificate-errors",  # 忽略证书错误
+                "--disable-web-security",  # 禁用同源策略
+                f"--window-size={random.randint(1200, 1400)},{random.randint(800, 1000)}",  # 随机窗口尺寸
+            ],
+            # 添加更多真实浏览器特征
+            executable_path="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" if sys.platform == "darwin" else None,
+            ignore_default_args=["--enable-automation"]  # 禁用自动化提示
+        )
         self.context = self.browser.new_context(
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
+            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
             locale='zh-CN',
             timezone_id='Asia/Shanghai',
-            color_scheme='dark',
+            color_scheme='light',  # 新浪财经主要使用浅色模式
+            # 添加更多真实设备特征
+            device_scale_factor=random.choice([1, 1.25, 1.5]),
+            is_mobile=False,
+            has_touch=False,
             # 禁用自动化特征
-            bypass_csp=True,
-            java_script_enabled=True,
-            service_workers='block',
-            permissions=[]  # 禁用所有权限请求
+            permissions=[],
+            extra_http_headers={
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+                'Accept-Encoding': 'gzip, deflate, br',
+                'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache',
+                'Referer': 'https://finance.sina.com.cn/',
+                'Sec-Ch-Ua': '"Chromium";v="116", "Not)A;Brand";v="24", "Google Chrome";v="116"',
+                'Sec-Ch-Ua-Mobile': '?0',
+                'Sec-Ch-Ua-Platform': '"Windows"',
+                'Sec-Fetch-Dest': 'document',
+                'Sec-Fetch-Mode': 'navigate',
+                'Sec-Fetch-Site': 'same-origin',
+                'Sec-Fetch-User': '?1',
+                'Upgrade-Insecure-Requests': '1'
+            }
         )
-        self.proxy_pool = Config().get("PROXY_POOL", "http://127.0.0.1:7897").split(',')
-        self.current_proxy = None
-        # 初始化代理
-        self.rotate_proxy()
+        # 修改代理初始化逻辑
+        if self.use_proxy:
+            self.proxy_pool = Config().get("PROXY_POOL", "http://127.0.0.1:7897").split(',')
+            self.current_proxy = None
+            self.rotate_proxy()
+        else:
+            self.proxy_pool = []
+            self.current_proxy = None
         self.min_sleep_microsec = 3000  # 最小休眠时间
         self.max_sleep_microsec = 8000  # 最大休眠时间
         self.max_retry = 5  # 最大重试次数
@@ -106,14 +144,30 @@ class BaseCrawler():
     通用函数
     """
     def random_sleep(self) -> None:
-        """执行随机延迟，模拟人类操作"""
-        if(self.debug): 
-            pass
-        else:
-            # 随机滚动页面
-            self.page.evaluate(f"window.scrollTo(0, {random.randint(100, 500)})")
-            # 随机休眠一段时间
-            time.sleep(random.uniform(self.min_sleep_microsec, self.max_sleep_microsec)/1000.0)
+        """增强版随机行为模拟"""
+        if self.debug: 
+            return
+        
+        # 模拟人类滚动模式
+        scroll_steps = [
+            (random.randint(100, 300), 500),
+            (random.randint(400, 600), 800),
+            (random.randint(700, 900), 1000)
+        ]
+        for pos, delay in scroll_steps:
+            self.page.evaluate(f"window.scrollTo(0, {pos})")
+            time.sleep(delay / 1000.0)
+        
+        # 模拟鼠标移动轨迹
+        self.page.mouse.move(
+            random.randint(0, 500), 
+            random.randint(0, 300),
+            steps=random.randint(5, 10)
+        )
+        
+        # 随机输入行为（焦点在body时）
+        self.page.keyboard.press('PageDown')
+        time.sleep(random.uniform(0.5, 1.5))
 
     def read_cookies(self, timeout: int = 6*3600) -> tuple[int, Optional[Dict[str, str]]]:
         """
@@ -191,7 +245,7 @@ class BaseCrawler():
             self.counter['error'] += 1  # 错误计数器加1
             self.logger.error(e)  # 记录错误日志
 
-    def update_scraped_articles(self, scraped_links: List[str], articles: List[Dict[str, Any]]) -> None:
+    def update_scraped_articles(self, scraped_original_urls: List[str], articles: List[Dict[str, Any]]) -> None:
         """
         保存已抓取文章，articles为新增抓取文章
         """
@@ -218,20 +272,20 @@ class BaseCrawler():
             
             return clean_name
 
-        total_f = self.base_dir / self.scraped_urls_file
+        total_f = self.base_dir / self.scraped_original_urls_file
         for article in articles:    
-            if(article['original_url'] not in scraped_links):
-                year_month = article['publish_time'][0:7].replace('-', '')
+            if(article['original_url'] not in scraped_original_urls):
+                year_month = article.get('publish_time', datetime.now().strftime("%Y-%m%d"))[0:7].replace('-', '')
                 save_dir = self.base_dir / year_month
                 save_dir.mkdir(exist_ok=True, parents=True)
-                clean_title = clean_filename(article['title'])
+                clean_title = clean_filename(article.get('title', ''))
                 save_path = save_dir / clean_title
                 meta = {
                     "platform": self.platform,
-                    "original_url": article['original_url'],
-                    "title": article['title'],
-                    "author": article['author'],
-                    "publish_time": article['publish_time'],
+                    "original_url": article.get('original_url', ''),
+                    "title": article.get('title', ''),
+                    "author": article.get('author', ''),
+                    "publish_time": article.get('publish_time', ''),
                     "scrape_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "content_type": self.content_type
                     # "read_count": article.get('read_count', 0),
@@ -246,15 +300,15 @@ class BaseCrawler():
                     temp_path = save_path.with_name(f"temp_{save_path.name}")
                     with open(temp_path.with_suffix('.json'), 'w', encoding='utf-8', errors='ignore') as f:
                         json.dump(meta, f, ensure_ascii=False, indent=2)
-                scraped_links.append(article['original_url'])
-        total_f = self.base_dir / self.scraped_urls_file
-        total_f.write_text(json.dumps(scraped_links, ensure_ascii=False, indent=0))
+                scraped_original_urls.append(article['original_url'])
+        total_f = self.base_dir / self.scraped_original_urls_file
+        total_f.write_text(json.dumps(scraped_original_urls, ensure_ascii=False, indent=0))
 
     def get_scraped_original_urls(self) -> List[str]:
         """
         获取已抓取链接
         """
-        total_f = self.base_dir / self.scraped_urls_file
+        total_f = self.base_dir / self.scraped_original_urls_file
         if total_f.exists():
             content = total_f.read_text()
             if len(content) > 0:  
@@ -327,23 +381,15 @@ class BaseCrawler():
 
     def rotate_proxy(self) -> None:
         """从代理池中随机选择可用代理"""
-        if self.proxy_pool:
+        if self.use_proxy and self.proxy_pool:
             self.current_proxy = random.choice(self.proxy_pool)
             self.logger.info(f"使用代理: {self.current_proxy}")
-            
-            # 创建带有代理的新上下文
+            # 更新上下文时携带代理
             self.context = self.browser.new_context(
-                proxy={"server": self.current_proxy},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.212 Safari/537.36',
-                locale='zh-CN',
-                timezone_id='Asia/Shanghai',
-                color_scheme='dark',
-                # 禁用自动化特征
-                bypass_csp=True,
-                java_script_enabled=True,
-                service_workers='block',
-                permissions=[]  # 禁用所有权限请求
+                proxy={"server": self.current_proxy} if self.use_proxy else None,
+                # ...其他配置保持不变...
             )
+
     def check_proxy_health(self, proxy: str) -> bool:
         """检查代理是否可用"""
         try:
