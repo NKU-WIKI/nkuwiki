@@ -20,6 +20,8 @@ class Market(BaseCrawler):
         self.content_type = "post"
         self.base_url = "https://c.zanao.com"
         super().__init__(self.platform, debug, headless)
+        self.page = self.context.new_page()
+        self.inject_anti_detection_script()
         self.api_urls = {
             "list": "https://api.x.zanao.com/thread/v2/list",
             "comment": "https://c.zanao.com/sc-api/comment/post",
@@ -68,8 +70,8 @@ class Market(BaseCrawler):
         })
         return self.headers
 
-    def get_hot_list(self):
-        """获取热门列表"""
+    def get_latest_list(self):
+        """获取最新列表"""
         try:
             headers = self._generate_headers()
             
@@ -77,6 +79,34 @@ class Market(BaseCrawler):
                 self.api_urls["list"],
                 headers=headers,
                 params={"from_time": str(int(time.time())), "hot": "1"}
+            )
+            # 
+            if response.status == 200:
+                data = response.json()
+                # 增加数据结构校验
+                if isinstance(data, dict):
+                    data_dict = data.get("data", {})
+                    if isinstance(data_dict, dict):
+                        items = data_dict.get("list", [])
+                        # 过滤非字典类型的项
+                        return [self._parse_item(item) for item in items if isinstance(item, dict)]
+                self.logger.error("API返回数据结构异常: %s", data)
+                return []
+            return []
+        except Exception as e:
+            self.logger.error(f"获取最新列表失败: {str(e)}，响应数据: {response.text if response else '无响应'}")
+            self.counter['error'] += 1
+            return []
+        
+    def get_hot_list(self):
+        """获取热门列表"""
+        try:
+            headers = self._generate_headers()
+            
+            response = self.page.request.post(
+                self.api_urls["hot"],
+                headers=headers,
+                params={"from_time": str(int(time.time())), "hot": "2"}
             )
             # 
             if response.status == 200:
@@ -180,7 +210,14 @@ class Market(BaseCrawler):
             self.close()
 
 if __name__ == "__main__":
-    market = Market(debug=True, headless=False)
-    hot_list = market.get_hot_list()
-    print(hot_list)
+    market = Market(debug=True, headless=True)
+    # latest_list = market.get_latest_list()
+    # for item in latest_list:
+    #     print(item)
+    # hot_list = market.get_hot_list()
+    # for item in hot_list:
+    #     print(item['title'])
+    res = market.search_posts("考研")
+    for item in res:
+        print(item)
      

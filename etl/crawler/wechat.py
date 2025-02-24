@@ -18,6 +18,7 @@ class Wechat(BaseCrawler):
         self.base_url = "https://mp.weixin.qq.com/"  # 基础URL
         super().__init__(platform=self.platform, debug=debug, headless=headless)
         self.page = self.context.new_page()
+        self.inject_anti_detection_script()
         self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
         # 从配置中获取昵称并过滤空值
         self.authors = [
@@ -41,8 +42,6 @@ class Wechat(BaseCrawler):
             Exception: 其他登录异常
         """
         try:
-            # 注入脚本
-            self.inject_anti_detection_script()
             self.page.goto(self.base_url)
             self.random_sleep()
             max_wait = 300  # 最大等待5分钟
