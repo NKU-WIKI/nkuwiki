@@ -4,7 +4,7 @@
 
 ## 🚀 立即体验
 
-- 🔗 [网站](https://coze.nankai.edu.cn/product/llm/chat/cuh2gospkp8br093l2eg)
+- 🔗 [网站](https://www.coze.cn/store/agent/7473464038963036186?bot_id=true&bid=6ffc6de6g3g0j)
 - 🔎 微信服务号：nkuwiki知识社区（无限制，用户体验更好）
 - 🗝️ 微信订阅号 nkuwiki（有消极回复限制）
 
