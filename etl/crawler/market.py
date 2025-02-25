@@ -63,7 +63,11 @@ class Market(BaseCrawler):
         except Exception as e:
             self.logger.error(f"生成请求头时发生错误: {str(e)}")
             m = '0' * 20
+
         td = self._generate_td()
+        td = 1740464520
+        # m = 39067934460773695000
+    
         self.headers.update({
             "X-Sc-Nd": m,
             "X-Sc-Od": Config().get("market_token"),
@@ -71,6 +75,7 @@ class Market(BaseCrawler):
             "X-Sc-Td": str(td),
             'X-Sc-Alias': self.university,
         })
+        print(self.headers)
         return self.headers
 
     def get_latest_list(self):
@@ -259,11 +264,11 @@ class Market(BaseCrawler):
 
 if __name__ == "__main__":
     market = Market(debug=True, headless=True)
-    market.start_periodic_crawl()
-    # latest_list = market.get_latest_list()
+    # market.start_periodic_crawl()
+    latest_list = market.get_latest_list()
     
-    # for item in latest_list:
-    #     print(item)
+    for item in latest_list:
+        print(item)
     # hot_list = market.get_hot_list()
     # for item in hot_list:
     #     print(item['title'])
