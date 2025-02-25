@@ -19,9 +19,9 @@ class Bridge(object):
             "translate": Config().get("translate", "baidu"),
         }
         # 这边取配置的模型
-        agent_type = Config().get("agent_type")
-        if agent_type:
-            self.agent_type["chat"] = agent_type
+        model = Config().get("model")
+        if model:
+            self.agent_type["chat"] = model
         else:
             model_type = Config().get("model") or const.GPT35
             if model_type in ["text-davinci-003"]:

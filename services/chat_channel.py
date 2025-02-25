@@ -119,11 +119,11 @@ class ChatChannel(Channel):
                 return None
 
         # 根据配置的模型类型设置处理逻辑
-        current_model = Config().get("model")
-        if current_model.startswith("coze"):
-            context["bot_type"] = "coze"
-            context["coze_api_key"] = Config().get("coze_api_key")
-            context["coze_app_id"] = Config().get("coze_app_id")
+        # current_model = Config().get("model")
+        # if current_model.startswith("coze"):
+        #     context["bot_type"] = "coze"
+        #     context["coze_api_key"] = Config().get("coze_api_key")
+        #     context["coze_a_id"] = Config().get("coze_app_id")
 
         # 消息内容匹配过程，并处理content
         if ctype == ContextType.TEXT:
