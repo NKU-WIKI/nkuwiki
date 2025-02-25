@@ -168,7 +168,7 @@ class SinaFinance(BaseCrawler):
                     article_data = json.load(f)
                 
                 # 强制重新处理所有文章
-                if False:  # 取消跳过条件
+                if article_data.get('content', '') != '' and article_data.get('publish_time', '') != '':  # 取消跳过条件
                     continue
                     
                 # 调用下载方法
@@ -185,11 +185,11 @@ class SinaFinance(BaseCrawler):
                     json.dump(article_data, f, ensure_ascii=False, indent=4)
                     
                 processed_count += 1
-                # self.logger.debug(f"成功更新：{json_path}")
-                # self.logger.debug(f"更新内容：{json_path}\n"
-                #                      f"标题：{article_data.get('title')}\n"
-                #                      f"发布时间：{article_data['publish_time']}\n"
-                #                      f"内容摘要：{article_data['content'][:50]}...")
+                self.logger.debug(f"成功更新：{json_path}")
+                self.logger.debug(f"更新内容：{json_path}\n"
+                                     f"标题：{article_data.get('title')}\n"
+                                     f"发布时间：{article_data['publish_time']}\n"
+                                     f"内容摘要：{article_data['content'][:50]}...")
                 
                 if(processed_count % 100 == 0):
                     self.logger.info(f"已处理 {processed_count} 篇文章")

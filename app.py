@@ -41,11 +41,14 @@ class App:
 
     def _setup_signal_handlers(self):
         """设置信号处理函数，用于优雅退出"""
-        import signal
-        self.old_handlers = {}
-        for sig in [signal.SIGINT, signal.SIGTERM]:
-            self.old_handlers[sig] = signal.getsignal(sig)
-            signal.signal(sig, self._handle_signal)
+        import threading
+        # 确保只在主线程注册信号处理器
+        if threading.current_thread() is threading.main_thread():
+            import signal
+            signal.signal(signal.SIGINT, self._handle_signal)
+            signal.signal(signal.SIGTERM, self._handle_signal)
+            if hasattr(signal, 'SIGUSR1'):
+                signal.signal(signal.SIGUSR1, self._handle_signal)
 
     def _handle_signal(self, signum, frame):
         """信号处理回调函数
@@ -55,8 +58,6 @@ class App:
         """
         self.logger.info(f"Signal {signum} received, exiting...")
         Config.save_user_datas()
-        if callable(self.old_handlers.get(signum)):
-            self.old_handlers[signum](signum, frame)
         sys.exit(0)
 
     def run(self):

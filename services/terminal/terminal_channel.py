@@ -62,7 +62,6 @@ class TerminalChannel(ChatChannel):
 
     def startup(self):
         context = Context()
-        App.logger.setLevel("WARN")
         print("\nPlease input your question:\nUser:", end="")
         sys.stdout.flush()
         msg_id = 0
@@ -73,7 +72,7 @@ class TerminalChannel(ChatChannel):
                 print("\nExiting...")
                 sys.exit()
             msg_id += 1
-            trigger_prefixs = Config.get("single_chat_prefix", [""])
+            trigger_prefixs = Config().get("single_chat_prefix", [""])
             if check_prefix(prompt, trigger_prefixs) is None:
                 prompt = trigger_prefixs[0] + prompt  # 给没触发的消息加上触发前缀
 
