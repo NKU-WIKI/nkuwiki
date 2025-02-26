@@ -295,7 +295,8 @@ def delete_table(table_name: str) -> bool:
 
 if __name__ == "__main__":
     # delete_table("wechat_articles")
-    # export_wechat_to_mysql(n = 10)
-    # print(query_table('wechat_articles', 5))  # 测试查询功能
     init_database()
-    create_table("market_posts")
+    export_wechat_to_mysql(n = 10)
+    # print(query_table('wechat_articles', 5))  # 测试查询功能
+    
+    # create_table("market_posts")

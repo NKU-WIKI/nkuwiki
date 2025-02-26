@@ -54,7 +54,7 @@ class Market(BaseCrawler):
         raw_str = f"{self.university}_{m}_{td}_{self.secret_key}"
         return self._hmac_md5(self.secret_key, raw_str)
 
-    def _generate_headers(self):
+    def _generate_headers(self, timestamp):
         """完整请求头生成"""
         try:
             m = self._generate_m(20)
@@ -64,29 +64,30 @@ class Market(BaseCrawler):
             self.logger.error(f"生成请求头时发生错误: {str(e)}")
             m = '0' * 20
 
-        td = self._generate_td()
-        td = 1740464520
-        # m = 39067934460773695000
     
         self.headers.update({
             "X-Sc-Nd": m,
             "X-Sc-Od": Config().get("market_token"),
-            "X-Sc-Ah": self._generate_ah(m, td),
-            "X-Sc-Td": str(td),
+            "X-Sc-Ah": self._generate_ah(m, timestamp),
+            "X-Sc-Td": str(timestamp),
             'X-Sc-Alias': self.university,
         })
         print(self.headers)
         return self.headers
 
-    def get_latest_list(self):
-        """获取最新列表"""
+    def get_latest_list(self, timestamp=0):
+        """获取最新列表
+        timestamp >= int(time.time()) - 60*60
+        """
+        if(timestamp == 0):
+            timestamp = self._generate_td()
         try:
-            headers = self._generate_headers()
+            headers = self._generate_headers(timestamp)
             
             response = self.page.request.post(
                 self.api_urls["list"],
                 headers=headers,
-                params={"from_time": str(int(time.time())), "hot": "1"}
+                params={"from_time": str(timestamp), "hot": "1"}
             )
             # 
             if response.status == 200:
@@ -263,12 +264,12 @@ class Market(BaseCrawler):
             time.sleep(interval)
 
 if __name__ == "__main__":
-    market = Market(debug=True, headless=True)
+    market = Market(debug=False, headless=True)
     # market.start_periodic_crawl()
-    latest_list = market.get_latest_list()
+    latest_list = market.get_latest_list(market._generate_td()-60*61)
     
     for item in latest_list:
-        print(item)
+        print(item['title'])
     # hot_list = market.get_hot_list()
     # for item in hot_list:
     #     print(item['title'])
