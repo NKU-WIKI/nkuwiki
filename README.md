@@ -75,12 +75,14 @@
 - [@LiaojunChen](https://github.com/LiaojunChen)
 - [@hht421](https://github.com/hht421)
 - [@Frederick2313072](https://github.com/Frederick2313072)
+- [@Because66666](https://github.com/Because66666)
 
 现任志愿者团队
 
 - [@aokimi0](https://github.com/aokimi0)
 - [@hht421](https://github.com/hht421)
 - [@hengdaoye50](https://github.com/hengdaoye50)
+- [@Because66666](https://github.com/Because66666)
 
 ## 🏗 系统架构图
 
