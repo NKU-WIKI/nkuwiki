@@ -69,29 +69,52 @@ def init_database():
     except Exception as e:
         logger.exception(f"数据库初始化失败")
         raise
+
+def create_table(table_name: str):
+    """根据表名执行对应的SQL文件创建表结构
+    
+    Args:
+        table_name: 要创建的表名称（对应.sql文件名）
         
+    Raises:
+        FileNotFoundError: 当SQL文件不存在时抛出
+        ValueError: 表名不合法时抛出
+    """
     try:
-        # 第二步：连接目标数据库执行表结构
+        # 验证表名合法性（防止路径遍历）
+        if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+            raise ValueError(f"非法表名: {table_name}")
+            
+        sql_dir = Path(__file__).parent.parent / "tables"
+        sql_file = sql_dir / f"{table_name}.sql"
+        
+        if not sql_file.exists():
+            raise FileNotFoundError(f"SQL文件不存在: {sql_file}")
+
         with get_conn() as conn:
             with conn.cursor() as cur:
-                sql_dir = Path(__file__).parent.parent / "tables"
-                for sql_file in sorted(sql_dir.glob('*.sql')):
-                    sql_content = sql_file.read_text(encoding='utf-8')
-                    
-                    # 分割SQL语句并逐条执行
-                    for statement in sql_content.split(';'):
-                        statement = statement.strip()
-                        if statement:
-                            try:
-                                cur.execute(statement)
-                            except mysql.connector.Error as err:
-                                logger.error(f"执行SQL失败: {err}\n{statement}")
-                                conn.rollback()
-                                raise
-                    conn.commit()
-        logger.info(f"数据库表结构初始化完成，共建立 {len(list(sql_dir.glob('*.sql')))} 张表")
+                # 读取并执行SQL文件
+                sql_content = sql_file.read_text(encoding='utf-8')
+                for statement in sql_content.split(';'):
+                    statement = statement.strip()
+                    if statement:
+                        try:
+                            cur.execute(statement)
+                        except mysql.connector.Error as err:
+                            logger.error(f"执行SQL失败: {err}\n{statement}")
+                            conn.rollback()
+                            raise
+                conn.commit()
+                logger.info(f"表 {table_name} 创建成功，使用SQL文件: {sql_file.name}")
+
+    except (FileNotFoundError, ValueError) as e:
+        logger.error(str(e))
+        raise
+    except mysql.connector.Error as err:
+        logger.error(f"数据库错误: {err}")
+        raise
     except Exception as e:
-        logger.exception(f"数据库表结构初始化失败")
+        logger.exception("表结构创建失败")
         raise
 
 def process_file(file_path: str) -> Dict:
@@ -272,5 +295,8 @@ def delete_table(table_name: str) -> bool:
 
 if __name__ == "__main__":
     # delete_table("wechat_articles")
+    init_database()
     export_wechat_to_mysql(n = 10)
     # print(query_table('wechat_articles', 5))  # 测试查询功能
+    
+    # create_table("market_posts")
