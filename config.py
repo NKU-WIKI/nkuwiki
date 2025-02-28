@@ -189,9 +189,9 @@ available_setting = {
     # 数据库配置项
     "db_host": "localhost",  # 数据库主机地址，类型str，默认"localhost"
     "db_port": 3306,  # 数据库端口，类型int，默认3306
-    "db_user": "root",  # 数据库用户名，类型str，默认"root"
-    "db_password": "",  # 数据库密码，类型str，默认为空
-    "db_name": "mysql",  # 数据库名称，类型str，默认"mysql"
+    "db_user": "remote_user",  # 数据库用户名，类型str，默认"root"
+    "db_password": "your_password",  # 数据库密码，类型str，默认为空
+    "db_name": "nku_articles",  # 数据库名称，类型str，默认"mysql"
     "data_path": "",  # 数据存储路径，类型str，默认为空
     "proxy_pool": "http://127.0.0.1:7897",  # 代理池地址，类型str，URL格式
     # 微信公众号配置项
@@ -199,7 +199,9 @@ available_setting = {
     "university_official_account": "",  # 大学官方公众号ID，类型str，默认为空
     "school_official_account": "",  # 学院官方公众号ID，类型str，默认为空
     "club_official_account": "",  # 社团公众号ID，类型str，默认为空
-    "market_token": ""  # 集市token，类型str，默认为空
+    "market_token": "",  # 集市token，类型str，默认为空
+    "ssl_key_path": "",  # ssl私钥路径，类型str，默认为空
+    "ssl_cert_path": ""  # ssl证书路径，类型str，默认为空
 }
 
 @singleton
