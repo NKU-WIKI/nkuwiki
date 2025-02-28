@@ -12,7 +12,7 @@ def find_json_files(directory: Path) -> list[Path]:
     ]
 
 def merge_json_files(json_files: list[Path]) -> list[dict]:
-    """合并JSON文件并自动去重（基于url字段）"""
+    """合并JSON文件并自动去重（基于original_url字段）"""
     seen_urls = set()
     merged_data = []
     
@@ -28,7 +28,9 @@ def merge_json_files(json_files: list[Path]) -> list[dict]:
             
             for item in data if isinstance(data, list) else [data]:
                 # 添加备用去重字段（如title）
-                unique_key = item.get('url') or item.get('title')
+                if(item.get('content', '') == ''):
+                    continue
+                unique_key = item.get('original_url') or item.get('title')
                 if unique_key and unique_key not in seen_urls:
                     merged_data.append(item)
                     seen_urls.add(unique_key)

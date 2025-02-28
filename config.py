@@ -201,7 +201,8 @@ available_setting = {
     "club_official_account": "",  # 社团公众号ID，类型str，默认为空
     "market_token": "",  # 集市token，类型str，默认为空
     "ssl_key_path": "",  # ssl私钥路径，类型str，默认为空
-    "ssl_cert_path": ""  # ssl证书路径，类型str，默认为空
+    "ssl_cert_path": "",  # ssl证书路径，类型str，默认为空
+    "agent_type": ""  # 代理类型，类型str，默认为空
 }
 
 @singleton

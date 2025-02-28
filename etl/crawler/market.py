@@ -5,6 +5,8 @@ import time  # 已在代码中使用但需要确认是否导入
 import random  # 已在代码中使用但需要确认是否导入
 from typing import Optional  # 可选，用于类型提示
 import json
+import os
+import datetime
 
 from __init__ import *
 from base_crawler import BaseCrawler
@@ -20,6 +22,7 @@ class Market(BaseCrawler):
         self.content_type = "post"
         self.base_url = "https://c.zanao.com"
         super().__init__(self.platform, debug, headless)
+        self.base_dir = os.path.join("etl/data/raw", self.platform)  # 新增base_dir属性
         self.page = self.context.new_page()
         self.inject_anti_detection_script()
         self.api_urls = {
@@ -51,7 +54,7 @@ class Market(BaseCrawler):
         raw_str = f"{self.university}_{m}_{td}_{self.secret_key}"
         return self._hmac_md5(self.secret_key, raw_str)
 
-    def _generate_headers(self):
+    def _generate_headers(self, timestamp):
         """完整请求头生成"""
         try:
             m = self._generate_m(20)
@@ -60,25 +63,31 @@ class Market(BaseCrawler):
         except Exception as e:
             self.logger.error(f"生成请求头时发生错误: {str(e)}")
             m = '0' * 20
-        td = self._generate_td()
+
+    
         self.headers.update({
             "X-Sc-Nd": m,
             "X-Sc-Od": Config().get("market_token"),
-            "X-Sc-Ah": self._generate_ah(m, td),
-            "X-Sc-Td": str(td),
+            "X-Sc-Ah": self._generate_ah(m, timestamp),
+            "X-Sc-Td": str(timestamp),
             'X-Sc-Alias': self.university,
         })
+        print(self.headers)
         return self.headers
 
-    def get_latest_list(self):
-        """获取最新列表"""
+    def get_latest_list(self, timestamp=0):
+        """获取最新列表
+        timestamp >= int(time.time()) - 60*60
+        """
+        if(timestamp == 0):
+            timestamp = self._generate_td()
         try:
-            headers = self._generate_headers()
+            headers = self._generate_headers(timestamp)
             
             response = self.page.request.post(
                 self.api_urls["list"],
                 headers=headers,
-                params={"from_time": str(int(time.time())), "hot": "1"}
+                params={"from_time": str(timestamp), "hot": "1"}
             )
             # 
             if response.status == 200:
@@ -129,13 +138,14 @@ class Market(BaseCrawler):
     def _parse_item(self, item):
         """解析数据项"""
         return {
-            "id": item.get("thread_id"),
             "title": item.get("title"),
             "content": item.get("content"),
-            "finish_status": item.get("finish_status"),
-            "nickname": item.get("nickname"),
+            "author": item.get("nickname"),
             "publish_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            "original_url": f"{self.base_url}/thread/{item.get('thread_id')}"
+            "original_url": f"{self.base_url}/thread/{item.get('thread_id')}",
+            "scrape_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "content_type": self.content_type,
+            "platform": self.platform
         }
 
     def post_comment(self, thread_id, content):
@@ -166,7 +176,11 @@ class Market(BaseCrawler):
         try:
             response = self.page.request.post(
                 self.api_urls["search"],
-                headers=self._generate_headers(),
+                headers=self._generate_headers().update(
+                    {
+                        "Referer": "https://servicewechat.com/wx3921ddb0258ff14f/57/page-frame.html"    
+                    }
+                ),
                 data={
                     "keyword": keyword,
                     "page": 1,
@@ -209,15 +223,57 @@ class Market(BaseCrawler):
             self.save_counter(start_time)
             self.close()
 
+    def start_periodic_crawl(self, interval=60 * 15, max_runs=None):
+        """定时执行数据抓取和保存
+        Args:
+            interval: 执行间隔时间（秒），默认15分钟
+            max_runs: 最大执行次数，None表示无限次
+        """
+        run_count = 0
+        while True:
+            if max_runs and run_count >= max_runs:
+                break
+            
+            try:
+                # 执行数据获取
+                data = self.get_latest_list()
+                if data:
+                    # 创建存储目录
+                    os.makedirs(self.base_dir, exist_ok=True)
+                    
+                    # 生成带时间戳的文件名
+                    timestamp = time.strftime("%Y%m%d%H%M%S")
+                    filename = f"market_{timestamp}.json"
+                    filepath = os.path.join(self.base_dir, filename)
+                    
+                    # 保存数据
+                    with open(filepath, 'w', encoding='utf-8') as f:
+                        json.dump(data, f, ensure_ascii=False, indent=2)
+                    
+                    self.logger.info(f"成功保存{len(data)}条数据到 {filepath}")
+                    self.counter['saved'] += 1
+                else:
+                    self.logger.warning("未获取到有效数据")
+                    
+            except Exception as e:
+                self.logger.error(f"定时任务执行失败: {str(e)}")
+                self.counter['error'] += 1
+            
+            # 更新计数器并等待
+            run_count += 1
+            time.sleep(interval)
+
 if __name__ == "__main__":
-    market = Market(debug=True, headless=True)
-    # latest_list = market.get_latest_list()
-    # for item in latest_list:
-    #     print(item)
+    market = Market(debug=False, headless=True)
+    # market.start_periodic_crawl()
+    latest_list = market.get_latest_list(market._generate_td()-60*61)
+    
+    for item in latest_list:
+        print(item['title'])
     # hot_list = market.get_hot_list()
     # for item in hot_list:
     #     print(item['title'])
-    res = market.search_posts("考研")
-    for item in res:
-        print(item)
+    # res = market.search_posts("考研")
+    # for item in res:
+    #     print(item)
      
