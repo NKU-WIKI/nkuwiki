@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent)) 
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from contextlib import asynccontextmanager
 from pydantic import BaseModel, Field
 import mysql.connector
@@ -10,7 +10,9 @@ from typing import List, Dict, Any
 from datetime import datetime
 from config import Config
 from loguru import logger
-
+from fastapi.middleware.cors import CORSMiddleware
+from json import JSONDecodeError
+Config().load_config()
 
 logger.add(Path(__file__).parent / "logs" / "coze_datasource.log", rotation="1 day",retention="3 months", level = "INFO")
 
@@ -18,19 +20,25 @@ logger.add(Path(__file__).parent / "logs" / "coze_datasource.log", rotation="1 d
 def get_conn(use_database=True):
     """带容错机制的数据库连接"""
     params = {
-        'host': Config().get("db_host"),
+        'host': Config().get("db_host"),  # 需改为数据库服务器真实IP（非localhost）
         'port': Config().get("db_port"),
-        'user': Config().get("db_user"),
-        'password': Config().get("db_password"),
+        'user': Config().get("db_user"),  # 确认该用户有远程访问权限
+        'password': Config().get("db_password"),  # 确认密码正确
         'charset': 'utf8mb4',
-        'unix_socket': '/var/run/mysqld/mysqld.sock',
         'autocommit': True
     }
     
     if use_database:
         params['database'] = Config().get("db_name")
     
-    return mysql.connector.connect(**params)
+    logger.debug(f"尝试连接数据库：host={Config().get('db_host')} user={Config().get('db_user')}")
+    try:
+        conn = mysql.connector.connect(**params)
+        logger.debug("数据库连接成功")
+        return conn
+    except mysql.connector.Error as e:
+        logger.error(f"数据库连接失败: {str(e)}")
+        raise
 
 def serialize_datetime(obj):
     """处理日期时间序列化"""
@@ -54,6 +62,14 @@ app = FastAPI(
     lifespan=lifespan  # 添加生命周期管理
 )
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 class HiAgentRequest(BaseModel):
     query: str = Field(..., description="用户查询的问题内容")
     top_k: int = Field(5, description="返回结果数量", ge=1, le=20)
@@ -74,43 +90,95 @@ class QueryResult(BaseModel):
 
 
 
-@app.post("/query", response_model=QueryResult,
+@app.api_route("/query", methods=["POST", "GET"], response_model=QueryResult,
          summary="执行原始SQL查询",
-         description="支持参数化查询，使用%(name)s占位符格式",
+         description="GET请求不带参数时返回服务状态，带SQL参数执行查询；POST请求执行标准查询",
          response_description="包含列名和行数据的查询结果")
-async def execute_query(request: QueryRequest):
-    """
-    通用SQL查询接口
-    - 示例请求体：
-    {
-        "sql": "SELECT * FROM table WHERE name = %(name)s",
-        "name": "value"
-    }
-    """
+async def execute_query(request: Request):
     try:
-        # 提取除sql外的所有参数
-        params = request.dict(exclude={'sql'})
+        # 处理GET无参请求（返回指定字段CSV）
+        if request.method == "GET" and not request.query_params:
+            with get_conn() as conn:
+                with conn.cursor(dictionary=True) as cur:
+                    cur.execute("""
+                        SELECT title, original_url, author, publish_time 
+                        FROM wechat_articles 
+                        ORDER BY publish_time DESC 
+                        LIMIT 100
+                    """)
+                    
+                    from fastapi.responses import StreamingResponse
+                    import io
+                    import csv
+
+                    output = io.StringIO()
+                    writer = csv.writer(output)
+                    # 指定字段顺序
+                    columns = ["title", "original_url", "author", "publish_time"]
+                    writer.writerow(columns)
+                    
+                    for row in cur.fetchall():
+                        writer.writerow([row[col] for col in columns])
+                    
+                    output.seek(0)
+                    return StreamingResponse(
+                        iter([output.getvalue()]),
+                        media_type="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=articles_export.csv"}
+                    )
+            
+        # 统一处理GET/POST参数
+        params = await request.json() if request.method == "POST" else dict(request.query_params)
         
+        sql = params.get("sql")
+        if not sql:
+            raise HTTPException(status_code=422, detail="缺少必要参数: sql")
+            
+        # 过滤掉sql参数本身
+        query_params = {k: v for k, v in params.items() if k != "sql"}
+
         with get_conn() as conn:
             with conn.cursor(dictionary=True) as cur:
-                cur.execute(request.sql, params)
+                cur.execute(sql, query_params)
                 
-                if cur.description:
-                    columns = [col[0] for col in cur.description]
-                    data = [
-                        {col: row[col] for col in columns} 
-                        for row in cur.fetchall()
-                    ]
-                else:
-                    columns = []
-                    data = []
+                # 新增CSV响应处理
+                if request.method == "GET":
+                    from fastapi.responses import StreamingResponse
+                    import io
+                    import csv
+
+                    output = io.StringIO()
+                    writer = csv.writer(output)
+                    
+                    # 写入列头
+                    columns = [col[0] for col in cur.description] if cur.description else []
+                    writer.writerow(columns)
+                    
+                    # 写入数据行
+                    for row in cur.fetchall():
+                        writer.writerow([row[col] for col in columns])
+                    
+                    output.seek(0)
+                    return StreamingResponse(
+                        iter([output.getvalue()]),
+                        media_type="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=export.csv"}
+                    )
+                
+                # 原有JSON响应
+                columns = [col[0] for col in cur.description] if cur.description else []
+                data = [dict(row) for row in cur.fetchall()] if columns else []
                 
                 return QueryResult(columns=columns, data=data)
-                
+
+    except JSONDecodeError:
+        raise HTTPException(400, "请求格式错误：需要JSON格式")
     except mysql.connector.Error as e:
         logger.error(f"SQL执行错误: {str(e)}")
+        raise HTTPException(500, "数据库查询失败")
     except Exception as e:
         logger.error(f"服务器错误: {str(e)}")
+        raise HTTPException(500, "服务器内部错误")
 
 @app.post("/v1/retrieve",
          summary="标准文档检索接口",
@@ -123,7 +191,7 @@ async def hiagent_retrieve(request: HiAgentRequest):
         with get_conn() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
-                    SELECT title, content, publish_time, original_url 
+                    SELECT title, original_url, author, publish_time, content 
                     FROM wechat_articles 
                     WHERE MATCH(title, content) AGAINST(%s IN NATURAL LANGUAGE MODE)
                     ORDER BY publish_time DESC
@@ -139,7 +207,7 @@ async def hiagent_retrieve(request: HiAgentRequest):
                                 "source": original_url
                             }
                         }
-                        for title, content, publish_time, original_url in cur.fetchall()
+                        for title, content, publish_time, original_url, author in cur.fetchall()
                     ]
                 }
                 
@@ -149,6 +217,17 @@ async def hiagent_retrieve(request: HiAgentRequest):
 @app.post("/openapi.json")
 async def get_openapi():
     return app.openapi()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    logger.info(f"收到请求: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+    except Exception as e:
+        logger.error(f"请求处理失败: {str(e)}")
+        raise
+    logger.debug(f"响应状态码: {response.status_code}")
+    return response
 
 # 启动时指定host和port
 if __name__ == "__main__":
@@ -163,4 +242,12 @@ if __name__ == "__main__":
     logger.debug("===================\n")
     
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        # ssl_keyfile=Config().get("ssl_key_path", "ssl/private.key"),
+        # ssl_certfile=Config().get("ssl_cert_path", "ssl/certificate.pem"),
+        access_log=True,
+        log_level="debug"  # 添加详细日志
+    ) 
