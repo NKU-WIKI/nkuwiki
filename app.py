@@ -37,7 +37,7 @@ class App:
         self.channel_factory = channel_factory
         self.support_channel = Config().get("support_channel")
         self.channel_name = Config().get("channel_type")
-        self.model = Config().get("model")
+        self.model = Config().get("agent_type")
 
     def _setup_signal_handlers(self):
         """设置信号处理函数，用于优雅退出"""
