@@ -8,6 +8,7 @@ class BaseCrawler():
     Attributes:
         debug: 调试模式开关
         headless: 无头模式开关
+        use_proxy: 是否使用代理
         platform: 平台名称
     """
     def __init__(self, platform: str, debug: bool = False, headless: bool = False, use_proxy: bool = False) -> None:       
