@@ -38,3 +38,5 @@ def run_counselor_script():
     from from_sqlite_to_mysql import export_web_to_mysql
     export_web_to_mysql(logger=logging)
 
+if __name__ == '__main__':
+    run_counselor_script()
