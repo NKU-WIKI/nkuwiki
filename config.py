@@ -1,13 +1,18 @@
 import os
 import pickle
 import json
+import json
 import copy
+from singleton_decorator import singleton
+from loguru import logger
 from singleton_decorator import singleton
 from loguru import logger
 
 # 默认配置值，config.json中未配置的项会使用此处的默认值
+# 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
     # 支持的部署通道
+    "support_channel": ["terminal", "wechatmp", "wechatmp_service"],
     "support_channel": ["terminal", "wechatmp", "wechatmp_service"],
     # openai api配置
     "open_ai_api_key": "",  # openai api key
@@ -15,6 +20,7 @@ available_setting = {
     "open_ai_api_base": "https://api.openai.com/v1",
     "proxy": "",  # openai使用的代理
     # chatgpt模型， 当use_azure_chatgpt为true时，其名称为Azure上model deployment名称
+    "model": "coze",  # 可选择: gpt-4o, pt-4o-mini, gpt-4-turbo, claude-3-sonnet, wenxin, moonshot, qwen-turbo, xunfei, glm-4, minimax, gemini等模型，全部可选模型详见common/const.py文件
     "model": "coze",  # 可选择: gpt-4o, pt-4o-mini, gpt-4-turbo, claude-3-sonnet, wenxin, moonshot, qwen-turbo, xunfei, glm-4, minimax, gemini等模型，全部可选模型详见common/const.py文件
     "use_azure_chatgpt": False,  # 是否使用azure的chatgpt
     "azure_deployment_id": "",  # azure 模型部署名称
@@ -158,6 +164,7 @@ available_setting = {
     "appdata_dir": "",  # 数据目录
     # 插件配置
     "plugin_trigger_prefix": "&",  # 规范插件提供聊天相关指令的前缀，建议不要和管理员指令前缀"#"冲突
+    "plugin_trigger_prefix": "&",  # 规范插件提供聊天相关指令的前缀，建议不要和管理员指令前缀"#"冲突
     # 是否使用全局插件配置
     "use_global_plugin_config": False,
     "max_media_send_count": 3,  # 单次最大发送媒体资源的个数
@@ -175,6 +182,13 @@ available_setting = {
     "web_port": 9899,
     # coze配置
     "coze_api_key": "",
+    "coze_bot_id": "",
+    "coze_api_base": "https://api.coze.cn/open_api/v2",
+    # hiagent配置
+    "hiagent_api_key": "",
+    "hiagent_app_id": "",
+    "hiagent_api_base": "https://coze.nankai.edu.cn/api/proxy/api/v1",
+    "hiagent_user_id": "default_user",
     "coze_bot_id": "",
     "coze_api_base": "https://api.coze.cn/open_api/v2",
     # hiagent配置
@@ -244,6 +258,7 @@ available_setting = {
 }
 
 @singleton
+@singleton
 class Config(dict):
     """配置管理单例类，继承字典类型实现配置存储
     
@@ -251,7 +266,18 @@ class Config(dict):
         user_datas: 用户数据存储字典
         logger: 日志记录器实例
     """
+    """配置管理单例类，继承字典类型实现配置存储
+    
+    属性:
+        user_datas: 用户数据存储字典
+        logger: 日志记录器实例
+    """
     def __init__(self, d=None):
+        """初始化配置实例
+        
+        Args:
+            d: 初始配置字典，默认为None
+        """
         """初始化配置实例
         
         Args:
@@ -267,8 +293,10 @@ class Config(dict):
             self[k] = v
         self.user_datas = {}
         self.plugin_config = {}
+        self.plugin_config = {}
 
     def __getitem__(self, key):
+        """重写字典获取项方法，实现配置键名大小写不敏感"""
         """重写字典获取项方法，实现配置键名大小写不敏感"""
         key = key.lower()  # 统一转小写
         if key not in available_setting:
@@ -285,13 +313,58 @@ class Config(dict):
         Returns:
             配置项值或默认值
         """
+        """安全获取配置项方法
+        
+        Args:
+            key: 配置键名
+            default: 默认返回值，默认为None
+            
+        Returns:
+            配置项值或默认值
+        """
         try:
             return self[key.lower()]  # 统一转小写
         except KeyError:
             return default
         except Exception as e:
             self.logger.exception(f"[config] 配置获取异常")
+            self.logger.exception(f"[config] 配置获取异常")
             return default
+        
+    @staticmethod
+    def get_root():
+        """获取配置文件根目录路径
+        
+        Returns:
+            str: 当前文件的绝对路径目录
+        """
+        return os.path.dirname(os.path.abspath(__file__))
+    
+    @staticmethod
+    def read_file(path):
+        """读取文件内容
+        
+        Args:
+            path: 文件路径
+            
+        Returns:
+            str: 文件内容字符串
+        """
+        with open(path, mode="r", encoding="utf-8") as f:
+            return f.read()
+        
+    def get_appdata_dir(self):
+        """获取应用数据存储目录，自动创建不存在的目录
+        
+        Returns:
+            str: 数据存储目录路径
+        """
+        data_path = os.path.join(self.get_root(), self.get("appdata_dir", ""))
+        if not os.path.exists(data_path):
+            self.logger.info("[INIT] data path not exists, create it: {}".format(data_path))
+            os.makedirs(data_path)
+        return data_path
+    
         
     @staticmethod
     def get_root():
@@ -336,24 +409,36 @@ class Config(dict):
         Returns:
             dict: 用户数据字典
         """
+        """获取指定用户数据字典
+        
+        Args:
+            user: 用户标识符
+            
+        Returns:
+            dict: 用户数据字典
+        """
         if self.user_datas.get(user) is None:
             self.user_datas[user] = {}
         return self.user_datas[user]
 
     def load_user_datas(self):
         """从持久化存储加载用户数据"""
+        """从持久化存储加载用户数据"""
         try:
             with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "rb") as f:
                 self.user_datas = pickle.load(f)
+                self.logger.info("[Config] User datas loaded.")
                 self.logger.info("[Config] User datas loaded.")
         except FileNotFoundError as e:
             pass
             # self.logger.debug("[Config] User datas file not found, ignore.")
         except Exception as e:
             self.logger.debug("[Config] User datas error")
+            self.logger.debug("[Config] User datas error")
             self.user_datas = {}
 
     def save_user_datas(self):
+        """持久化保存用户数据到文件"""
         """持久化保存用户数据到文件"""
         try:
             import copy
@@ -366,6 +451,34 @@ class Config(dict):
             with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "wb") as f:
                 pickle.dump(save_data, f)
                 self.logger.info("[Config] User datas saved.")
+            import copy
+            save_data = copy.deepcopy(self.user_datas)
+            for user in list(save_data.keys()):
+                for key in list(save_data[user].keys()):
+                    if not isinstance(save_data[user][key], (str, int, float, bool, list, dict)):
+                        del save_data[user][key]
+            
+            with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "wb") as f:
+                pickle.dump(save_data, f)
+                self.logger.info("[Config] User datas saved.")
+        except Exception as e:
+            self.logger.error(f"[Config] 保存用户数据失败: {str(e)}")
+
+    def drag_sensitive(self):
+        """生成脱敏后的配置信息
+        
+        Returns:
+            dict: 脱敏处理后的配置字典
+        """
+        try:
+            if isinstance(self, str):
+                conf_dict: dict = json.loads(self)
+                conf_dict_copy = copy.deepcopy(conf_dict)
+                for key in conf_dict_copy:
+                    if "key" in key or "secret" in key:
+                        if isinstance(conf_dict_copy[key], str):
+                            conf_dict_copy[key] = conf_dict_copy[key][0:3] + "*" * 5 + conf_dict_copy[key][-3:]
+                return json.dumps(conf_dict_copy, indent=4)
         except Exception as e:
             self.logger.error(f"[Config] 保存用户数据失败: {str(e)}")
 
@@ -466,8 +579,19 @@ class Config(dict):
 # global_config = {
 #     "admin_users": []
 # }
+# global_config = {
+#     "admin_users": []
+# }
 
 
+# def get_model_config(model_name: str) -> dict:
+#     """安全获取模型配置"""
+#     global plugin_config
+#     config = plugin_config.get(model_name)
+#     if not isinstance(config, dict):
+#         App().logger.warning(f"模型{model_name}配置格式错误，预期字典类型")
+#         return {}
+#     return config
 # def get_model_config(model_name: str) -> dict:
 #     """安全获取模型配置"""
 #     global plugin_config
