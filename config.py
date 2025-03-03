@@ -202,7 +202,45 @@ available_setting = {
     "market_token": "",  # 集市token，类型str，默认为空
     "ssl_key_path": "",  # ssl私钥路径，类型str，默认为空
     "ssl_cert_path": "",  # ssl证书路径，类型str，默认为空
-    "agent_type": ""  # 代理类型，类型str，默认为空
+    "agent_type": "",  # 代理类型，类型str，默认为空
+
+    # EasyRAG配置项
+    "rerank_fusion_type": 1,  # 0-->不使用精排后fusion 1-->两路检索结果rrf 2-->生成长度最大的作为最终结果 3-->两路生成结果拼接
+    "ans_refine_type": 0,  # 0-->不对答案做后处理 1-->LLM利用top1文档和参考答案生成新答案 2-->LLM将top1文档和参考答案拼接生成新答案
+    "re_only": False,  # 只检索，用于调试检索
+    "retrieval_type": 3,  # 1-->密集 2-->稀疏 3-->混合
+    "f_topk": 128,  # 仅用于混合检索器最终的fusion数量
+    "f_topk_1": 288,  # 密集检索粗排topk
+    "f_topk_2": 192,  # 稀疏检索粗排topk
+    "f_topk_3": 6,  # 路径搜索粗排topk
+    "reindex": False,  # 是否从头开始构建索引
+    "embedding_name": "BAAI/bge-large-zh-v1.5",  # 嵌入模型名称
+    "vector_size": 1024,  # 向量维度
+    "cache_path": "cache",  # 用于qdrant 硬盘存储调试
+    "collection_name": "aiops24",  # qdrant collection名字
+    "embed_dim": 1024,  # 嵌入维度
+    "bm25_type": 0,  # 0-->官方实现 1-->bm25s实现，速度更快
+    "r_topk": 6,  # 精排topk
+    "r_topk_1": 6,  # 精排后Fusion的topk
+    "reranker_name": "BAAI/bge-reranker-base",  # 重排模型名称
+    "use_reranker": 2,  # 0-->不使用 1-->ST的普通Reranker 2-->bge LLM Reranker
+    "r_embed_bs": 32,  # 重排batch size
+    "r_use_efficient": 0,  # 0-->不加速 1-->使用最大值选择方法加速 2-->使用熵选择方法加速
+    "llm_embed_type": 3,  # 最终的上下文文档编码参数
+    "f_embed_type_1": 1,  # 密集检索的文档编码方式
+    "f_embed_type_2": 2,  # 稀疏检索的文档编码方式
+    "r_embed_type": 1,  # 重排的文档编码方式
+    "split_type": 0,  # 0-->Sentence 1-->Hierarchical
+    "chunk_size": 512,  # 分块大小
+    "chunk_overlap": 200,  # 分块重叠大小
+    "hfmodel_cache_folder": "/root/.cache/gitee-ai/hub/",  # huggingface模型缓存目录
+    "qdrant_url": "http://127.0.0.1:6333",  # qdrant服务地址
+    "compress_method": "",  # 压缩方法 bm25_extract llmlingua longllmlingua
+    "compress_rate": 0.5,  # 压缩率
+    "hyde": False,  # 是否使用hyde
+    "hyde_merging": False,  # 是否使用hyde merging
+    "auto_fix_model": False,  # 是否自动修复模型
+    "qdrant_timeout": 10,  # qdrant超时时间
 }
 
 @singleton
@@ -309,7 +347,8 @@ class Config(dict):
                 self.user_datas = pickle.load(f)
                 self.logger.info("[Config] User datas loaded.")
         except FileNotFoundError as e:
-            self.logger.debug("[Config] User datas file not found, ignore.")
+            pass
+            # self.logger.debug("[Config] User datas file not found, ignore.")
         except Exception as e:
             self.logger.debug("[Config] User datas error")
             self.user_datas = {}
@@ -419,7 +458,7 @@ class Config(dict):
                 self.update(config_data)
         except json.JSONDecodeError as e:
             self.logger.exception(f"[config] 配置文件格式错误")
-        self.logger.debug("[config] load config: {}".format(self.drag_sensitive()))
+        # self.logger.debug("[config] load config: {}".format(self.drag_sensitive()))
         self.load_user_datas()
         return self
 
