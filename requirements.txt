@@ -7,7 +7,7 @@ pydantic==2.8.0
 torch==2.3.0+cpu # no cuda environment
 transformers>=4.49.0
 sentence-transformers==3.4.1
-qdrant-client==1.13.2
+qdrant-client==1.13.2 #qdrant-server==1.13.2
 numpy==1.26.4
 llama-index-vector-stores-qdrant==0.4.3
 
@@ -16,6 +16,7 @@ llama-index-vector-stores-qdrant==0.4.3
 ### utils
 python-dotenv
 loguru
+singleton_decorator
 
 ### ml&nlp&ra
 accelerate
@@ -34,5 +35,8 @@ playwright
 fastapi
 uvicorn
 beautifulsoup4
+
+### database
+mysql-connector-python
 
 

@@ -33,12 +33,8 @@ def create_app() -> FastAPI:
     return app
 
 
-# 使用Config类的get_rag_config方法
-config = Config().get_rag_config()
-# 也可以直接使用Config().get()获取单个配置项
-# embedding_name = Config().get("embedding_name", "BAAI/bge-large-zh-v1.5")
-
-easyrag = EasyRAGPipeline(config)
+# 直接初始化EasyRAGPipeline
+easyrag = EasyRAGPipeline()
 
 app = create_app()
 

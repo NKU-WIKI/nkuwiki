@@ -1,20 +1,20 @@
 import os
 # 设置环境变量
-os.environ['NLTK_DATA'] = './data/nltk_data/'
-os.environ["HF_ENDPOINT"] = "https://hf-api.gitee.com"
-os.environ["HF_HOME"] = "./data/models"
-os.environ["SENTENCE_TRANSFORMERS_HOME"] = "./data/models"  # sentence-transformers缓存
+from config import Config
+
+# 从配置文件中获取环境变量设置
+os.environ['NLTK_DATA'] = Config().get('paths.nltk_data_path', './data/nltk_data/')
+os.environ["HF_ENDPOINT"] = Config().get('paths.hf_endpoint', 'https://hf-api.gitee.com')
+os.environ["HF_HOME"] = Config().get('paths.hf_home', './data/models')
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = Config().get('paths.sentence_transformers_home', './data/models')  # sentence-transformers缓存
 
 import sys
 import pathlib
 sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent.parent))
-import random
 import asyncio
 import nest_asyncio
-import time
 from datetime import datetime
 
-# Initialize Settings and CallbackManager before any llama_index imports
 from llama_index.core import Settings
 from llama_index.core.callbacks import CallbackManager, LlamaDebugHandler, TokenCountingHandler
 from llama_index.core import StorageContext, QueryBundle, PromptTemplate
@@ -33,7 +33,6 @@ Settings.chunk_size = 512
 Settings.chunk_overlap = 50
 
 from qdrant_client import models
-from etl.embedding.gte_embeddings import GTEEmbedding
 from etl.embedding.hf_embeddings import HuggingFaceEmbedding
 from etl.embedding.ingestion import (
     read_data, 
@@ -43,7 +42,7 @@ from etl.embedding.ingestion import (
     build_qdrant_filters,
     get_node_content as _get_node_content
 )
-from etl.retrieval.rerankers import SentenceTransformerRerank, LLMRerank
+from etl.retrieval.rerankers import SentenceTransformerRerank
 from etl.retrieval.retrievers import QdrantRetriever, BM25Retriever, HybridRetriever
 from etl.embedding.hierarchical import get_leaf_nodes
 from etl.utils.template import QA_TEMPLATE, MERGE_TEMPLATE
@@ -83,47 +82,39 @@ class EasyRAGPipeline:
         return pipeline
 
     def __init__(self):
-        # 直接使用Config类的get_rag_config方法
-        self.config = Config().get_rag_config()
-        # 也可以直接从Config()获取单个配置项
-        # self.embedding_name = Config().get("embedding_name", "BAAI/bge-large-zh-v1.5")
-        
-        # Initialize callback manager first
-        if Settings.callback_manager is None:
-            Settings.callback_manager = callback_manager
-        
-        self.re_only = self.config.get('re_only', False)
-        self.rerank_fusion_type = self.config.get('rerank_fusion_type', 1)
-        self.ans_refine_type = self.config.get('ans_refine_type', 0)
+        # 直接使用Config().get方法获取各个配置项
+        self.re_only = Config().get('re_only', False)
+        self.rerank_fusion_type = Config().get('rerank_fusion_type', 1)
+        self.ans_refine_type = Config().get('ans_refine_type', 0)
       
-        self.reindex = self.config.get('reindex', False)
-        self.retrieval_type = self.config.get('retrieval_type', 3)
-        self.f_topk = self.config.get('f_topk', 128)
-        self.f_topk_1 = self.config.get('f_topk_1', 128)
-        self.f_topk_2 = self.config.get('f_topk_2', 288)
-        self.f_topk_3 = self.config.get('f_topk_3', 6)
-        self.bm25_type = self.config.get('bm25_type', 1)
-        self.embedding_name = self.config.get('embedding_name', 'BAAI/bge-large-zh-v1.5')
+        self.reindex = Config().get('reindex', False)
+        self.retrieval_type = Config().get('retrieval_type', 3)
+        self.f_topk = Config().get('f_topk', 128)
+        self.f_topk_1 = Config().get('f_topk_1', 128)
+        self.f_topk_2 = Config().get('f_topk_2', 288)
+        self.f_topk_3 = Config().get('f_topk_3', 6)
+        self.bm25_type = Config().get('bm25_type', 1)
+        self.embedding_name = Config().get('embedding_name', 'BAAI/bge-large-zh-v1.5')
 
-        self.r_topk = self.config.get('r_topk', 6)
-        self.r_topk_1 = self.config.get('r_topk_1', 6)
-        self.r_embed_bs = self.config.get('r_embed_bs', 32)
-        self.reranker_name = self.config.get('reranker_name', "cross-encoder/stsb-distilroberta-base")
+        self.r_topk = Config().get('r_topk', 6)
+        self.r_topk_1 = Config().get('r_topk_1', 6)
+        self.r_embed_bs = Config().get('r_embed_bs', 32)
+        self.reranker_name = Config().get('reranker_name', "cross-encoder/stsb-distilroberta-base")
 
-        self.f_embed_type_1 = self.config.get('f_embed_type_1', 1)
-        self.f_embed_type_2 = self.config.get('f_embed_type_2', 2)
-        self.r_embed_type = self.config.get('r_embed_type', 1)
+        self.f_embed_type_1 = Config().get('f_embed_type_1', 1)
+        self.f_embed_type_2 = Config().get('f_embed_type_2', 2)
+        self.r_embed_type = Config().get('r_embed_type', 1)
         
         # 初始化问答模板
         self.qa_template = QA_TEMPLATE
         self.merge_template = MERGE_TEMPLATE
 
-        self.split_type = self.config.get('split_type', 0)
-        self.chunk_size = self.config.get('chunk_size', 512)
-        self.chunk_overlap = self.config.get('chunk_overlap', 200)
+        self.split_type = Config().get('split_type', 0)
+        self.chunk_size = Config().get('chunk_size', 512)
+        self.chunk_overlap = Config().get('chunk_overlap', 200)
           
         # 从配置文件获取存储路径
-        data_config = self.config.get('data', {})
+        data_config = Config().get('data', {})
         
         # 设置原始数据路径
         raw_config = data_config.get('raw', {})
@@ -140,11 +131,11 @@ class EasyRAGPipeline:
         self.collection_name = qdrant_config.get('collection', 'main_index')
         self.vector_size = qdrant_config.get('vector_size', 1024)
 
-        self.compress_method = self.config.get('compress_method', "")
-        self.compress_rate = self.config.get('compress_rate', 0.5)
+        self.compress_method = Config().get('compress_method', "")
+        self.compress_rate = Config().get('compress_rate', 0.5)
 
-        self.hyde = self.config.get('hyde', False)
-        self.hyde_merging = self.config.get('hyde_merging', False)
+        self.hyde = Config().get('hyde', False)
+        self.hyde_merging = Config().get('hyde_merging', False)
 
         self.qdrant_client = None
 
