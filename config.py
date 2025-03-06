@@ -507,7 +507,7 @@ class Config(dict):
     
     def subscribe_msg(self):
         """获取订阅消息"""
-        trigger_prefix = self.get("services.wechatmp.subscribe_msg", "")
+        trigger_prefix = self.get("services.wechatmp_service.subscribe_msg", "")
         return trigger_prefix
 
     def drag_sensitive(self):

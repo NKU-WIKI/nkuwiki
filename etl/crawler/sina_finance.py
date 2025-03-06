@@ -1,8 +1,4 @@
 from __init__ import *
-from base_crawler import BaseCrawler
-from datetime import datetime
-
-Config().load_config()
 
 class SinaFinance(BaseCrawler):
     """新浪财经国内新闻爬虫
@@ -18,7 +14,6 @@ class SinaFinance(BaseCrawler):
         super().__init__(platform=self.platform, debug=debug, headless=headless, use_proxy=use_proxy)
         self.page = self.context.new_page()
         self.inject_anti_detection_script()
-        self.logger.info("Initialized SinaFinance crawler")
 
     def scrape_news(self, scraped_original_urls: list, max_news_num: int = 50) -> list[dict]:
         """抓取国内新闻列表

@@ -1,0 +1,71 @@
+"""
+ETL模块，负责数据抽取、转换和加载
+"""
+import os
+import sys
+from pathlib import Path
+from loguru import logger
+from typing import Dict, List, Optional, Any, Set
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from config import Config
+
+# 导入配置
+config = Config()
+config.load_config()
+
+# ---------- 全局共享配置项 ----------
+# 基础路径配置
+BASE_PATH = Path(config.get("data.base_path", "./etl/data"))
+RAW_PATH = BASE_PATH / "raw"
+CACHE_PATH = BASE_PATH / "cache"
+INDEX_PATH = BASE_PATH / "index"
+QDRANT_PATH = BASE_PATH / "qdrant"
+LOG_PATH = Path(__file__).resolve().parent / "logs"
+# 创建必要的目录
+for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, LOG_PATH]:
+    path.mkdir(exist_ok=True, parents=True)
+
+# 环境变量配置
+HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
+HF_HOME = config.get('etl.data.models.hf_home', './etl/data/models')
+SENTENCE_TRANSFORMERS_HOME = config.get('etl.data.models.sentence_transformers_home', './etl/data/models')
+NLTK_DATA = config.get('etl.data.nltk.path', './etl/data/nltk_data/')
+
+# 设置环境变量
+os.environ["HF_ENDPOINT"] = HF_ENDPOINT
+os.environ["HF_HOME"] = HF_HOME
+os.environ["SENTENCE_TRANSFORMERS_HOME"] = SENTENCE_TRANSFORMERS_HOME
+os.environ['NLTK_DATA'] = NLTK_DATA
+
+# 设置日志
+LOG_DIR = LOG_PATH
+LOG_DIR.mkdir(exist_ok=True, parents=True)
+logger.add(LOG_DIR / "etl.log", rotation="1 day", retention="3 months", level="INFO")
+
+# 导出子模块
+# from etl import crawler
+# from etl import load
+# from etl import transform
+# from etl import retrieval
+# from etl import embedding
+# from etl import api
+# from etl import data
+# from etl import utils
+
+# 版本信息
+__version__ = "1.0.0"
+
+# 定义导出的符号列表 
+__all__ = [
+    # 基础库和工具
+    'os', 'sys', 'Path', 'logger', 'config',
+    'Dict', 'List', 'Optional', 'Any', 'Set',
+    # 子模块
+    # 'crawler', 'load', 'transform', 'retrieval', 'embedding', 'api', 'data', 'utils',
+    
+    # 路径配置
+    'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'LOG_PATH',
+    
+    # 环境变量配置
+    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME', 'NLTK_DATA'
+]

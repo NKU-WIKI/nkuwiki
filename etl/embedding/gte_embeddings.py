@@ -1,6 +1,5 @@
 import logging
 from typing import Any, List
-
 import torch
 import torch.nn.functional as F
 from llama_index.core.base.embeddings.base import (
@@ -11,9 +10,7 @@ from llama_index.core.schema import BaseNode, MetadataMode
 from llama_index.core.utils import infer_torch_device
 from torch import Tensor
 from transformers import AutoTokenizer
-
 from etl.utils.modeling_qwen import Qwen2Model
-from etl.utils.tokenization_qwen import Qwen2Tokenizer
 from etl.embedding.ingestion import get_node_content
 
 logger = logging.getLogger(__name__)

@@ -1,19 +1,22 @@
 import os
-# 设置环境变量
-from config import Config
-
-# 从配置文件中获取环境变量设置
-os.environ['NLTK_DATA'] = Config().get('paths.nltk_data_path', './data/nltk_data/')
-os.environ["HF_ENDPOINT"] = Config().get('paths.hf_endpoint', 'https://hf-api.gitee.com')
-os.environ["HF_HOME"] = Config().get('paths.hf_home', './data/models')
-os.environ["SENTENCE_TRANSFORMERS_HOME"] = Config().get('paths.sentence_transformers_home', './data/models')  # sentence-transformers缓存
-
 import sys
 import pathlib
-sys.path.append(str(pathlib.Path(__file__).resolve().parent.parent.parent))
 import asyncio
-import nest_asyncio
-from datetime import datetime
+import time
+import math
+import copy
+import uuid
+import hashlib
+import inspect
+import warnings
+import traceback
+from tqdm import tqdm
+from typing import List, Dict, Any, Optional, Union, Tuple, Callable, Set
+from pathlib import Path
+import re
+
+# 导入etl.load模块中的所有变量和函数
+from etl.load import *
 
 from llama_index.core import Settings
 from llama_index.core.callbacks import CallbackManager, LlamaDebugHandler, TokenCountingHandler
@@ -29,8 +32,8 @@ callback_manager = CallbackManager([
 
 Settings.callback_manager = callback_manager
 Settings.num_output = 512
-Settings.chunk_size = 512
-Settings.chunk_overlap = 50
+Settings.chunk_size = CHUNK_SIZE
+Settings.chunk_overlap = CHUNK_OVERLAP
 
 from qdrant_client import models
 from etl.embedding.hf_embeddings import HuggingFaceEmbedding
@@ -50,11 +53,6 @@ from etl.embedding.compressors import ContextCompressor
 from etl.utils.llm_utils import local_llm_generate as _local_llm_generate
 from etl.utils.rag import generation as _generation
 from config import Config
-
-def load_stopwords(path):
-    with open(path, 'r', encoding='utf-8') as file:
-        stopwords = set([line.strip() for line in file])
-    return stopwords
 
 def merge_strings(A, B):
     # 找到A的结尾和B的开头最长的匹配子串
@@ -82,60 +80,56 @@ class EasyRAGPipeline:
         return pipeline
 
     def __init__(self):
-        # 直接使用Config().get方法获取各个配置项
-        self.re_only = Config().get('re_only', False)
-        self.rerank_fusion_type = Config().get('rerank_fusion_type', 1)
-        self.ans_refine_type = Config().get('ans_refine_type', 0)
+        # 使用__init__.py中的配置
+        self.re_only = RE_ONLY
+        self.rerank_fusion_type = RERANK_FUSION_TYPE
+        self.ans_refine_type = ANS_REFINE_TYPE
       
-        self.reindex = Config().get('reindex', False)
-        self.retrieval_type = Config().get('retrieval_type', 3)
-        self.f_topk = Config().get('f_topk', 128)
-        self.f_topk_1 = Config().get('f_topk_1', 128)
-        self.f_topk_2 = Config().get('f_topk_2', 288)
-        self.f_topk_3 = Config().get('f_topk_3', 6)
-        self.bm25_type = Config().get('bm25_type', 1)
-        self.embedding_name = Config().get('embedding_name', 'BAAI/bge-large-zh-v1.5')
+        self.reindex = REINDEX
+        self.retrieval_type = RETRIEVAL_TYPE
+        self.f_topk = F_TOPK
+        self.f_topk_1 = F_TOPK_1
+        self.f_topk_2 = F_TOPK_2
+        self.f_topk_3 = F_TOPK_3
+        self.bm25_type = BM25_TYPE
+        self.embedding_name = EMBEDDING_NAME
 
-        self.r_topk = Config().get('r_topk', 6)
-        self.r_topk_1 = Config().get('r_topk_1', 6)
-        self.r_embed_bs = Config().get('r_embed_bs', 32)
-        self.reranker_name = Config().get('reranker_name', "cross-encoder/stsb-distilroberta-base")
+        self.r_topk = R_TOPK
+        self.r_topk_1 = R_TOPK_1
+        self.r_embed_bs = R_EMBED_BS
+        self.reranker_name = RERANKER_NAME
+        self.r_use_efficient = R_USE_EFFICIENT
 
-        self.f_embed_type_1 = Config().get('f_embed_type_1', 1)
-        self.f_embed_type_2 = Config().get('f_embed_type_2', 2)
-        self.r_embed_type = Config().get('r_embed_type', 1)
+        self.f_embed_type_1 = F_EMBED_TYPE_1
+        self.f_embed_type_2 = F_EMBED_TYPE_2
+        self.r_embed_type = R_EMBED_TYPE
+        self.llm_embed_type = LLM_EMBED_TYPE
+        
+        # 全局的索引检查操作锁
+        self.lock = asyncio.Lock()
         
         # 初始化问答模板
         self.qa_template = QA_TEMPLATE
         self.merge_template = MERGE_TEMPLATE
 
-        self.split_type = Config().get('split_type', 0)
-        self.chunk_size = Config().get('chunk_size', 512)
-        self.chunk_overlap = Config().get('chunk_overlap', 200)
+        self.split_type = SPLIT_TYPE
+        self.chunk_size = CHUNK_SIZE
+        self.chunk_overlap = CHUNK_OVERLAP
           
-        # 从配置文件获取存储路径
-        data_config = Config().get('data', {})
+        # 设置路径 - 使用__init__.py中定义的路径变量
+        self.raw_dir = RAW_PATH
+        self.index_dir = INDEX_PATH
+        self.qdrant_dir = QDRANT_PATH
         
-        # 设置原始数据路径
-        raw_config = data_config.get('raw', {})
-        self.raw_dir = os.path.abspath(raw_config.get('path', 'data/raw'))
-        
-        # 设置索引数据路径
-        index_config = data_config.get('index', {})
-        self.index_dir = os.path.abspath(index_config.get('path', 'data/index'))
-        
-        # 设置Qdrant存储路径
-        qdrant_config = data_config.get('qdrant', {})
-        self.qdrant_url = qdrant_config.get('url')
-        self.qdrant_dir = os.path.abspath(qdrant_config.get('path', 'data/qdrant'))
-        self.collection_name = qdrant_config.get('collection', 'main_index')
-        self.vector_size = qdrant_config.get('vector_size', 1024)
+        self.qdrant_url = QDRANT_URL
+        self.collection_name = COLLECTION_NAME
+        self.vector_size = VECTOR_SIZE
 
-        self.compress_method = Config().get('compress_method', "")
-        self.compress_rate = Config().get('compress_rate', 0.5)
+        self.compress_method = COMPRESS_METHOD
+        self.compress_rate = COMPRESS_RATE
 
-        self.hyde = Config().get('hyde', False)
-        self.hyde_merging = Config().get('hyde_merging', False)
+        self.hyde_enabled = HYDE_ENABLED
+        self.hyde_merging = HYDE_MERGING
 
         self.qdrant_client = None
 
@@ -150,217 +144,96 @@ class EasyRAGPipeline:
             self.qdrant_client = None
 
     async def save_state(self):
-        """双持久化存储：保存Qdrant快照和文档存储"""
+        """保存索引状态"""
         try:
+            if not self.docstore:
+                self.logger.warning("空文档存储，跳过保存")
+                return
+                
+            # 确保文件名有效
+            valid_chars = re.compile(r'[^\w\-_.]')
+            version = datetime.now().strftime('%Y%m%d%H%M%S')
+            version = valid_chars.sub('_', version)
+            
+            # 使用Path对象拼接路径
+            backup_path = self.index_dir / f"docstore_{version}.json"
+            
             # 确保索引目录存在
-            os.makedirs(self.index_dir, exist_ok=True)
+            self.index_dir.mkdir(exist_ok=True, parents=True)
             
-            # Qdrant原生快照
-            if hasattr(self, 'qdrant_client') and self.qdrant_client is not None:
-                try:
-                    # 创建带时间戳的快照名称
-                    snapshot_name = f"snapshot_{datetime.now().strftime('%Y%m%d%H%M%S')}"
-                    await self.qdrant_client.create_snapshot(
-                        collection_name=self.collection_name,
-                        snapshot_name=snapshot_name
-                    )
-                    print(f"创建Qdrant快照成功: {snapshot_name}")
-                    
-                    # 管理快照数量，保留最近3个
-                    try:
-                        snapshots = await self.qdrant_client.list_snapshots(collection_name=self.collection_name)
-                        if len(snapshots) > 3:
-                            for old_snapshot in snapshots[:-3]:
-                                try:
-                                    await self.qdrant_client.delete_snapshot(
-                                        collection_name=self.collection_name,
-                                        snapshot_name=old_snapshot.name
-                                    )
-                                    print(f"删除旧快照: {old_snapshot.name}")
-                                except Exception as e:
-                                    print(f"删除旧快照失败: {str(e)}")
-                    except Exception as e:
-                        print(f"管理Qdrant快照失败: {str(e)}")
-                except Exception as e:
-                    print(f"创建Qdrant快照失败: {str(e)}")
+            # 保存文档存储
+            self.docstore.persist(str(backup_path))
+            print(f"保存文档存储成功: {backup_path}")
             
-            # 文档存储版本控制
-            if hasattr(self, 'docstore') and self.docstore is not None:
-                # 仅当docstore非空时才保存
-                if len(self.docstore.docs) > 0:
-                    version = datetime.now().strftime("%Y%m%d%H%M%S")
-                    backup_path = os.path.join(self.index_dir, f"docstore_{version}.json")
-                    try:
-                        # 确保索引目录存在
-                        os.makedirs(os.path.dirname(backup_path), exist_ok=True)
-                        print(f"正在保存文档存储到{backup_path}...")
-                        
-                        # 检查docstore.apersist方法是否存在
-                        if hasattr(self.docstore, 'apersist'):
-                            await self.docstore.apersist(backup_path)
-                        elif hasattr(self.docstore, 'persist'):
-                            # 如果没有异步方法，回退到同步方法
-                            self.docstore.persist(backup_path)
-                        else:
-                            print("警告：文档存储没有persist或apersist方法")
-                            # 实现简单的JSON序列化
-                            import json
-                            try:
-                                # 尝试简单序列化文档ID和内容
-                                doc_dict = {node_id: node.to_dict() for node_id, node in self.docstore.docs.items()}
-                                with open(backup_path, 'w', encoding='utf-8') as f:
-                                    json.dump(doc_dict, f, ensure_ascii=False, indent=2)
-                            except Exception as e:
-                                print(f"简单序列化文档存储失败: {str(e)}")
-                                raise
-                                
-                        print(f"文档存储已保存到{backup_path}，包含{len(self.docstore.docs)}个文档")
-                        
-                        # 维护最近3个版本
-                        versions = sorted([f for f in os.listdir(self.index_dir) 
-                                        if f.startswith("docstore_")])
-                        for old_version in versions[:-3]:
-                            try:
-                                os.remove(os.path.join(self.index_dir, old_version))
-                                print(f"删除旧版本{old_version}")
-                            except Exception as e:
-                                print(f"删除旧版本{old_version}失败: {str(e)}")
-                    except Exception as e:
-                        print(f"保存文档存储失败: {str(e)}")
-                        # 应急存储
-                        emergency_path = os.path.join(self.index_dir, "emergency.json")
+            # 管理旧版本的docstore文件，保留最近5个
+            try:
+                docstore_files = sorted(list(self.index_dir.glob("docstore_*.json")))
+                if len(docstore_files) > 5:
+                    for old_version in docstore_files[:-5]:
                         try:
-                            if hasattr(self.docstore, 'apersist'):
-                                await self.docstore.apersist(emergency_path)
-                            elif hasattr(self.docstore, 'persist'):
-                                self.docstore.persist(emergency_path)
-                            else:
-                                # 简单序列化
-                                import json
-                                doc_dict = {node_id: node.to_dict() for node_id, node in self.docstore.docs.items()}
-                                with open(emergency_path, 'w', encoding='utf-8') as f:
-                                    json.dump(doc_dict, f, ensure_ascii=False, indent=2)
-                            print(f"应急存储已保存到{emergency_path}")
+                            old_version.unlink()  # 使用Path.unlink()删除文件
+                            print(f"删除旧文档存储: {old_version}")
                         except Exception as e:
-                            print(f"应急存储失败: {str(e)}")
-                else:
-                    print("文档存储为空，跳过保存")
-            else:
-                print("文档存储不可用，跳过保存")
-
+                            print(f"删除旧文档存储失败: {str(e)}")
+            except Exception as e:
+                print(f"管理旧版本文档存储失败: {str(e)}")
+                
+            # 保存应急文档存储
+            try:
+                emergency_path = self.index_dir / "emergency.json"
+                self.docstore.persist(str(emergency_path))
+                print(f"保存应急文档存储成功: {emergency_path}")
+            except Exception as e:
+                print(f"应急存储失败: {str(e)}")
         except Exception as e:
-            print(f"持久化失败: {str(e)}")
+            print(f"保存索引状态失败: {str(e)}")
 
     async def load_state(self):
-        """状态加载"""
+        """加载索引状态"""
         try:
-            # 确保索引目录存在
-            os.makedirs(self.index_dir, exist_ok=True)
-            
-            # 加载最新索引存储
-            versions = []
-            if os.path.exists(self.index_dir):
-                versions = [f for f in os.listdir(self.index_dir) 
-                           if f.startswith("docstore_")]
+            if self.use_embeddings and not self.embeddings:
+                self.logger.warning("嵌入模型未初始化，跳过加载索引状态")
+                return
                 
-            if versions:
-                try:
-                    latest = sorted(versions)[-1]
-                    latest_path = os.path.join(self.index_dir, latest)
-                    print(f"尝试从{latest_path}加载索引存储...")
-                    
-                    # 尝试使用SimpleDocumentStore.from_persist_path方法
-                    try:
-                        self.docstore = SimpleDocumentStore.from_persist_path(
-                            latest_path
-                        )
-                        print(f"从{latest}加载索引存储成功，包含{len(self.docstore.docs)}个文档")
-                    except (ImportError, AttributeError) as e:
-                        print(f"通过from_persist_path加载失败: {str(e)}")
-                        # 尝试手动解析JSON文件
+            # 检查索引目录是否存在
+            if not self.index_dir.exists():
+                self.logger.warning(f"索引目录不存在: {self.index_dir}")
+                return
+                
+            # 查找所有docstore文件
+            docstore_files = sorted(list(self.index_dir.glob("docstore_*.json")))
+            if not docstore_files:
+                self.logger.warning("未找到文档存储文件")
+                return
+                
+            # 加载最新的文档存储
+            latest = docstore_files[-1]
+            try:
+                self.docstore = SimpleDocumentStore.from_persist_path(str(latest))
+                self.logger.info(f"加载文档存储成功: {latest}")
+                
+                # 如果docstore为空，尝试加载应急文档存储
+                if not self.docstore.docs:
+                    emergency_path = self.index_dir / "emergency.json"
+                    if emergency_path.exists():
                         try:
-                            import json
-                            from llama_index.core.schema import TextNode
-                            
-                            with open(latest_path, 'r', encoding='utf-8') as f:
-                                docs_data = json.load(f)
-                            
-                            self.docstore = SimpleDocumentStore()
-                            
-                            # 检查数据格式并相应处理
-                            if isinstance(docs_data, dict):
-                                for node_id, node_data in docs_data.items():
-                                    try:
-                                        if isinstance(node_data, dict):
-                                            # 尝试从字典创建TextNode
-                                            node = TextNode.from_dict(node_data)
-                                            self.docstore.add_documents([node])
-                                        else:
-                                            print(f"警告：节点数据格式不正确: {type(node_data)}")
-                                    except Exception as node_e:
-                                        print(f"加载节点{node_id}失败: {str(node_e)}")
-                            else:
-                                print(f"警告：文档存储格式不正确: {type(docs_data)}")
-                                
-                            print(f"通过手动解析从{latest}加载索引存储成功，包含{len(self.docstore.docs)}个文档")
-                        except Exception as json_e:
-                            print(f"手动解析JSON失败: {str(json_e)}")
-                            raise
-                except Exception as e:
-                    print(f"加载最新索引存储失败: {str(e)}")
-                    # 尝试加载应急备份
-                    emergency_path = os.path.join(self.index_dir, "emergency.json")
-                    if os.path.exists(emergency_path):
-                        try:
-                            # 尝试标准加载
-                            try:
-                                self.docstore = SimpleDocumentStore.from_persist_path(emergency_path)
-                                print(f"从应急备份加载索引存储成功，包含{len(self.docstore.docs)}个文档")
-                            except Exception:
-                                # 尝试手动解析
-                                import json
-                                from llama_index.core.schema import TextNode
-                                
-                                with open(emergency_path, 'r', encoding='utf-8') as f:
-                                    docs_data = json.load(f)
-                                
-                                self.docstore = SimpleDocumentStore()
-                                
-                                if isinstance(docs_data, dict):
-                                    for node_id, node_data in docs_data.items():
-                                        try:
-                                            if isinstance(node_data, dict):
-                                                node = TextNode.from_dict(node_data)
-                                                self.docstore.add_documents([node])
-                                        except Exception as node_e:
-                                            print(f"加载应急节点{node_id}失败: {str(node_e)}")
-                                
-                                print(f"通过手动解析从应急备份加载索引存储成功，包含{len(self.docstore.docs)}个文档")
+                            self.docstore = SimpleDocumentStore.from_persist_path(str(emergency_path))
+                            self.logger.info("加载应急文档存储成功")
                         except Exception as e:
-                            print(f"加载应急备份失败: {str(e)}")
-                            print("初始化空索引存储")
-                            self.docstore = SimpleDocumentStore()
-                    else:
-                        print("没有找到应急备份，初始化空索引存储")
-                        self.docstore = SimpleDocumentStore()
-            else:
-                print("没有找到索引存储文件，初始化空索引存储")
-                self.docstore = SimpleDocumentStore()
+                            self.logger.error(f"加载应急文档存储失败: {str(e)}")
+            except Exception as e:
+                self.logger.error(f"加载文档存储失败: {str(e)}")
                 
-            # 尝试加载Qdrant快照(如果可用)
-            if hasattr(self, 'qdrant_client') and self.qdrant_client is not None:
-                try:
-                    snapshots = await self.qdrant_client.list_snapshots(collection_name=self.collection_name)
-                    if snapshots:
-                        # 不自动恢复快照，只提示存在
-                        print(f"Qdrant有{len(snapshots)}个可用快照，最新的是{snapshots[-1].name}")
-                except Exception as e:
-                    print(f"查询Qdrant快照失败: {str(e)}")
-                    
+                # 尝试加载应急文档存储
+                emergency_path = self.index_dir / "emergency.json"
+                if emergency_path.exists():
+                    try:
+                        self.docstore = SimpleDocumentStore.from_persist_path(str(emergency_path))
+                        self.logger.info("加载应急文档存储成功")
+                    except Exception as e2:
+                        self.logger.error(f"加载应急文档存储失败: {str(e2)}")
         except Exception as e:
-            print(f"状态加载失败: {str(e)}")
-            print("初始化空索引存储")
-            self.docstore = SimpleDocumentStore()
+            self.logger.error(f"加载索引状态失败: {str(e)}")
 
     async def async_init(self):
         # Initialize callback manager
@@ -731,7 +604,7 @@ class EasyRAGPipeline:
         "query":"问题" #必填
         "document": "所属路径" #用于过滤文档，可选
         '''
-        if self.hyde:
+        if self.hyde_enabled:
             hyde_query = self.hyde_transform(query["query"])
             query["hyde_query"] = hyde_query.custom_embedding_strs[0]
         self.filters, self.filter_dict = self.build_filters(query)
@@ -810,7 +683,7 @@ class EasyRAGPipeline:
             ])
         # 如果path_retriever为空，则不需要融合直接使用node_with_scores
         if self.reranker and node_with_scores and len(node_with_scores) > 0:
-            if self.hyde_merging and self.hyde:
+            if self.hyde_merging and self.hyde_enabled:
                 hyde_query_top1_chunk = f'问题：{query_str},\n 可能有用的提示文档:{hyde_query},\n ' \
                                         f'检索得到的相关上下文：{self.get_node_content(node_with_scores[0])}'
                 hyde_merging_query_bundle = self.hyde_transform_merging(hyde_query_top1_chunk)

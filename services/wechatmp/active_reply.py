@@ -107,7 +107,7 @@ class Query:
             if msg.type == "event":
                 App().logger.info(f"[事件处理] 类型={msg.event} 参数={getattr(msg, 'event_key', '')}")
                 if msg.event in ["subscribe", "subscribe_scan"]:
-                    if reply_text := Config().get("subscribe_msg"):
+                    if reply_text := Config().subscribe_msg():
                         reply = create_reply(reply_text, msg)
                         return encrypt_func(reply.render())
                 return "success"

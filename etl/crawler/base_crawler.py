@@ -1,7 +1,5 @@
 from __init__ import *
 
-Config().load_config()
-
 class BaseCrawler():
     """通用爬虫基类，封装常用爬取方法和反反爬策略
     
@@ -15,20 +13,20 @@ class BaseCrawler():
         self.debug = debug
         self.headless = headless
         self.use_proxy = use_proxy  
-        log_day_str = '{time:%Y-%m-%d}'
-        # 使用Path对象处理路径，避免跨平台问题
-        base_path = Path(__file__).resolve().parent.parent
-        self.base_data_dir = base_path / 'data' / 'raw'
-        self.base_log_dir = base_path / 'logs'
+        
+        # 使用__init__.py中定义的全局配置
+        self.base_data_dir = RAW_PATH
+        self.base_log_dir = LOG_PATH
         
         # 确保目录存在并有正确权限
         self.base_data_dir.mkdir(parents=True, exist_ok=True)
         self.base_log_dir.mkdir(parents=True, exist_ok=True)
-        self.process_name = platform
         self.platform = platform
-        logger.add(f'{self.base_log_dir}/{self.process_name}.{log_day_str}.log', rotation="1 day", retention='3 months', level="INFO")# 配置日志记录器
-        self.logger = logger
-        self.base_dir = Path(self.base_data_dir) / self.platform
+        
+        # 使用爬虫模块的专用logger实例，并绑定平台信息
+        self.logger = crawler_logger.bind(platform=platform)
+        
+        self.base_dir = self.base_data_dir / self.platform
         self.base_dir.mkdir(exist_ok=True, parents=True)  # 创建目录，如果目录不存在
         self.counter = Counter()  # 初始化计数器
         self.lock_file = 'lock.txt'  # 锁文件，用于防止重复运行
@@ -37,7 +35,7 @@ class BaseCrawler():
         self.update_f = open(self.base_dir / self.update_file, 'a+', encoding='utf-8')  # 打开更新文件
         self.scraped_original_urls_file = 'scraped_original_urls.json'  # 已抓取链接文件
         self.cookies_file = 'cookies.txt'  # cookies文件，用于保存登录信息
-        self.tz = pytz.timezone('Asia/Shanghai')  # 设置时区
+        self.tz = pytz.timezone(DEFAULT_TIMEZONE)  # 设置时区
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch(
             channel="chrome",
@@ -57,10 +55,10 @@ class BaseCrawler():
             ignore_default_args=["--enable-automation"]  # 禁用自动化提示
         )
         self.context = self.browser.new_context(
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
-            locale='zh-CN',
-            timezone_id='Asia/Shanghai',
-            color_scheme='light',  # 新浪财经主要使用浅色模式
+            user_agent=DEFAULT_USER_AGENT,
+            locale=DEFAULT_LOCALE,
+            timezone_id=DEFAULT_TIMEZONE,
+            color_scheme='light', 
             # 添加更多真实设备特征
             device_scale_factor=random.choice([1, 1.25, 1.5]),
             is_mobile=False,
@@ -86,7 +84,7 @@ class BaseCrawler():
         )
         # 修改代理初始化逻辑
         if self.use_proxy:
-            self.proxy_pool = Config().get("PROXY_POOL", "http://127.0.0.1:7897").split(',')
+            self.proxy_pool = PROXY_POOL.split(',')
             self.current_proxy = None
             self.rotate_proxy()
         else:
@@ -118,6 +116,9 @@ class BaseCrawler():
             'sec-ch-ua-mobile': '?0',
             'sec-ch-ua-platform': '"macOS"',
         }
+        self.page = self.context.new_page()
+        self.inject_anti_detection_script()
+        random.seed(int(time.time()))
         # 增加代理健康检查
         def check_proxy_health(proxy):
             try:

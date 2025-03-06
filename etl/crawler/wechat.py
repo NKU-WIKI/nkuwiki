@@ -1,35 +1,28 @@
 from __init__ import *
-from base_crawler import BaseCrawler
-
-Config().load_config()
 
 class Wechat(BaseCrawler):
-    """微信公众号文章爬虫
+    """微信公众号爬虫
     
     Attributes:
         authors: 配置名称，包含要爬取的公众号昵称列表
         debug: 调试模式开关
         headless: 是否使用无头浏览器模式
+        use_proxy: 是否使用代理
     """
-    def __init__(self, authors: str = "university_official_account", debug: bool = False, headless: bool = False) -> None:
-        # 确保在初始化时重新读取环境变量
+    def __init__(self, authors: str = "university_official_accounts", debug: bool = False, headless: bool = False, use_proxy: bool = False) -> None:
         self.platform = "wechat"
         self.content_type = "article"
-        self.base_url = "https://mp.weixin.qq.com/"  # 基础URL
-        super().__init__(platform=self.platform, debug=debug, headless=headless)
-        self.page = self.context.new_page()
-        self.inject_anti_detection_script()
+        self.base_url = "https://mp.weixin.qq.com/"
+        super().__init__(self.platform, debug, headless, use_proxy)
+
+        # 获取公众号列表
+        accounts = os.environ.get(authors.upper(), "")
+        if not accounts:
+            self.logger.error(f"Config etl.crawler.accounts.{authors} is not set or is empty")
+            raise
+        self.authors = accounts.split(",")
+        self.logger.info(f"start to crawl authors: {self.authors}")
         self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
-        # 从配置中获取昵称并过滤空值
-        self.authors = [
-            name.strip() 
-            for name in Config().get(authors, '').split(',') 
-            if name.strip()
-        ]
-        if not self.authors:
-            self.logger.error(f"Config {authors} is not set or is empty")
-        
-        self.logger.info(f"authors: {self.authors}")
 
     def login_for_cookies(self) -> dict[str, str]:
         """登录微信公众号平台获取cookies
@@ -323,5 +316,5 @@ class Wechat(BaseCrawler):
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
 if __name__ == "__main__":
-    wechat = Wechat(authors = "club_official_account", debug=False, headless=False)  # 初始化
+    wechat = Wechat(authors = "club_official_accounts", debug=False, headless=False, use_proxy=True)  # 初始化
     wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量

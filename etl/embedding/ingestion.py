@@ -1,21 +1,5 @@
-from typing import List, Dict, Any
-import os
-
-from llama_index.core.node_parser import HierarchicalNodeParser
-
-from etl.transform.transformation import CustomFilePathExtractor, CustomTitleExtractor
-from llama_index.core import SimpleDirectoryReader
-from llama_index.core.embeddings import BaseEmbedding
-from llama_index.core.ingestion import IngestionPipeline
-from llama_index.core.llms.llm import LLM
-from etl.embedding.splitter import SentenceSplitter
-from etl.embedding.hierarchical import HierarchicalNodeParser
-from llama_index.core.schema import Document, MetadataMode, TransformComponent, NodeRelationship, TextNode, NodeWithScore
-from llama_index.core.vector_stores.types import BasePydanticVectorStore, MetadataFilters, MetadataFilter
-from llama_index.vector_stores.qdrant import QdrantVectorStore
-from qdrant_client import AsyncQdrantClient, models
-from qdrant_client.http.exceptions import UnexpectedResponse
-from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+from etl.embedding import *
+from llama_index.core.schema import NodeWithScore, TextNode
 
 
 def merge_strings(A, B):
@@ -87,11 +71,14 @@ def get_node_content(node: NodeWithScore, embed_type=0, nodes: list[TextNode] = 
 
 
 def read_data(data_path: str) -> List[Document]:
-    """增强型数据加载"""
-    if not os.path.exists(data_path):
-        raise ValueError(f"数据路径不存在: {data_path}")
+    """从给定路径读取文档数据
     
-    # 自动检测多种文件格式
+    Args:
+        data_path: 数据目录路径
+        
+    Returns:
+        读取的文档列表
+    """
     reader = SimpleDirectoryReader(
         input_dir=data_path,
         required_exts=[".txt", ".pdf", ".docx", ".md", ".json"],
@@ -103,8 +90,8 @@ def read_data(data_path: str) -> List[Document]:
         documents = reader.load_data()
         if not documents:
             # 加载应急文档
-            emergency_doc = os.path.join(data_path, "default.txt")
-            if os.path.exists(emergency_doc):
+            emergency_doc = BASE_PATH / "default.txt"
+            if emergency_doc.exists():
                 return [Document(text="应急文档内容")]
             raise ValueError("未找到任何有效文档")
         return documents
@@ -115,8 +102,11 @@ def read_data(data_path: str) -> List[Document]:
 
 
 def load_emergency_data():
-    """应急文档加载"""
-    return [Document(text="系统应急文档，请检查数据目录配置")]
+    """加载应急数据"""
+    emergency_doc = BASE_PATH / "default.txt"
+    if emergency_doc.exists():
+        return [Document(text=emergency_doc.read_text(encoding="utf-8"))]
+    return [Document(text="未找到任何文档。")]
 
 
 def build_preprocess(

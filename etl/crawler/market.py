@@ -1,20 +1,14 @@
 from __init__ import *
-from base_crawler import BaseCrawler
-
-Config().load_config()
-
 
 class Market(BaseCrawler):
-    """Zanao市场数据爬虫"""
+    """Zanao集市数据爬虫"""
     
     def __init__(self, debug=False, headless=False):
         self.platform = "market"
         self.content_type = "post"
         self.base_url = "https://c.zanao.com"
         super().__init__(self.platform, debug, headless)
-        self.base_dir = os.path.join("etl/data/raw", self.platform)  # 新增base_dir属性
-        self.page = self.context.new_page()
-        self.inject_anti_detection_script()
+
         self.api_urls = {
             "list": "https://api.x.zanao.com/thread/v2/list",
             "comment": "https://c.zanao.com/sc-api/comment/post",
@@ -34,18 +28,20 @@ class Market(BaseCrawler):
             raise
 
     def _generate_td(self):
-        """生成时间戳"""
+        """生成当前时间戳"""
         return int(time.time())
 
     def _hmac_md5(self, key, message):
+        """HMAC-MD5加密"""
         return hashlib.md5(message.encode()).hexdigest()
 
     def _generate_ah(self, m, td):
+        """生成签名"""
         raw_str = f"{self.university}_{m}_{td}_{self.secret_key}"
         return self._hmac_md5(self.secret_key, raw_str)
 
     def _generate_headers(self, timestamp):
-        """完整请求头生成"""
+        """生成请求头"""
         try:
             m = self._generate_m(20)
             if not m.isdigit() or len(m) != 20:
@@ -54,15 +50,14 @@ class Market(BaseCrawler):
             self.logger.error(f"生成请求头时发生错误: {str(e)}")
             m = '0' * 20
 
-    
         self.headers.update({
             "X-Sc-Nd": m,
-            "X-Sc-Od": Config().get("market_token"),
+            "X-Sc-Od": MARKET_TOKEN,
             "X-Sc-Ah": self._generate_ah(m, timestamp),
             "X-Sc-Td": str(timestamp),
             'X-Sc-Alias': self.university,
         })
-        print(self.headers)
+        # print(self.headers)
         return self.headers
 
     def get_latest_list(self, timestamp=0):
@@ -234,7 +229,7 @@ class Market(BaseCrawler):
                     # 生成带时间戳的文件名
                     timestamp = time.strftime("%Y%m%d%H%M%S")
                     filename = f"market_{timestamp}.json"
-                    filepath = os.path.join(self.base_dir, filename)
+                    filepath = self.base_dir / filename
                     
                     # 保存数据
                     with open(filepath, 'w', encoding='utf-8') as f:
@@ -256,7 +251,7 @@ class Market(BaseCrawler):
 if __name__ == "__main__":
     market = Market(debug=False, headless=True)
     # market.start_periodic_crawl()
-    latest_list = market.get_latest_list(market._generate_td()-60*61)
+    latest_list = market.get_latest_list(market._generate_td()-60*30) # 获取30分钟前的帖子
     
     for item in latest_list:
         print(item['title'])

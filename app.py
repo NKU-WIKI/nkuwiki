@@ -1,5 +1,7 @@
 """应用主入口模块，负责服务启动、配置加载和插件管理"""
 
+from __init__ import *
+
 import sys
 import time
 from loguru import logger

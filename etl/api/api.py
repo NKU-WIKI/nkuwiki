@@ -67,10 +67,10 @@ async def query(query: Query):
     try:
         # 从Config获取配置
         config = {}
-        config['qdrant_url'] = Config().get('qdrant_url', "http://localhost:6334")
-        config['qdrant_timeout'] = Config().get('qdrant_timeout', 30.0)
-        config['embedding_name'] = Config().get('embedding_name', 'BAAI/bge-base-zh')
-        config['auto_fix_model'] = Config().get('auto_fix_model', True)
+        config['qdrant_url'] = Config().get('etl.data.qdrant.url', "http://localhost:6334")
+        config['qdrant_timeout'] = Config().get('etl.data.qdrant.timeout', 30.0)
+        config['embedding_name'] = Config().get('etl.embedding.name', 'BAAI/bge-base-zh')
+        config['auto_fix_model'] = Config().get('etl.auto_fix_model', True)
         
         pipeline = EasyRAGPipeline()
         response = pipeline.query(query.query, top_k=query.top_k, threshold=query.threshold)

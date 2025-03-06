@@ -9,35 +9,36 @@ import mysql.connector
 from typing import List, Dict, Any
 from datetime import datetime
 from config import Config
-from loguru import logger
+from etl.transform import transform_logger
 from fastapi.middleware.cors import CORSMiddleware
 from json import JSONDecodeError
 Config().load_config()
 
-logger.add(Path(__file__).parent / "logs" / "coze_datasource.log", rotation="1 day",retention="3 months", level = "INFO")
+# 使用模块专用logger
+transform_logger.bind(service="coze_datasource")
 
 
 def get_conn(use_database=True):
     """带容错机制的数据库连接"""
     params = {
-        'host': Config().get("db_host"),  # 需改为数据库服务器真实IP（非localhost）
-        'port': Config().get("db_port"),
-        'user': Config().get("db_user"),  # 确认该用户有远程访问权限
-        'password': Config().get("db_password"),  # 确认密码正确
+        'host': Config().get("etl.data.mysql.host"),  # 需改为数据库服务器真实IP（非localhost）
+        'port': Config().get("etl.data.mysql.port"),
+        'user': Config().get("etl.data.mysql.user"),  # 确认该用户有远程访问权限
+        'password': Config().get("etl.data.mysql.password"),  # 确认密码正确
         'charset': 'utf8mb4',
         'autocommit': True
     }
     
     if use_database:
-        params['database'] = Config().get("db_name")
+        params['database'] = Config().get("etl.data.mysql.name")
     
-    logger.debug(f"尝试连接数据库：host={Config().get('db_host')} user={Config().get('db_user')}")
+    transform_logger.debug(f"尝试连接数据库：host={Config().get('etl.data.mysql.host')} user={Config().get('etl.data.mysql.user')}")
     try:
         conn = mysql.connector.connect(**params)
-        logger.debug("数据库连接成功")
+        transform_logger.debug("数据库连接成功")
         return conn
     except mysql.connector.Error as e:
-        logger.error(f"数据库连接失败: {str(e)}")
+        transform_logger.error(f"数据库连接失败: {str(e)}")
         raise
 
 def serialize_datetime(obj):
@@ -174,10 +175,10 @@ async def execute_query(request: Request):
     except JSONDecodeError:
         raise HTTPException(400, "请求格式错误：需要JSON格式")
     except mysql.connector.Error as e:
-        logger.error(f"SQL执行错误: {str(e)}")
+        transform_logger.error(f"SQL执行错误: {str(e)}")
         raise HTTPException(500, "数据库查询失败")
     except Exception as e:
-        logger.error(f"服务器错误: {str(e)}")
+        transform_logger.error(f"服务器错误: {str(e)}")
         raise HTTPException(500, "服务器内部错误")
 
 @app.post("/v1/retrieve",
@@ -212,7 +213,7 @@ async def hiagent_retrieve(request: HiAgentRequest):
                 }
                 
     except Exception as e:
-        logger.exception(f"检索失败: {str(e)}")
+        transform_logger.exception(f"检索失败: {str(e)}")
 
 @app.post("/openapi.json")
 async def get_openapi():
@@ -220,26 +221,26 @@ async def get_openapi():
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"收到请求: {request.method} {request.url}")
+    transform_logger.info(f"收到请求: {request.method} {request.url}")
     try:
         response = await call_next(request)
     except Exception as e:
-        logger.error(f"请求处理失败: {str(e)}")
+        transform_logger.error(f"请求处理失败: {str(e)}")
         raise
-    logger.debug(f"响应状态码: {response.status_code}")
+    transform_logger.debug(f"响应状态码: {response.status_code}")
     return response
 
 # 启动时指定host和port
 if __name__ == "__main__":
     # 打印调试信息
-    logger.debug("\n=== 服务启动调试信息 ===")
-    logger.debug(f"数据库端口：{Config().get('db_port')}")
-    logger.debug(f"环境文件路径：{Config().get('db_host')}")
+    transform_logger.debug("\n=== 服务启动调试信息 ===")
+    transform_logger.debug(f"数据库端口：{Config().get('etl.data.mysql.port')}")
+    transform_logger.debug(f"环境文件路径：{Config().get('etl.data.mysql.host')}")
 
-    logger.debug("\n=== 已注册路由 ===")
+    transform_logger.debug("\n=== 已注册路由 ===")
     for route in app.routes:
-        logger.debug(f"{route.path} -> {route.methods}")
-    logger.debug("===================\n")
+        transform_logger.debug(f"{route.path} -> {route.methods}")
+    transform_logger.debug("===================\n")
     
     import uvicorn
     uvicorn.run(
