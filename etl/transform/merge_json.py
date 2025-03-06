@@ -1,8 +1,6 @@
-import os
 import json
 from pathlib import Path
-from datetime import datetime
-from tqdm import tqdm  # 添加进度条支持
+from tqdm import tqdm
 
 def find_json_files(directory: Path) -> list[Path]:
     """查找指定目录下的非scraped开头的JSON文件"""
@@ -16,31 +14,38 @@ def merge_json_files(json_files: list[Path]) -> list[dict]:
     seen_urls = set()
     merged_data = []
     
+    total_items = 0
+    url_duplicates = 0
+    
     for file in tqdm(json_files, desc="Merging files"):
         try:
             # 添加内容长度检查
             content = file.read_text(encoding='utf-8')
             if not content.strip():
-                print(f"空文件: {file}")
+                # print(f"空文件: {file}")
                 continue
                 
             data = json.loads(content)
             
             for item in data if isinstance(data, list) else [data]:
-                # 添加备用去重字段（如title）
-                if(item.get('content', '') == ''):
-                    continue
-                unique_key = item.get('original_url') or item.get('title')
+                total_items += 1
+                unique_key = item.get('link') or item.get('title')
                 if unique_key and unique_key not in seen_urls:
                     merged_data.append(item)
                     seen_urls.add(unique_key)
-                elif not unique_key:
-                    print(f"缺少唯一标识字段: {file} - 条目: {item.get('title')}")
-                    
+            
+                
+            # print(f"\n文件 {file} 首条数据字段:", list(data[0].keys())) if len(data) > 0 else None
+            
         except json.JSONDecodeError as e:
             print(f"JSON解析错误 {file}: {e}")
         except Exception as e:
             print(f"处理文件 {file} 时出错: {e}")
+    
+    print(f"\n处理统计:")
+    print(f"总条目: {total_items}")
+    print(f"URL重复: {url_duplicates}")
+    print(f"有效条目: {len(merged_data)}")
     
     return merged_data
 
@@ -74,8 +79,8 @@ if __name__ == "__main__":
     project_root = Path(__file__).resolve().parent.parent.parent
     
     # 设置输入和输出路径，相对于项目根目录
-    search_directory = project_root / 'etl/data/raw/sina_finance'
-    output_file = project_root / 'etl/data/processed' / f'sina_finance_{datetime.now().strftime("%Y%m%d")}.json'
+    search_directory = project_root / 'etl/data/raw/wechat1'
+    output_file = project_root / 'etl/data/processed' / 'wechat_metadata_20250222.json'
     
     # 添加路径验证调试信息
     print(f"项目根目录: {project_root}")

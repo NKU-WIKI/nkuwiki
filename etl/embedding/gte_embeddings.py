@@ -6,42 +6,49 @@ import torch.nn.functional as F
 from llama_index.core.base.embeddings.base import (
     BaseEmbedding,
 )
-from llama_index.core.bridge.pydantic import PrivateAttr
+from llama_index.core.bridge.pydantic import Field, ConfigDict
 from llama_index.core.schema import BaseNode, MetadataMode
 from llama_index.core.utils import infer_torch_device
 from torch import Tensor
-from transformers import AutoModel, AutoTokenizer
+from transformers import AutoTokenizer
 
+from etl.utils.modeling_qwen import Qwen2Model
+from etl.utils.tokenization_qwen import Qwen2Tokenizer
 from etl.embedding.ingestion import get_node_content
 
 logger = logging.getLogger(__name__)
 
 
 class GTEEmbedding(BaseEmbedding):
-    _model: Any = PrivateAttr()
-    _tokenizer: Any = PrivateAttr()
-    _device: str = PrivateAttr()
-    _embed_type: int = PrivateAttr()
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+    
+    model_name: str = Field(description="大模型名称")
+    embed_type: int = Field(default=0, description="嵌入类型标识")
 
     def __init__(
-            self,
-            model_name: str = None,
-            embed_type: int = 0,
-            **kwargs: Any,
+        self,
+        model_name: str,
+        **kwargs: Any,
     ) -> None:
-        self._device = infer_torch_device()
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self._model = AutoModel.from_pretrained(model_name).to(self._device)
-        self._embed_type = embed_type
         super().__init__(**kwargs)
+        self._device = infer_torch_device()
+        self._tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        self._model = Qwen2Model.from_pretrained(model_name, trust_remote_code=True, torch_dtype=torch.bfloat16).to(
+            self._device)
+        self._model.eval()
 
     def last_token_pool(self, last_hidden_states: Tensor,
                         attention_mask: Tensor) -> Tensor:
-        input_mask_expanded = attention_mask.unsqueeze(-1).expand(last_hidden_states.size()).float()
-        return torch.sum(last_hidden_states * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+        left_padding = (attention_mask[:, -1].sum() == attention_mask.shape[0])
+        if left_padding:
+            return last_hidden_states[:, -1]
+        else:
+            sequence_lengths = attention_mask.sum(dim=1) - 1
+            batch_size = last_hidden_states.shape[0]
+            return last_hidden_states[torch.arange(batch_size, device=last_hidden_states.device), sequence_lengths]
 
     def get_detailed_instruct(self, query: str) -> str:
-        return f"为这个句子生成表示以用于检索相关文章：{query}"
+        return f'Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery: {query}'
 
     @classmethod
     def class_name(cls) -> str:
@@ -69,16 +76,8 @@ class GTEEmbedding(BaseEmbedding):
         return self._get_text_embedding(text)
 
     def _get_query_embedding(self, query: str) -> List[float]:
-        """获取查询嵌入"""
-        embeddings = self._embed([query], prompt_name="query")
-        # 确保返回的是浮点数列表
-        if isinstance(embeddings, list) and len(embeddings) > 0:
-            # 检查返回值类型并转换为浮点数
-            if isinstance(embeddings[0], list):
-                return [float(x) for x in embeddings[0]]
-            else:
-                return embeddings[0]
-        return []
+        embeddings = self._embed([self.get_detailed_instruct(query)])
+        return embeddings[0]
 
     def _get_text_embedding(self, text: str) -> List[float]:
         embeddings = self._embed([text])
@@ -90,7 +89,7 @@ class GTEEmbedding(BaseEmbedding):
 
     def __call__(self, nodes: List[BaseNode], **kwargs: Any) -> List[BaseNode]:
         embeddings = self.get_text_embedding_batch(
-            [get_node_content(node, self._embed_type) for node in nodes],
+            [get_node_content(node, self.embed_type) for node in nodes],
             **kwargs,
         )
 
@@ -101,7 +100,7 @@ class GTEEmbedding(BaseEmbedding):
 
     async def acall(self, nodes: List[BaseNode], **kwargs: Any) -> List[BaseNode]:
         embeddings = await self.aget_text_embedding_batch(
-            [get_node_content(node, self._embed_type) for node in nodes],
+            [get_node_content(node, self.embed_type) for node in nodes],
             **kwargs,
         )
 

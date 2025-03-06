@@ -1,10 +1,5 @@
 # -*- coding: UTF-8 -*-
 import os
-import sys
-
-# Add project root to PYTHONPATH
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.append(project_root)
 
 import uvicorn
 from fastapi import FastAPI, status, HTTPException
@@ -12,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from config import Config
 from etl.retrieval.pipeline import EasyRAGPipeline
-from etl.utils import get_yaml_data
 
 
 class QueryRequest(BaseModel):
@@ -39,8 +33,11 @@ def create_app() -> FastAPI:
     return app
 
 
-config_path = "configs/easyrag.yaml"
-config = get_yaml_data(config_path)
+# 使用Config类的get_rag_config方法
+config = Config().get_rag_config()
+# 也可以直接使用Config().get()获取单个配置项
+# embedding_name = Config().get("embedding_name", "BAAI/bge-large-zh-v1.5")
+
 easyrag = EasyRAGPipeline(config)
 
 app = create_app()

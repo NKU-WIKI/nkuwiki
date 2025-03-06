@@ -479,24 +479,6 @@ class Config(dict):
                         if isinstance(conf_dict_copy[key], str):
                             conf_dict_copy[key] = conf_dict_copy[key][0:3] + "*" * 5 + conf_dict_copy[key][-3:]
                 return json.dumps(conf_dict_copy, indent=4)
-        except Exception as e:
-            self.logger.error(f"[Config] 保存用户数据失败: {str(e)}")
-
-    def drag_sensitive(self):
-        """生成脱敏后的配置信息
-        
-        Returns:
-            dict: 脱敏处理后的配置字典
-        """
-        try:
-            if isinstance(self, str):
-                conf_dict: dict = json.loads(self)
-                conf_dict_copy = copy.deepcopy(conf_dict)
-                for key in conf_dict_copy:
-                    if "key" in key or "secret" in key:
-                        if isinstance(conf_dict_copy[key], str):
-                            conf_dict_copy[key] = conf_dict_copy[key][0:3] + "*" * 5 + conf_dict_copy[key][-3:]
-                return json.dumps(conf_dict_copy, indent=4)
 
             elif isinstance(self, dict):
                 config_copy = copy.deepcopy({k: v for k, v in self.items()})
@@ -574,6 +556,68 @@ class Config(dict):
         # self.logger.debug("[config] load config: {}".format(self.drag_sensitive()))
         self.load_user_datas()
         return self
+
+    def get_rag_config(self) -> dict:
+        """获取 RAG 检索增强生成相关配置
+        
+        Returns:
+            dict: 与原 easyrag.yaml 结构相同的配置字典
+        """
+        # 构建与原 easyrag.yaml 结构相同的配置字典
+        rag_config = {
+            # 流程参数
+            "re_only": self.get("re_only", False),
+            "rerank_fusion_type": self.get("rerank_fusion_type", 1),
+            "ans_refine_type": self.get("ans_refine_type", 0),
+            
+            # 粗排参数
+            "reindex": self.get("reindex", False),
+            "retrieval_type": self.get("retrieval_type", 3),
+            "f_topk": self.get("f_topk", 128),
+            "f_topk_1": self.get("f_topk_1", 128),
+            "f_topk_2": self.get("f_topk_2", 288),
+            "f_topk_3": self.get("f_topk_3", 6),
+            "bm25_type": self.get("bm25_type", 1),
+            "embedding_name": self.get("embedding_name", "BAAI/bge-large-zh-v1.5"),
+            
+            # 重排参数
+            "r_topk": self.get("r_topk", 6),
+            "r_topk_1": self.get("r_topk_1", 6),
+            "r_embed_bs": self.get("r_embed_bs", 32),
+            "reranker_name": self.get("reranker_name", "cross-encoder/stsb-distilroberta-base"),
+            
+            # 文本排序编码方式
+            "f_embed_type_1": self.get("f_embed_type_1", 1),
+            "f_embed_type_2": self.get("f_embed_type_2", 2),
+            "r_embed_type": self.get("r_embed_type", 1),
+            
+            # 分块策略
+            "split_type": self.get("split_type", 0),
+            "chunk_size": self.get("chunk_size", 512),
+            "chunk_overlap": self.get("chunk_overlap", 200),
+            
+            # 存储配置
+            "data": self.get("data", {
+                "raw": {"path": "data/raw"},
+                "index": {"path": "data/index"},
+                "qdrant": {
+                    "url": self.get("qdrant_url", "http://localhost:6333"),
+                    "path": "data/qdrant",
+                    "collection": self.get("collection_name", "main_index"),
+                    "vector_size": self.get("vector_size", 1024)
+                }
+            }),
+            
+            # 上下文压缩参数
+            "compress_method": self.get("compress_method", ""),
+            "compress_rate": self.get("compress_rate", 0.5),
+            
+            # 虚假文档参数
+            "hyde": self.get("hyde", False),
+            "hyde_merging": self.get("hyde_merging", False)
+        }
+        
+        return rag_config
 
 # 全局配置，用于存放全局生效的状态
 # global_config = {

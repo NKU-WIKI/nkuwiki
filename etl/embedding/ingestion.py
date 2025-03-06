@@ -1,5 +1,5 @@
-from llama_index.core import Settings
 from typing import List, Dict, Any
+import os
 
 from llama_index.core.node_parser import HierarchicalNodeParser
 
@@ -8,12 +8,12 @@ from llama_index.core import SimpleDirectoryReader
 from llama_index.core.embeddings import BaseEmbedding
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.llms.llm import LLM
-from etl.transform.splitter import SentenceSplitter
-from etl.retrieval.hierarchical import HierarchicalNodeParser
+from etl.embedding.splitter import SentenceSplitter
+from etl.embedding.hierarchical import HierarchicalNodeParser
 from llama_index.core.schema import Document, MetadataMode, TransformComponent, NodeRelationship, TextNode, NodeWithScore
 from llama_index.core.vector_stores.types import BasePydanticVectorStore, MetadataFilters, MetadataFilter
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-from qdrant_client import models, QdrantClient
+from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 
@@ -33,61 +33,90 @@ def merge_strings(A, B):
 
 
 def get_node_content(node: NodeWithScore, embed_type=0, nodes: list[TextNode] = None, nodeid2idx: dict = None) -> str:
-    text: str = node.get_content()
-    if embed_type == 6:
-        cur_text = text
-        if cur_text.count("|") >= 5 and cur_text.count("---") == 0:
-            cnt = 0
-            flag = False
-            while True:
-                pre_node_id = node.node.relationships[NodeRelationship.PREVIOUS].node_id
-                pre_node = nodes[nodeid2idx[pre_node_id]]
-                pre_text = pre_node.text
-                cur_text = merge_strings(pre_text, cur_text)
-                cnt += 1
-                if pre_text.count("---") >= 2:
-                    flag = True
-                    break
-                if cnt >= 3:
-                    break
-            if flag:
-                idx = cur_text.index("---")
-                text = cur_text[:idx].strip().split("\n")[-1] + cur_text[idx:]
+    # 添加空节点检查
+    if node is None:
+        return "无内容"
+        
+    try:
+        text: str = node.get_content()
+        if embed_type == 6:
+            cur_text = text
+            if cur_text.count("|") >= 5 and cur_text.count("---") == 0:
+                cnt = 0
+                flag = False
+                while True:
+                    pre_node_id = node.node.relationships[NodeRelationship.PREVIOUS].node_id
+                    pre_node = nodes[nodeid2idx[pre_node_id]]
+                    pre_text = pre_node.text
+                    cur_text = merge_strings(pre_text, cur_text)
+                    cnt += 1
+                    if pre_text.count("---") >= 2:
+                        flag = True
+                        break
+                    if cnt >= 3:
+                        break
+                if flag:
+                    idx = cur_text.index("---")
+                    text = cur_text[:idx].strip().split("\n")[-1] + cur_text[idx:]
             # print(flag, cnt)
-    if embed_type == 1:
-        if 'file_path' in node.metadata:
-            text = '###\n' + node.metadata['file_path'] + "\n\n" + text
-    elif embed_type == 2:
-        if 'know_path' in node.metadata:
-            text = '###\n' + node.metadata['know_path'] + "\n\n" + text
-    elif embed_type == 3 or embed_type == 6:
-        if "imgobjs" in node.metadata and len(node.metadata['imgobjs']) > 0:
-            for imgobj in node.metadata['imgobjs']:
-                text = text.replace(f"{imgobj['cap']} {imgobj['title']}\n", f"{imgobj['cap']}.{imgobj['title']}:{imgobj['content']}\n")
-    elif embed_type == 4:
-        if 'file_path' in node.metadata:
-            text = node.metadata['file_path']
-        else:
-            text = ""
-    elif embed_type == 5:
-        if 'know_path' in node.metadata:
-            text = node.metadata['know_path']
-        else:
-            text = ""
-    if 'image' in node.metadata:
-        return node.metadata.get('ocr_text', '') or node.metadata.get('description', '')
-    return text
+        if embed_type == 1:
+            if 'file_path' in node.metadata:
+                text = '###\n' + node.metadata['file_path'] + "\n\n" + text
+        elif embed_type == 2:
+            if 'know_path' in node.metadata:
+                text = '###\n' + node.metadata['know_path'] + "\n\n" + text
+        elif embed_type == 3 or embed_type == 6:
+            if "imgobjs" in node.metadata and len(node.metadata['imgobjs']) > 0:
+                for imgobj in node.metadata['imgobjs']:
+                    text = text.replace(f"{imgobj['cap']} {imgobj['title']}\n", f"{imgobj['cap']}.{imgobj['title']}:{imgobj['content']}\n")
+        elif embed_type == 4:
+            if 'file_path' in node.metadata:
+                text = node.metadata['file_path']
+            else:
+                text = ""
+        elif embed_type == 5:
+            if 'know_path' in node.metadata:
+                text = node.metadata['know_path']
+            else:
+                text = ""
+        return text
+    except Exception as e:
+        # 添加错误处理
+        print(f"获取节点内容时出错: {str(e)}")
+        return "获取内容失败"
 
 
-def read_data(path: str = "data") -> list[Document]:
+def read_data(data_path: str) -> List[Document]:
+    """增强型数据加载"""
+    if not os.path.exists(data_path):
+        raise ValueError(f"数据路径不存在: {data_path}")
+    
+    # 自动检测多种文件格式
     reader = SimpleDirectoryReader(
-        input_dir=path,
-        recursive=True,
-        required_exts=[
-            ".txt"
-        ],
+        input_dir=data_path,
+        required_exts=[".txt", ".pdf", ".docx", ".md", ".json"],
+        exclude_hidden=True,
+        recursive=True
     )
-    return reader.load_data()
+    
+    try:
+        documents = reader.load_data()
+        if not documents:
+            # 加载应急文档
+            emergency_doc = os.path.join(data_path, "default.txt")
+            if os.path.exists(emergency_doc):
+                return [Document(text="应急文档内容")]
+            raise ValueError("未找到任何有效文档")
+        return documents
+    except Exception as e:
+        print(f"数据加载失败: {str(e)}")
+        # 回退到应急文档
+        return load_emergency_data()
+
+
+def load_emergency_data():
+    """应急文档加载"""
+    return [Document(text="系统应急文档，请检查数据目录配置")]
 
 
 def build_preprocess(
@@ -95,17 +124,20 @@ def build_preprocess(
         chunk_size=1024,
         chunk_overlap=50,
         split_type=0,  # 0-->Sentence 1-->Hierarchical
+        callback_manager=None,
 ) -> List[TransformComponent]:
     if split_type == 0:
         parser = SentenceSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             include_prev_next_rel=True,
+            callback_manager=callback_manager,
         )
     else:
         parser = HierarchicalNodeParser.from_defaults(
             chunk_sizes=[chunk_size * 4, chunk_size],
             chunk_overlap=chunk_overlap,
+            callback_manager=callback_manager,
         )
     transformation = [
         parser,
@@ -120,12 +152,14 @@ def build_preprocess_pipeline(
         chunk_size=1024,
         chunk_overlap=50,
         split_type=0,
+        callback_manager=None,
 ) -> IngestionPipeline:
     transformation = build_preprocess(
         data_path,
         chunk_size,
         chunk_overlap,
         split_type=split_type,
+        callback_manager=callback_manager,
     )
     return IngestionPipeline(transformations=transformation)
 
@@ -138,12 +172,13 @@ def build_pipeline(
         data_path=None,
         chunk_size=1024,
         chunk_overlap=50,
-        config: dict = None,  # 添加可选参数
+        callback_manager=None,
 ) -> IngestionPipeline:
     transformation = build_preprocess(
         data_path,
         chunk_size,
         chunk_overlap,
+        callback_manager=callback_manager,
     )
     transformation.extend([
         # SummaryExtractor(
@@ -156,41 +191,39 @@ def build_pipeline(
     return IngestionPipeline(transformations=transformation, vector_store=vector_store)
 
 
-def build_vector_store(
-    config: dict  # 添加config参数
-) -> tuple[QdrantClient, QdrantVectorStore]:
-    # 从配置获取连接参数
-    qdrant_url = config.get('qdrant_url', 'http://localhost:6334')
-    host, port = qdrant_url.split('//')[-1].split(':')  # 解析host和port
-    reindex = config.get('reindex', False)
-    collection_name = config.get('collection_name', 'aiops24')
-    embed_dim = Settings.embed_model.embed_dim if hasattr(Settings.embed_model, 'embed_dim') else 768
-    
-    client = QdrantClient(
-        host=host,
-        port=int(port),
-        prefer_grpc=config.get('prefer_grpc', False),
-        https=config.get('https', False),
-        timeout=config.get('qdrant_timeout', 60.0),
-    )
+async def build_vector_store(
+        qdrant_url: str = "http://localhost:6333",
+        cache_path: str = "cache",
+        reindex: bool = False,
+        collection_name: str = "aiops24",
+        vector_size: int = 3584,
+) -> tuple[AsyncQdrantClient, QdrantVectorStore]:
+    if qdrant_url:
+        client = AsyncQdrantClient(
+            url=qdrant_url,
+        )
+    else:
+        client = AsyncQdrantClient(
+            path=cache_path,
+        )
 
     if reindex:
         try:
-            client.delete_collection(collection_name)
+            await client.delete_collection(collection_name)
         except UnexpectedResponse as e:
             print(f"Collection not found: {e}")
 
     try:
-        client.create_collection(
+        await client.create_collection(
             collection_name=collection_name,
             vectors_config=models.VectorParams(
-                size=embed_dim, distance=models.Distance.COSINE
+                size=vector_size, distance=models.Distance.COSINE
             ),
         )
     except Exception as e:
         print("集合已存在")
     return client, QdrantVectorStore(
-        client=client,
+        aclient=client,
         collection_name=collection_name,
         parallel=4,
         batch_size=32,

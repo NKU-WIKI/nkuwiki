@@ -1,0 +1,106 @@
+---
+description: projcec-description
+globs: 
+alwaysApply: false
+---
+
+# Your rule content
+
+## 项目结构树
+ nkuwiki/
+├── core/               # 核心
+│   ├── agent/          # Agent模块
+│   │   ├── chatgpt/          # ChatGPT平台集成
+│   │   │   ├── chat_gpt_agent.py     # Agent实现
+│   │   │   └── chat_gpt_session.py   # 会话管理
+│   │   ├── coze/          # Coze平台集成
+│   │   │   └── coze_agent.py     # Agent实现
+│   │   ├── hiagent/        # HIAgent平台
+│   │   │    ├── hiagent_agent.py    
+│   │   │    └── hiagent_session.py   # 会话管理
+│   │   ├── agent.py          # Agent抽象基类
+│   │   ├── session_manager.py # 全局会话管理
+│   │   └── agent_factory.py  # Agent工厂
+│   ├── bridge/          # 连接agent和服务的桥梁
+│   │   ├── bridge.py  # 桥梁
+│   │   │   ├── context.py # 上下文
+│   │   │   ├── reply.py # 回复
+│   │   │   └── ...
+│   ├── auth/          # 认证服务
+│   │   ├── duckdb_operator.py  # DuckDB操作
+│   │   └── redis_manager.py    # Redis连接管理
+│   └── utils/         # 公共工具库
+│       ├── common/        # 通用工具
+│       │   ├── expired_dict.py  # 带过期字典
+│       │   ├── string_utils.py   # 字符串处理
+│       │   ├── const.py         # 常量定义
+│       │   └── dequeue.py       # 双端队列实现
+│       ├── plugins/       # 插件系统
+│       │   ├── plugin_manager.py # 插件管理器
+│       │   └── ... 
+│       ├── translate/     # 翻译工具
+│       │   ├── factory.py # 翻译工厂
+│       │   └── ...
+│       ├── voice/         # 语音工具
+│       │   ├── factory.py # 语音工厂
+│       │   └── ...
+│       └── anti_crawler/  # 反爬工具
+│           ├── factory.py # 反爬工厂
+│           └── ...
+├── etl/               # 数据采集处理管道
+│   ├── crawler/       # 爬虫管理
+│   │   ├── base_crawler.py  # 爬虫基类
+│   │   ├── wechat.py        # 微信公众号爬虫
+│   │   └── init_script.js   # 反检测脚本
+│   ├── transform/      # 数据处理管道
+│   │    ├── data_export.py   # 数据导出到mysql
+│   │    ├── merge_json.py    # 数据合并
+│   │    └── coze_datasource.py  # Coze知识库同步
+│   └── load/          # 数据入库
+│       └── wechat_articles.sql  # 微信公众号文章表
+        embedding/  数据索引化、嵌入
+        retrivel/ 文档检索、重排
+        utils/工具
+        api/ API接口
+        
+├── services/
+│   ├── terminal/      # 终端服务
+│   ├── website/       # 网站服务
+│   ├── wechatmp/      # 微信公众号服务
+│   │   ├── wechatmp_channel.py  # 主通道逻辑
+│   │   ├── passive_reply.py    # 被动回复处理
+│   │   ├── active_reply.py     # 主动回复处理 
+│   │   └── common.py          # 公共方法
+│   ├── chat_channel.py     # 通用聊天通道
+│   ├── chat_message.py     # 聊天消息处理
+│   └── channel_factory.py   # 通道管理
+└── infra/
+    ├── deploy/        # 部署配置
+    │   └── scripts/    # 部署脚本
+    │       ├── start.sh     # 启动脚本
+    │       ├── shutdown.sh # 关闭脚本
+    │       └── restart.sh  # 重启脚本
+    └── monitoring/    # 监控体系
+        ├── loki/      # 日志管理
+        └── pyroscope/ # 持续性能分析
+├── config.py  # 全局配置管理
+├── app.py      # 微信服务号服务  
+├── requirements.txt # 依赖
+
+/data/                          # 服务器根目录独立存储
+├── raw/                        # 原始数据
+│   ├── website/                # 网站
+│   ├── wechat/                 # 微信公众号
+│   ├── campus_market/          # 校园集市
+│   ├── xiaohongshu/            # 小红书
+│   ├── weibo/                  # 微博
+│   ├── douyin/                 # 抖音
+│   ├── bilibili/               # B站
+│   ├── zhihu/                  # 知乎
+│   ├── volunteer/              # 志愿者团队贡献
+│   └── user/                   # 用户贡献数据
+└── index/                      # 索引数据
+    ├── qdrant/                 # 向量数据
+    ├── models/                 # 模型
+    └── cache/                  # 缓存
+├── logs/                       # 日志目录

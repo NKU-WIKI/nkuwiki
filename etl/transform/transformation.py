@@ -1,8 +1,8 @@
+import json
 import os.path
-from typing import Sequence, List
+from typing import Sequence
 from llama_index.core.extractors.interface import BaseExtractor
 from llama_index.core.schema import BaseNode
-from pydantic import Field
 
 
 def filter_image(cap, title, text, content):
@@ -33,38 +33,57 @@ def filter_image(cap, title, text, content):
 
 
 class CustomFilePathExtractor(BaseExtractor):
-    data_path: str = Field(description="原始数据根目录路径")
-    last_path_length: int = Field(default=3, description="保留的路径层级数")
+    last_path_length: int = 4
+    data_path: str
 
-    def __init__(self, data_path: str, last_path_length: int = 3, **kwargs):
-        super().__init__(data_path=data_path, last_path_length=last_path_length, **kwargs)
-
-    async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict]:
-        return [node.metadata for node in self(nodes)]
+    def __init__(self, last_path_length: int = 4, data_path: str = "", **kwargs):
+        super().__init__(
+            last_path_length=last_path_length,
+            data_path=data_path,
+            **kwargs
+        )
 
     @classmethod
     def class_name(cls) -> str:
         return "CustomFilePathExtractor"
 
-    def __call__(self, nodes: List[BaseNode]) -> List[BaseNode]:
+    async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict]:
+        pathmap_file = os.path.join(self.data_path, "pathmap.json")
+        if os.path.exists(pathmap_file):
+            with open(pathmap_file) as f:
+                pathmap = json.loads(f.read())
+        else:
+            pathmap = None
+        imgmap_file = os.path.join(self.data_path, "imgmap_filtered.json")
+        print(imgmap_file, flush=True)
+        if os.path.exists(imgmap_file):
+            with open(imgmap_file) as f:
+                imgmap = json.loads(f.read())
+        else:
+            imgmap = None
+        metadata_list = []
         for node in nodes:
-            # 从原始文件路径提取相对路径
-            source_path = node.metadata.get("file_path", "")
-            relative_path = os.path.relpath(source_path, self.data_path)
-            
-            # 生成知识路径
-            path_parts = relative_path.split(os.sep)
-            if len(path_parts) > self.last_path_length:
-                know_path = os.sep.join(path_parts[-self.last_path_length:])
-            else:
-                know_path = relative_path
-                
-            # 更新元数据
-            node.metadata.update({
-                "know_path": know_path,
-                "dir": os.path.dirname(relative_path)
-            })
-        return nodes
+            node.metadata["file_abs_path"] = node.metadata['file_path']
+            file_path = node.metadata["file_path"].replace(self.data_path + "/", "")
+            node.metadata["dir"] = file_path.split("/")[0]
+            node.metadata["file_path"] = file_path
+            if pathmap is not None:
+                node.metadata["know_path"] = "/".join(pathmap[file_path])
+            if imgmap is not None:
+                if file_path in imgmap:
+                    cap2imgobj = imgmap[file_path]
+                    imgobjs = []
+                    for cap in cap2imgobj:
+                        imgobj = cap2imgobj[cap]
+                        title = imgobj['title']
+                        content = imgobj['content']
+                        if filter_image(cap, title, node.text, content):
+                            continue
+                        imgobj['cap'] = cap
+                        imgobjs.append(imgobj)
+                    node.metadata['imgobjs'] = imgobjs
+            metadata_list.append(node.metadata)
+        return metadata_list
 
 
 class CustomTitleExtractor(BaseExtractor):

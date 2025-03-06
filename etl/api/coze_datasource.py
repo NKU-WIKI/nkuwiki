@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).parent.parent.parent)) 
+# 移除此行，使用绝对导入
+# sys.path.append(str(Path(__file__).parent.parent.parent)) 
 
 from fastapi import FastAPI, Request, HTTPException
 from contextlib import asynccontextmanager
