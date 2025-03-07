@@ -315,6 +315,7 @@ class Wechat(BaseCrawler):
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
+
 if __name__ == "__main__":
     wechat = Wechat(authors = "club_official_accounts", debug=False, headless=True, use_proxy=True)  # 初始化
     wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量

@@ -17,7 +17,7 @@ import json
 from pathlib import Path
 from typing import Dict
 from config import Config
-from etl.load import load_logger
+from etl.load import config, load_logger, get_conn
 from mysql.connector.constants import ClientFlag
 Config().load_config()
 
@@ -32,15 +32,15 @@ def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
         数据库连接对象
     """
     params = {
-        'host': Config().get("etl.data.mysql.host"),
-        'port': Config().get("etl.data.mysql.port"),
-        'user': Config().get("etl.data.mysql.user"),
-        'password': Config().get("etl.data.mysql.password"),
+        'host': Config().get("mysql.host"),
+        'port': Config().get("mysql.port"),
+        'user': Config().get("mysql.user"),
+        'password': Config().get("mysql.password"),
         'charset': 'utf8mb4',
         'autocommit': True
     }
     if use_database:
-        params["database"] = Config().get("db_name")
+        params["database"] = Config().get("mysql.name")
     return mysql.connector.connect(**params)
 
 def init_database():

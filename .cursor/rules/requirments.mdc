@@ -1,0 +1,22 @@
+---
+description: 要求
+globs: 
+alwaysApply: false
+---
+# 要求
+
+## 依赖
+
+熟悉 [requirements.txt](mdc:requirements.txt) 中的依赖并搜索相应的api文档。
+
+## markdown
+
+markdown代码符合vscode的markdownlint插件的语法规范。
+
+## python
+
+不要写过多健壮性代码，简洁高效。
+
+## 禁止
+
+禁止自行运行代码。

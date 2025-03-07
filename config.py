@@ -111,7 +111,6 @@ available_setting = {
         "plugin_trigger_prefix": "&",  # 插件触发前缀
         "image_create_prefix": ["画"],  # 图像创建前缀
         "speech_recognition": True,  # 语音识别开关
-        "group_speech_recognition": False,  # 群组语音识别开关
         "voice_reply_voice": False,  # 语音回复语音开关
         "always_reply_voice": False,  # 始终语音回复开关
         "voice_to_text": "openai",  # 语音转文本服务
@@ -135,7 +134,7 @@ available_setting = {
             "ssl_key_path": "/etc/ssl/private.key",  # SSL私钥路径
             "ssl_cert_path": "/etc/ssl/certificate.pem"  # SSL证书路径
         },
-        # 企业微信配置
+        # 企业微信个人号配置
         "wework": {
             "single_chat_prefix": [""],  # 单聊前缀
             "single_chat_reply_prefix": "",  # 单聊回复前缀
@@ -146,9 +145,10 @@ available_setting = {
             "rate_limit_chatgpt": 20,  # ChatGPT速率限制
             "rate_limit_dalle": 50,  # DALL-E速率限制
             "concurrency_in_session": 1,  # 会话并发数
-            "group_chat_exit_group": False  # 群聊退出群组
+            "group_chat_exit_group": False,  # 群聊退出群组
+            "group_speech_recognition": False,  # 群组语音识别开关
         },
-        # 微信企业号配置
+        # 企业微信app配置
         "wechatcom": {
             "corp_id": "",  # 企业ID
             "app": {
@@ -250,7 +250,7 @@ available_setting = {
         },
         # 检索配置
         "retrieval": {
-            "re_only": False,  # 是否只检索，用于调试检索
+            "re_only": True,  # 是否只检索，用于调试检索
             "rerank_fusion_type": 1,  # 重排融合类型：0-不使用精排后fusion 1-两路检索结果rrf 2-生成长度最大的作为最终结果 3-两路生成结果拼接
             "ans_refine_type": 0,  # 答案优化类型：0-不对答案做后处理 1-LLM利用top1文档和参考答案生成新答案 2-LLM将top1文档和参考答案拼接生成新答案
             "retrieval_type": 3,  # 检索类型：1-密集检索 2-稀疏检索 3-混合检索

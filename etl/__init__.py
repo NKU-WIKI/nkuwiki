@@ -42,15 +42,15 @@ LOG_DIR = LOG_PATH
 LOG_DIR.mkdir(exist_ok=True, parents=True)
 logger.add(LOG_DIR / "etl.log", rotation="1 day", retention="3 months", level="INFO")
 
+# 数据库配置
+DB_HOST = config.get('mysql.host', '127.0.0.1')
+DB_PORT = config.get('mysql.port', 3306)
+DB_USER = config.get('mysql.user', 'root')
+DB_PASSWORD = config.get('mysql.password', '')
+DB_NAME = config.get('mysql.name', 'mysql')
+
 # 导出子模块
-# from etl import crawler
-# from etl import load
-# from etl import transform
-# from etl import retrieval
-# from etl import embedding
-# from etl import api
-# from etl import data
-# from etl import utils
+from etl import crawler, load, transform, retrieval, embedding, api, data, utils
 
 # 版本信息
 __version__ = "1.0.0"
@@ -61,11 +61,19 @@ __all__ = [
     'os', 'sys', 'Path', 'logger', 'config',
     'Dict', 'List', 'Optional', 'Any', 'Set',
     # 子模块
-    # 'crawler', 'load', 'transform', 'retrieval', 'embedding', 'api', 'data', 'utils',
+    'crawler', 'load', 'transform', 'retrieval', 'embedding', 'api', 'data', 'utils',
     
     # 路径配置
     'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'LOG_PATH',
     
     # 环境变量配置
-    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME', 'NLTK_DATA'
+    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME', 'NLTK_DATA',
+    
+    # 数据库配置
+    'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'
 ]
+
+# etl模块的公用配置和包
+# 该模块负责数据抽取、转换和加载，提供了全局共享的配置项和工具函数。
+# 包含子模块：crawler, load, transform, retrieval, embedding, api, data, utils
+# 提供的全局配置包括路径配置、环境变量配置和数据库配置。

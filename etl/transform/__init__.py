@@ -22,11 +22,11 @@ from .. import (
 )
 
 # 数据库配置
-DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')
-DB_PORT = config.get('etl.data.mysql.port', 3306)
-DB_USER = config.get('etl.data.mysql.user', 'root')
-DB_PASSWORD = config.get('etl.data.mysql.password', '')
-DB_NAME = config.get('etl.data.mysql.name', 'mysql')
+DB_HOST = config.get('mysql.host', '127.0.0.1')
+DB_PORT = config.get('mysql.port', 3306)
+DB_USER = config.get('mysql.user', 'root')
+DB_PASSWORD = config.get('mysql.password', '')
+DB_NAME = config.get('mysql.name', 'mysql')
 
 # 转换配置
 HTML_TAGS_PATTERN = r'<.*?>'
@@ -86,3 +86,5 @@ __all__ = [
     # 转换配置
     'HTML_TAGS_PATTERN', 'SPECIAL_CHARS_PATTERN', 'MAX_TEXT_LENGTH', 'MIN_TEXT_LENGTH'
 ]
+
+from etl.transform import config, transform_logger, get_conn
