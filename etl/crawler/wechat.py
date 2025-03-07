@@ -1,4 +1,5 @@
 from __init__ import *
+from base_crawler import BaseCrawler
 
 class Wechat(BaseCrawler):
     """微信公众号爬虫
@@ -18,10 +19,10 @@ class Wechat(BaseCrawler):
         # 获取公众号列表
         accounts = os.environ.get(authors.upper(), "")
         if not accounts:
-            self.logger.error(f"Config etl.crawler.accounts.{authors} is not set or is empty")
+            self.logger.error(f"Config etl.crawler.accounts.{authors} is not set")
             raise
         self.authors = accounts.split(",")
-        self.logger.info(f"start to crawl authors: {self.authors}")
+        self.logger.info(f"start to scrape articles from authors: {self.authors}")
         self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
 
     def login_for_cookies(self) -> dict[str, str]:
@@ -92,36 +93,17 @@ class Wechat(BaseCrawler):
                 state='attached', 
                 timeout=3000
             )
+            new_content_button.click()
+            self.context.wait_for_event('page')
+            self.page = self.context.pages[-1]
+            self.random_sleep()
+            self.page.wait_for_selector('li[id="js_editor_insertlink"] > span').click()
         except Exception as e:
             self.page.screenshot(path='viewport.png', full_page=True)
             self.counter['error'] += 1
             self.logger.error(f'get articles from {self.authors} error, {type(e)}: {e}')
             return total_articles
 
-        # 增加操作重试机制
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                new_content_button.click()
-                break
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    self.logger.error(f"点击失败，已重试 {max_retries} 次，跳过")
-                    return total_articles
-                self.logger.warning(f"点击失败，重试 {attempt+1}/{max_retries}")
-                self.page.reload()
-        try:
-            self.context.wait_for_event('page')
-            new_page = self.context.pages[-1]
-            self.page = new_page
-            self.logger.info('go to new content page')
-            self.random_sleep()
-            self.page.wait_for_selector('li[id="js_editor_insertlink"] > span').click()
-        except Exception as e:
-            self.page.screenshot(path='viewport.png', full_page=True)
-            self.counter['error'] += 1
-            self.logger.error(f'get articles error, {type(e)}: {e}')
-            return total_articles
         for author in self.authors:
             self.random_sleep()
             try:
@@ -131,6 +113,7 @@ class Wechat(BaseCrawler):
                 ).click()
             except Exception as e:
                 self.logger.error(f'Failed to find account button: {e}')
+                continue
             self.random_sleep()
             try:
                 search_account_field = self.page.wait_for_selector(
@@ -218,62 +201,6 @@ class Wechat(BaseCrawler):
         self.logger.info(f'save total {len(total_articles)} articles from {self.authors}')
         return total_articles
 
-    def download_article(self, article: dict, add_scraped_records: list) -> None:
-        """下载单篇文章内容并保存元数据
-        
-        Args:
-            article: 文章信息字典（需包含link/title/date等字段）
-            add_scraped_records: 用于记录已成功下载的链接列表
-        """
-        # 下载文章
-        file_url = ''
-        try:
-            # 创建新页面下载文章
-            article_page = self.context.new_page()
-            article_page.goto(article['original_url'])
-            self.counter['visit'] += 1
-            self.random_sleep()
-            
-            try:
-                # 下载文章内容
-                file_name = article['title']
-                metadata = {}  # 初始化元数据
-                metadata['run_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # 记录运行时间
-                metadata['publish_time'] = article['date']  # 记录发布时间
-                metadata['title'] = article['title']  # 记录标题
-                metadata['author'] = article['author']  # 记录作者
-                metadata['original_url'] = article['original_url']  # 记录原始链接
-                metadata['content_type'] = self.content_type  # 记录内容类型
-                year_month = article['date'][0:7].replace('-', '')  # 获取年月
-                # metadata['file_path'] = f'{year_month}/{file_name}.html'  # 记录文件路径
-                dir_path = self.base_dir / year_month  # 获取目录路径
-                self.headers['Referer'] = article['original_url']  # 设置Referer头  
-                resp = requests.get(article['original_url'], headers=self.headers, cookies=None)  # 发送HTTP请求下载文件
-                file_len = len(resp.content)  # 获取文件长度
-                dir_path.mkdir(parents=True, exist_ok=True)  # 创建目录
-                data_path = dir_path / f'{file_name}.html'  # 获取文件路径
-                meta_path = dir_path / f'{file_name}.json'  # 获取元数据文件路径
-                self.counter['scrape'] += 1  # 抓取计数器加1
-                if resp.status_code == 200 and file_len > 1000:  # 如果请求成功且文件长度大于1000字节
-                    current_time_ms = int(time.time() * 1000)  # 获取当前时间戳
-                    self.update_f.write(f"{metadata['file_path']}\t{current_time_ms}\n")  # 写入更新文件
-                    self.logger.info(f"Success download: {metadata['file_path']}, article_original_url: {article['original_url']}, file_url: {file_url}")  # 记录日志
-                    add_scraped_records.append(article['original_url'])  # 添加到已抓取链接列表
-                    self.counter['download'] += 1  # 下载计数器加1
-                    metadata['download_status'] = 'success'
-                else:
-                    self.counter['error'] += 1  # 错误计数器加1
-                    self.logger.error(f'request html error, code: {resp.status_code}, len: {file_len}, url: {file_url}')  # 记录错误日志
-                    metadata['download_status'] = 'failed'
-                meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2))  # 写入元数据
-                data_path.write_bytes(resp.content)  # 写入文件内容
-            finally:
-                # 确保关闭页面
-                article_page.close()
-        except Exception as e:
-            self.counter['error'] += 1
-            self.logger.error(f'get article_original_url error, {type(e)}: {e}, url: {article["original_url"]}')
-
     def scrape(self, max_article_num: int = 5, total_max_article_num: int = 20) -> None:
         """执行完整爬取流程
         
@@ -307,15 +234,113 @@ class Wechat(BaseCrawler):
     
         self.save_counter(start_time)  
         self.update_f.close()  
-            
+
+    def download_article(self, article: dict) -> None:
+        """下载单篇文章内容
+        Args:
+            article: 文章信息字典（需包含original_url）
+        """
+        try:
+            article_page = self.context.new_page()
+            article_page.goto(article['original_url'])
+            self.counter['visit'] += 1
+            self.random_sleep()
+
+            year_month = article.get('publish_time', datetime.now().strftime("%Y-%m%d"))[0:7].replace('-', '')
+            title = clean_filename(article.get('title', 'untitled'))
+
+            save_dir = self.base_dir / year_month / title
+            html_content = article_page.content()
+            html_path = save_dir / f"{title}.html"
+            with open(html_path, 'w', encoding='utf-8', errors='ignore') as f:
+                f.write(html_content)
+
+            if 'original_url' in article:
+                from etl.transform.wechatmp2md import wechatmp2md
+                success = wechatmp2md(article['original_url'], str(save_dir))
+                if success:
+                    generated_dirs = [d for d in save_dir.iterdir() if d.is_dir() and d.name != 'imgs']
+                    if generated_dirs:
+                        generated_dir = generated_dirs[0]
+                        md_with_imgs_dir = save_dir / "md_with_imgs"
+                        generated_dir.rename(md_with_imgs_dir)
+
+                        generated_md_files = list(md_with_imgs_dir.glob("*.md"))
+                        if generated_md_files:
+                            md_file = save_dir / f"{title}.md"
+                            shutil.copy2(generated_md_files[0], md_file)
+
+                            with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
+                                content = f.read()
+                            content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
+                            content = re.sub(r'\n\s*\n', '\n', content)
+                            with open(md_file, 'w', encoding='utf-8') as f:
+                                f.write(content.strip())
+                            from etl.transform.abstract import generate_abstract
+                            abstract = generate_abstract(md_file)
+                            if abstract:
+                                article['content'] = abstract
+                                with open(save_dir / f"{title}.json", 'w', encoding='utf-8') as f:
+                                    json.dump(article, f, ensure_ascii=False)
+                                self.logger.debug(f"生成摘要成功: {title}")
+                            else:
+                                self.logger.error(f"生成摘要失败: {title}")
+                                self.counter['error'] += 1
+                    else:
+                        self.logger.error(f"转换失败，未生成新的文件夹: {title}")
+                        self.counter['error'] += 1
+                else:
+                    self.logger.error(f"Markdown转换命令执行失败: {title}")
+                    self.counter['error'] += 1
+
+            self.logger.info(f'已下载文章: {title}, md长度: {len(content.strip())}, 摘要长度: {len(abstract)}')
+
+        except Exception as e:
+            self.counter['error'] += 1
+            self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
+        finally:
+            try:
+                article_page.close()
+            except:
+                pass
+
     def download(self):
-        # TODO: 添加下载实现
-        pass
+        data_dir = Path(self.base_dir)
+        start_time = time.time()
+
+        for json_path in data_dir.glob('**/*.json'):
+            try:
+                with open(json_path, 'r', encoding='utf-8') as f:
+                    article_data = json.load(f)
+
+                if not isinstance(article_data, dict):
+                    continue
+
+                html_files = list(json_path.parent.glob('*.html'))
+                md_files = list(json_path.parent.glob('*.md'))
+
+                if not html_files or not md_files:
+                    self.download_article(article_data)
+                    self.counter['processed'] = self.counter.get('processed', 0) + 1
+                    if self.counter['processed'] % 100 == 0:
+                        self.logger.info(f"已处理 {self.counter['processed']} 篇文章")
+                    self.random_sleep()
+            except Exception as e:
+                self.counter['error'] = self.counter.get('error', 0) + 1
+                if self.counter['error'] > 10 and self.counter['error'] % 10 == 0:
+                    time.sleep(120)
+        self.save_counter(start_time)
+        self.logger.info(f"下载完成，共处理 {self.counter.get('processed', 0)} 篇文章, " +
+                         f"错误 {self.counter.get('error', 0)} 篇")
 
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
 
 if __name__ == "__main__":
-    wechat = Wechat(authors = "club_official_accounts", debug=False, headless=True, use_proxy=True)  # 初始化
-    wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量
+    # wechat = Wechat(authors = "club_official_accounts", debug=True, headless=True, use_proxy=True)  # 初始化
+    # wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量
+    for authors in ["university_official_accounts", "unofficial_accounts", "club_official_accounts", "school_official_accounts"]:
+        wechat = Wechat(authors = authors, debug=False, headless=False, use_proxy=True)  # 初始化
+        wechat.scrape(max_article_num=500, total_max_article_num=1e10)   # max_article_num最大抓取数量
+    wechat.download()

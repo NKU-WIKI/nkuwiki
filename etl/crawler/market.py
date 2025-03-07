@@ -1,4 +1,5 @@
 from __init__ import *
+from base_crawler import BaseCrawler
 
 class Market(BaseCrawler):
     """Zanao集市数据爬虫"""

@@ -1,32 +1,14 @@
 """
 转换模块，负责数据格式转换和处理
 """
-import os
+
 import sys
-import json
-import re
-import time
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
-from loguru import logger
-from datetime import datetime
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from etl import *
+
 import mysql.connector
 from collections import defaultdict
-
-# 从根模块导入共享配置
-from .. import (
-    # 路径配置
-    BASE_PATH, RAW_PATH, CACHE_PATH, LOG_PATH,
-    # 配置工具
-    config
-)
-
-# 数据库配置
-DB_HOST = config.get('mysql.host', '127.0.0.1')
-DB_PORT = config.get('mysql.port', 3306)
-DB_USER = config.get('mysql.user', 'root')
-DB_PASSWORD = config.get('mysql.password', '')
-DB_NAME = config.get('mysql.name', 'mysql')
 
 # 转换配置
 HTML_TAGS_PATTERN = r'<.*?>'
@@ -68,14 +50,11 @@ def get_conn(use_database=True):
         transform_logger.error(f"数据库连接失败: {str(e)}")
         raise
 
-# 导入转换模块
-from etl.transform.transformation import CustomFilePathExtractor, CustomTitleExtractor
-
 # 定义导出的变量和函数
 __all__ = [
-    'os', 'sys', 'json', 're', 'time', 'Path', 'Dict', 'List', 'Optional', 'Any', 'Union',
+    'os', 'sys', 'json', 're', 'time', 'Path','requests','Dict', 'List', 'Optional', 'Any', 'Union',
     'transform_logger', 'datetime', 'mysql', 'defaultdict', 'get_conn',
-    'CustomFilePathExtractor', 'CustomTitleExtractor',
+    'config',
     
     # 路径配置
     'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'LOG_PATH',
@@ -86,5 +65,3 @@ __all__ = [
     # 转换配置
     'HTML_TAGS_PATTERN', 'SPECIAL_CHARS_PATTERN', 'MAX_TEXT_LENGTH', 'MIN_TEXT_LENGTH'
 ]
-
-from etl.transform import config, transform_logger, get_conn

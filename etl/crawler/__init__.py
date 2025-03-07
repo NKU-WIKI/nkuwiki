@@ -11,11 +11,7 @@ from etl import *
 # crawler模块通用配置
 import tempfile  
 import shutil  
-import re  
 import pytz  
-import json  
-import time  
-from datetime import datetime, timedelta  
 import requests  
 import random  
 from collections import Counter  
@@ -52,14 +48,26 @@ logger.configure(
     ]
 )
 
-# 导入基础爬虫类
-from etl.crawler.base_crawler import BaseCrawler
+def clean_filename(filename):
+    """清理文件名，使其符合Windows和Linux文件系统规范，只保留汉字和字母"""
+    # 只保留汉字和字母，删除其他所有字符
+    clean_name = re.sub(r'[^\u4e00-\u9fa5a-zA-Z]', '', filename)
+
+    # 确保文件名不为空
+    if not clean_name:
+        clean_name = 'untitled'
+
+    # 限制文件名长度（考虑中文字符）
+    while len(clean_name.encode('utf-8')) > 200:
+        clean_name = clean_name[:-1]
+
+    return clean_name
 
 __all__ = [
     'datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 
-    'crawler_logger', 'Counter', 'tempfile', 'shutil', 'sync_playwright', 'config', 'Dict', 'List', 
+    'crawler_logger', 'Counter', 'tempfile', 'shutil', 'sync_playwright', 'config', 'Dict', 'List', 'clean_filename',
     'Optional', 'Any', 'hashlib', 'hmac', 'asyncio', 'PROXY_POOL', 'MARKET_TOKEN', 
     'UNOFFICIAL_ACCOUNTS', 'UNIVERSITY_OFFICIAL_ACCOUNTS', 'SCHOOL_OFFICIAL_ACCOUNTS', 
-    'CLUB_OFFICIAL_ACCOUNTS', 'BaseCrawler', 'Set', 'timedelta', 'RAW_PATH', 'LOG_PATH',
+    'CLUB_OFFICIAL_ACCOUNTS', 'timedelta', 'RAW_PATH', 'LOG_PATH',
     'BASE_PATH', 'DEFAULT_USER_AGENT', 'DEFAULT_TIMEZONE', 'DEFAULT_LOCALE'
 ] 

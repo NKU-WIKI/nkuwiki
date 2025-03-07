@@ -172,7 +172,7 @@ class BaseCrawler():
         self.page.keyboard.press('PageDown')
         time.sleep(random.uniform(0.5, 1.5))
 
-    def read_cookies(self, timeout: int = 6*3600) -> tuple[int, Optional[Dict[str, str]]]:
+    def read_cookies(self, timeout: int = 6*3600):
         """
         从文件中读取cookies，timeout为cookies有效期，默认6小时
         """
@@ -252,28 +252,6 @@ class BaseCrawler():
         """
         保存已抓取文章，articles为新增抓取文章
         """
-        def clean_filename(filename):
-            """清理文件名，使其符合Windows和Linux文件系统规范"""
-            # 1. 替换或删除特殊字符
-            # Windows/Linux都不允许的字符: / \ : * ? " < > |
-            # 空格和点号虽然允许，但可能造成问题，也替换掉
-            invalid_chars = r'[<>:"/\\|?*\s.]+'
-            clean_name = re.sub(invalid_chars, '_', filename)
-            
-            # 2. 删除首尾的点和空格（Windows不允许）
-            clean_name = clean_name.strip('. ')
-            
-            # 3. 确保文件名不为空或仅包含特殊字符
-            if not clean_name or clean_name.isspace():
-                clean_name = 'untitled'
-                
-            # 4. 限制文件名长度（考虑中文字符）
-            # Windows最长255字节，Linux一般255字符
-            # 保守起见，取较小值，并留出后缀名空间
-            while len(clean_name.encode('utf-8')) > 200:
-                clean_name = clean_name[:-1]
-            
-            return clean_name
 
         total_f = self.base_dir / self.scraped_original_urls_file
         for article in articles:    
@@ -282,7 +260,14 @@ class BaseCrawler():
                 save_dir = self.base_dir / year_month
                 save_dir.mkdir(exist_ok=True, parents=True)
                 clean_title = clean_filename(article.get('title', ''))
-                save_path = save_dir / clean_title
+                
+                # 创建文章专属目录
+                article_dir = save_dir / clean_title
+                article_dir.mkdir(exist_ok=True, parents=True)
+                
+                # 在文章目录下保存JSON文件
+                save_path = article_dir / clean_title
+                
                 meta = {
                     "platform": self.platform,
                     "original_url": article.get('original_url', ''),
@@ -424,3 +409,4 @@ class BaseCrawler():
         except Exception as e:
             self.logger.error(f"写入文件 {path} 失败: {str(e)}")
             return False
+        
