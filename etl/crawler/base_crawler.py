@@ -38,7 +38,8 @@ class BaseCrawler():
         self.tz = pytz.timezone(DEFAULT_TIMEZONE)  # 设置时区
         self.playwright = sync_playwright().start()
         self.browser = self.playwright.chromium.launch(
-            channel="chrome",
+            # channel="chrome", # 使用chrome浏览器
+            # 不填channel时，使用内置浏览器，需要先执行playwright install chromium
             headless=headless,
             args=[
                 "--disable-blink-features=AutomationControlled",

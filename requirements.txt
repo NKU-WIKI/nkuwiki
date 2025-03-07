@@ -4,7 +4,7 @@
 llama-index-core==0.12.22
 pydantic==2.8.0
 --extra-index-url https://download.pytorch.org/whl/cpu 
-torch==2.3.0+cpu # no cuda environment
+torch==2.3.0+cpu # cuda-free environment
 transformers>=4.49.0
 sentence-transformers==3.4.1
 qdrant-client==1.13.2 #qdrant-server==1.13.2
@@ -31,7 +31,7 @@ llmlingua
 
 ### web
 
-playwright
+playwright # 使用内置浏览器时，需要先执行playwright install chromium
 fastapi
 uvicorn
 beautifulsoup4
