@@ -1,8 +1,8 @@
-from __init__ import *
-
+from .__init__ import *
+from .__init__ import transform_logger
 api_base_url = config.get("core.agent.coze.base_url", "https://api.coze.cn")
 api_key = config.get("core.agent.coze.api_key", "")
-bot_id = config.get("core.agent.coze.ab_bot_id", "")
+bot_id = config.get("core.agent.coze.job_bot_id", "")
 
 def generate_abstract(file_path: str, max_length: int = 300) -> Optional[str]:
     """

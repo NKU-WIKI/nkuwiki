@@ -38,7 +38,7 @@ SPLIT_TYPE = config.get('split_type', 0)  # 0-->Sentence 1-->Hierarchical
 
 # 创建嵌入模块专用logger
 embedding_logger = logger.bind(module="embedding")
-log_path = LOG_PATH / "embedding.log"
+log_path = LOG_PATH + "/embedding.log"
 log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
 logger.configure(
     handlers=[

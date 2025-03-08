@@ -20,15 +20,15 @@ config.load_config()
 
 # ---------- 全局共享配置项 ----------
 # 基础路径配置
-BASE_PATH = config.get("etl.data.base_path", "./etl/data")
-RAW_PATH = BASE_PATH + config.get("etl.data.raw.path", "/raw")
-CACHE_PATH = BASE_PATH + config.get("etl.data.cache.path", "/cache")
-INDEX_PATH = BASE_PATH + config.get("etl.data.index.path", "/index")
-QDRANT_PATH = BASE_PATH + config.get("etl.data.qdrant.path", "/qdrant")
+BASE_PATH = Path(config.get("etl.data.base_path", "./etl/data"))
+RAW_PATH = BASE_PATH / config.get("etl.data.raw.path", "raw").lstrip("/")
+CACHE_PATH = BASE_PATH / config.get("etl.data.cache.path", "cache").lstrip("/")
+INDEX_PATH = BASE_PATH / config.get("etl.data.index.path", "index").lstrip("/")
+QDRANT_PATH = BASE_PATH / config.get("etl.data.qdrant.path", "qdrant").lstrip("/")
 LOG_PATH = str(Path(__file__).resolve().parent) + "/logs"
 # 创建必要的目录
 for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, LOG_PATH]:
-    Path(path).mkdir(exist_ok=True, parents=True)
+    Path(path).mkdir(parents=True, exist_ok=True)
 
 # 环境变量配置
 HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')

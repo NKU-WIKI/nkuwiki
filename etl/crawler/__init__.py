@@ -28,10 +28,12 @@ UNOFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.unofficial_accounts", "")
 UNIVERSITY_OFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.university_official_accounts", "")
 SCHOOL_OFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.school_official_accounts", "")
 CLUB_OFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.club_official_accounts", "")
+COMPANY_ACCOUNTS = config.get("etl.crawler.accounts.company_accounts", "")
 os.environ["UNOFFICIAL_ACCOUNTS"] = UNOFFICIAL_ACCOUNTS
 os.environ["UNIVERSITY_OFFICIAL_ACCOUNTS"] = UNIVERSITY_OFFICIAL_ACCOUNTS
 os.environ["SCHOOL_OFFICIAL_ACCOUNTS"] = SCHOOL_OFFICIAL_ACCOUNTS
 os.environ["CLUB_OFFICIAL_ACCOUNTS"] = CLUB_OFFICIAL_ACCOUNTS
+os.environ["COMPANY_ACCOUNTS"] = COMPANY_ACCOUNTS
 
 # 浏览器配置
 DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
