@@ -17,7 +17,6 @@ star: true
 # 你可以自定义页脚
 footer: 南开新生指南
 # 你可以自定义版权信息
-copyright: © 2025 曾仕杰。保留所有权利。未经许可，禁止复制或传播。
 ---
 
 
@@ -35,11 +34,24 @@ copyright: © 2025 曾仕杰。保留所有权利。未经许可，禁止复制�
   title: 我们在听
   desc: 一个广受好评的微信公众号
   logo: /img/we_are_listening.png
-  link: https://freshnkuer.wiki/
+  link: http://weixin.qq.com/r/mp/_jnz9rHEd3kLKPWVb2x_
   background: rgba(253, 230, 138, 0.15)
   ```
-[信息汇总专栏](https://mp.weixin.qq.com/s/BmECQBsvkOgByQvrZrWgUg)
-[南开生活手册](https://mp.weixin.qq.com/s/U0FBeX6OrI265T4D2MlLSA)
+  ```component VPCard
+  title: 信息汇总专栏
+  desc: 来自“我们在听”
+  logo: /img/we_are_listening.png
+  link: https://mp.weixin.qq.com/s/BmECQBsvkOgByQvrZrWgUg
+  background: rgba(253, 230, 138, 0.15)
+  ```
+  ```component VPCard
+  title: 南开生活手册
+  desc: 来自“我们在听”
+  logo: /img/we_are_listening.png
+  link: https://mp.weixin.qq.com/s/U0FBeX6OrI265T4D2MlLSA
+  background: rgba(253, 230, 138, 0.15)
+  ```
+
 ## 一些资源
   ```component VPCard
   title: 登录校园网
