@@ -159,7 +159,7 @@ class Wechat(BaseCrawler):
             articles = []
             while len(articles) < max_article_num and page <= max_page_num:
                 try:
-                    await asyncio.sleep(0.5) 
+                    await asyncio.sleep(1.0) 
                     await self.random_sleep()
                     article_titles_elements = await self.page.query_selector_all('div[class="inner_link_article_title"] > span:nth-of-type(2)')
                     article_publish_times_elements = await self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(1)')
@@ -350,7 +350,7 @@ if __name__ == "__main__":
         for authors in ["university_official_accounts", "unofficial_accounts", "club_official_accounts", "school_official_accounts"]:
             try:
                 # 创建爬虫实例
-                wechat = Wechat(authors=authors, debug=True, headless=True, use_proxy=True)
+                wechat = Wechat(authors=authors, debug=True, headless=True, use_proxy=False)
                 # 异步初始化playwright
                 await wechat.async_init()
                 # 执行爬取

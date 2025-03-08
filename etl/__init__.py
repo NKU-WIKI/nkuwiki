@@ -7,6 +7,7 @@ import sys
 import json
 import time
 import requests
+import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
 from loguru import logger
@@ -19,11 +20,11 @@ config.load_config()
 
 # ---------- 全局共享配置项 ----------
 # 基础路径配置
-BASE_PATH = config.get("data.base_path", "./etl/data")
-RAW_PATH = BASE_PATH + config.get("data.raw.path", "/raw")
-CACHE_PATH = BASE_PATH + config.get("data.cache.path", "/cache")
-INDEX_PATH = BASE_PATH + config.get("data.index.path", "/index")
-QDRANT_PATH = BASE_PATH + config.get("data.qdrant.path", "/qdrant")
+BASE_PATH = config.get("etl.data.base_path", "./etl/data")
+RAW_PATH = BASE_PATH + config.get("etl.data.raw.path", "/raw")
+CACHE_PATH = BASE_PATH + config.get("etl.data.cache.path", "/cache")
+INDEX_PATH = BASE_PATH + config.get("etl.data.index.path", "/index")
+QDRANT_PATH = BASE_PATH + config.get("etl.data.qdrant.path", "/qdrant")
 LOG_PATH = str(Path(__file__).resolve().parent) + "/logs"
 # 创建必要的目录
 for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, LOG_PATH]:
@@ -47,11 +48,11 @@ LOG_DIR.mkdir(exist_ok=True, parents=True)
 logger.add(LOG_DIR / "etl.log", rotation="1 day", retention="3 months", level="INFO")
 
 # 数据库配置
-DB_HOST = config.get('mysql.host', '127.0.0.1')
-DB_PORT = config.get('mysql.port', 3306)
-DB_USER = config.get('mysql.user', 'root')
-DB_PASSWORD = config.get('mysql.password', '')
-DB_NAME = config.get('mysql.name', 'mysql')
+DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')
+DB_PORT = config.get('etl.data.mysql.port', 3306)
+DB_USER = config.get('etl.data.mysql.user', 'root')
+DB_PASSWORD = config.get('etl.data.mysql.password', '')
+DB_NAME = config.get('etl.data.mysql.name', 'mysql')
 
 # 版本信息
 __version__ = "1.0.0"
@@ -59,7 +60,7 @@ __version__ = "1.0.0"
 # 定义导出的符号列表 
 __all__ = [
     # 基础库和工具
-    'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests',
+    'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests','asyncio',
 
     # 路径配置
     'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'LOG_PATH',
