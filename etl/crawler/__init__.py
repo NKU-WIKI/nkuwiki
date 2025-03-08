@@ -15,10 +15,11 @@ import pytz
 import requests  
 import random  
 from collections import Counter  
-from playwright.sync_api import sync_playwright  
+from playwright.async_api import async_playwright  
 import hashlib
 import hmac
 import asyncio
+from urllib.parse import urlparse
 
 # crawler模块通用配置
 PROXY_POOL = config.get("etl.crawler.proxy_pool", "http://127.0.0.1:7897")
@@ -39,7 +40,7 @@ DEFAULT_LOCALE = "zh-CN"
 
 # 创建crawler模块专用logger
 crawler_logger = logger.bind(module="crawler")
-log_path = LOG_PATH / "crawler.log"
+log_path = LOG_PATH + "/crawler.log"
 log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
 logger.configure(
     handlers=[
@@ -64,8 +65,8 @@ def clean_filename(filename):
     return clean_name
 
 __all__ = [
-    'datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 
-    'crawler_logger', 'Counter', 'tempfile', 'shutil', 'sync_playwright', 'config', 'Dict', 'List', 'clean_filename',
+    'datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 'urlparse',
+    'crawler_logger', 'Counter', 'tempfile', 'shutil', 'async_playwright', 'config', 'Dict', 'List', 'clean_filename',
     'Optional', 'Any', 'hashlib', 'hmac', 'asyncio', 'PROXY_POOL', 'MARKET_TOKEN', 
     'UNOFFICIAL_ACCOUNTS', 'UNIVERSITY_OFFICIAL_ACCOUNTS', 'SCHOOL_OFFICIAL_ACCOUNTS', 
     'CLUB_OFFICIAL_ACCOUNTS', 'timedelta', 'RAW_PATH', 'LOG_PATH',

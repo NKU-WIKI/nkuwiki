@@ -19,15 +19,15 @@ config.load_config()
 
 # ---------- 全局共享配置项 ----------
 # 基础路径配置
-BASE_PATH = Path(config.get("data.base_path", "./etl/data"))
-RAW_PATH = BASE_PATH / "raw"
-CACHE_PATH = BASE_PATH / "cache"
-INDEX_PATH = BASE_PATH / "index"
-QDRANT_PATH = BASE_PATH / "qdrant"
-LOG_PATH = Path(__file__).resolve().parent / "logs"
+BASE_PATH = config.get("data.base_path", "./etl/data")
+RAW_PATH = BASE_PATH + config.get("data.raw.path", "/raw")
+CACHE_PATH = BASE_PATH + config.get("data.cache.path", "/cache")
+INDEX_PATH = BASE_PATH + config.get("data.index.path", "/index")
+QDRANT_PATH = BASE_PATH + config.get("data.qdrant.path", "/qdrant")
+LOG_PATH = str(Path(__file__).resolve().parent) + "/logs"
 # 创建必要的目录
 for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, LOG_PATH]:
-    path.mkdir(exist_ok=True, parents=True)
+    Path(path).mkdir(exist_ok=True, parents=True)
 
 # 环境变量配置
 HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
@@ -42,7 +42,7 @@ os.environ["SENTENCE_TRANSFORMERS_HOME"] = SENTENCE_TRANSFORMERS_HOME
 os.environ['NLTK_DATA'] = NLTK_DATA
 
 # 设置日志
-LOG_DIR = LOG_PATH
+LOG_DIR = Path(LOG_PATH)
 LOG_DIR.mkdir(exist_ok=True, parents=True)
 logger.add(LOG_DIR / "etl.log", rotation="1 day", retention="3 months", level="INFO")
 
