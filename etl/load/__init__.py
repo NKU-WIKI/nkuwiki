@@ -79,7 +79,7 @@ DB_NAME = config.get('etl.data.mysql.name', 'mysql')
 
 # 创建加载模块专用logger
 load_logger = logger.bind(module="load")
-log_path = LOG_PATH / "load.log"
+log_path = LOG_PATH + "/load.log"
 log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
 logger.configure(
     handlers=[

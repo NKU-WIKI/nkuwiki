@@ -18,7 +18,7 @@ MIN_TEXT_LENGTH = config.get('etl.transform.min_text_length', 10)
 
 # 创建转换模块专用logger
 transform_logger = logger.bind(module="transform")
-log_path = LOG_PATH / "transform.log"
+log_path = LOG_PATH + "/transform.log"
 log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
 logger.configure(
     handlers=[

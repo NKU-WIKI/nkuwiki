@@ -16,6 +16,7 @@ llama-index-vector-stores-qdrant==0.4.3
 loguru
 python-dotenv
 singleton_decorator
+openpyxl
 
 ### ml&nlp&rag
 accelerate
