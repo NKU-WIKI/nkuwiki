@@ -246,8 +246,8 @@ class Wechat(BaseCrawler):
             article: 文章信息字典（需包含original_url）
         """
         try:
-            article_page = self.context.new_page()
-            article_page.goto(article['original_url'])
+            article_page = await self.context.new_page()
+            await article_page.goto(article['original_url'])
             self.counter['visit'] += 1
             await self.random_sleep()
 
@@ -255,7 +255,9 @@ class Wechat(BaseCrawler):
             title = clean_filename(article.get('title', 'untitled'))
 
             save_dir = self.base_dir / year_month / title
-            html_content = article_page.content()
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+            html_content = await article_page.content()
             html_path = save_dir / f"{title}.html"
             with open(html_path, 'w', encoding='utf-8', errors='ignore') as f:
                 f.write(html_content)
@@ -305,7 +307,7 @@ class Wechat(BaseCrawler):
             self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
         finally:
             try:
-                article_page.close()
+                await article_page.close()
             except:
                 pass
 
@@ -325,7 +327,7 @@ class Wechat(BaseCrawler):
                 md_files = list(json_path.parent.glob('*.md'))
 
                 if not html_files or not md_files:
-                    self.download_article(article_data)
+                    await self.download_article(article_data)
                     self.counter['processed'] = self.counter.get('processed', 0) + 1
                     if self.counter['processed'] % 100 == 0:
                         self.logger.info(f"已处理 {self.counter['processed']} 篇文章")
@@ -347,23 +349,23 @@ if __name__ == "__main__":
 
     async def main():
         """异步主函数"""
-        for authors in ["university_official_accounts", "unofficial_accounts", "club_official_accounts", "school_official_accounts"]:
-            try:
-                # 创建爬虫实例
-                wechat = Wechat(authors=authors, debug=True, headless=True, use_proxy=False)
-                # 异步初始化playwright
-                await wechat.async_init()
-                # 执行爬取
-                await wechat.scrape(max_article_num=500, total_max_article_num=1e10)
+        # for authors in ["university_official_accounts", "unofficial_accounts", "club_official_accounts", "school_official_accounts"]:
+        #     try:
+        #         # 创建爬虫实例
+        #         wechat = Wechat(authors=authors, debug=True, headless=True, use_proxy=False)
+        #         # 异步初始化playwright
+        #         await wechat.async_init()
+        #         # 执行爬取
+        #         await wechat.scrape(max_article_num=500, total_max_article_num=1e10)
                 
-            except Exception as e:
-                print(f"处理 {authors} 时出错: {e}")
-                import traceback
-                traceback.print_exc()
+        #     except Exception as e:
+        #         print(f"处理 {authors} 时出错: {e}")
+        #         import traceback
+        #         traceback.print_exc()
         
         # 下载处理（在单独的实例中）
         try:
-            wechat = Wechat(debug=True, headless=False, use_proxy=True)
+            wechat = Wechat(debug=True, headless=True, use_proxy=True)
             await wechat.async_init()  # 确保在调用download前初始化
             await wechat.download()
         except Exception as e:
