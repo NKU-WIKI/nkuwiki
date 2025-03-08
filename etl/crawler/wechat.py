@@ -246,24 +246,47 @@ class Wechat(BaseCrawler):
             article: 文章信息字典（需包含original_url）
         """
         try:
-            article_page = await self.context.new_page()
-            await article_page.goto(article['original_url'])
-            self.counter['visit'] += 1
-            await self.random_sleep()
-
-            year_month = article.get('publish_time', datetime.now().strftime("%Y-%m%d"))[0:7].replace('-', '')
-            title = clean_filename(article.get('title', 'untitled'))
-
-            save_dir = self.base_dir / year_month / title
+            self.counter['total'] += 1
+            title = article['title']
+            clean_title = re.sub(r'[\\/:*?"<>|]', '_', title)[:80]
+            try:
+                subdir = datetime.strptime(article['publish_time'], '%Y-%m-%d %H:%M:%S').strftime('%Y/%m')
+            except (KeyError, ValueError):
+                # 如果没有publish_time字段或格式不正确，使用当前日期
+                self.logger.warning(f"文章缺少publish_time字段或格式不正确，使用当前日期: {title}")
+                subdir = datetime.now().strftime('%Y/%m')
+            save_dir = Path(self.base_dir) / subdir / clean_title
             save_dir.mkdir(parents=True, exist_ok=True)
             
-            html_content = await article_page.content()
-            html_path = save_dir / f"{title}.html"
-            with open(html_path, 'w', encoding='utf-8', errors='ignore') as f:
-                f.write(html_content)
-
-            if 'original_url' in article:
+            # 检查是否存在html文件并删除
+            html_files = list(save_dir.glob("*.html"))
+            for html_file in html_files:
+                html_file.unlink()
+                self.logger.debug(f"删除HTML文件: {html_file}")
+            
+            # 检查是否已有md文件
+            md_files = list(save_dir.glob("*.md"))
+            if md_files:
+                self.logger.debug(f"目录中已有MD文件，跳过转换: {save_dir}")
+                # 检查是否已有json文件
+                json_file = save_dir / f"{clean_title}.json"
+                if not json_file.exists():
+                    # 使用已有的第一个md文件生成摘要
+                    from etl.transform.abstract import generate_abstract
+                    abstract = generate_abstract(md_files[0])
+                    if abstract:
+                        article['content'] = abstract
+                        with open(json_file, 'w', encoding='utf-8') as f:
+                            json.dump(article, f, ensure_ascii=False, indent=4)
+                        self.logger.debug(f"为已有MD文件生成摘要成功: {clean_title}")
+                    else:
+                        self.logger.error(f"为已有MD文件生成摘要失败: {clean_title}")
+                        article['content'] = ""
+                        with open(json_file, 'w', encoding='utf-8') as f:
+                            json.dump(article, f, ensure_ascii=False, indent=4)
+            else:
                 from etl.transform.wechatmp2md import wechatmp2md
+                # 没有md文件，执行转换逻辑
                 success = wechatmp2md(article['original_url'], str(save_dir))
                 if success:
                     generated_dirs = [d for d in save_dir.iterdir() if d.is_dir() and d.name != 'imgs']
@@ -274,7 +297,7 @@ class Wechat(BaseCrawler):
 
                         generated_md_files = list(md_with_imgs_dir.glob("*.md"))
                         if generated_md_files:
-                            md_file = save_dir / f"{title}.md"
+                            md_file = save_dir / f"{clean_title}.md"
                             shutil.copy2(generated_md_files[0], md_file)
 
                             with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
@@ -287,29 +310,38 @@ class Wechat(BaseCrawler):
                             abstract = generate_abstract(md_file)
                             if abstract:
                                 article['content'] = abstract
-                                with open(save_dir / f"{title}.json", 'w', encoding='utf-8') as f:
-                                    json.dump(article, f, ensure_ascii=False)
-                                self.logger.debug(f"生成摘要成功: {title}")
+                                with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                                    json.dump(article, f, ensure_ascii=False, indent=4)
+                                self.logger.debug(f"生成摘要成功: {clean_title}")
+                                # 添加日志输出原始URL和摘要内容
+                                preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
+                                self.logger.info(f"原始URL: {article['original_url']}\n摘要内容预览: {preview_abstract}")
                             else:
-                                self.logger.error(f"生成摘要失败: {title}")
+                                self.logger.error(f"生成摘要失败: {clean_title}")
                                 self.counter['error'] += 1
+                                # 摘要生成失败时，将content置空并保存
+                                article['content'] = ""
+                                with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                                    json.dump(article, f, ensure_ascii=False, indent=4)
+                                self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
+                        else:
+                            self.logger.error(f"转换失败，未生成MD文件: {clean_title}")
+                            self.counter['error'] += 1
                     else:
-                        self.logger.error(f"转换失败，未生成新的文件夹: {title}")
+                        self.logger.error(f"转换失败，未生成新的文件夹: {clean_title}")
                         self.counter['error'] += 1
                 else:
-                    self.logger.error(f"Markdown转换命令执行失败: {title}")
+                    self.logger.error(f"Markdown转换命令执行失败: {clean_title}")
                     self.counter['error'] += 1
 
-            self.logger.info(f'已下载文章: {title}, md长度: {len(content.strip())}, 摘要长度: {len(abstract)}')
+            # 使用安全的字符串长度计算方法
+            content_length = len(article.get('content', '').strip())
+            abstract_length = len(article.get('content', '')) if 'content' in article else 0
+            self.logger.info(f'已下载文章: {clean_title}, md长度: {content_length}, 摘要长度: {abstract_length}')
 
         except Exception as e:
             self.counter['error'] += 1
             self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
-        finally:
-            try:
-                await article_page.close()
-            except:
-                pass
 
     async def download(self):
         data_dir = Path(self.base_dir)
@@ -323,10 +355,18 @@ class Wechat(BaseCrawler):
                 if not isinstance(article_data, dict):
                     continue
 
+                # 检查是否有HTML文件需要删除
                 html_files = list(json_path.parent.glob('*.html'))
+                if html_files:
+                    for html_file in html_files:
+                        html_file.unlink()
+                        self.logger.debug(f"删除HTML文件: {html_file}")
+                
+                # 检查是否缺少MD文件或内容为空
                 md_files = list(json_path.parent.glob('*.md'))
-
-                if not html_files or not md_files:
+                content = article_data.get('content', '')
+                
+                if not md_files or not content:
                     await self.download_article(article_data)
                     self.counter['processed'] = self.counter.get('processed', 0) + 1
                     if self.counter['processed'] % 100 == 0:

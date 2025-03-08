@@ -302,8 +302,11 @@ class Wechat(BaseCrawler):
                                 with open(save_dir / "abstract.md", 'w', encoding='utf-8') as f:
                                     f.write(abstract)
                                 with open(save_dir / f"{title}.json", 'w', encoding='utf-8') as f:
-                                    json.dump(article, f, ensure_ascii=False)
+                                    json.dump(article, f, ensure_ascii=False, indent=4)
                                 self.logger.debug(f"生成摘要成功并保存为abstract.md: {title}")
+                                # 添加日志输出原始URL和摘要内容
+                                preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
+                                self.logger.info(f"原始URL: {article['original_url']}\n摘要内容预览: {preview_abstract}")
                             else:
                                 self.logger.error(f"生成摘要失败: {title}")
                                 self.counter['error'] += 1

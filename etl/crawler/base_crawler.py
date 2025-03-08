@@ -173,7 +173,7 @@ class BaseCrawler():
             cookies: 要保存的cookies
         """
         with open(self.base_dir / self.cookies_file, 'w') as f:
-            json.dump(cookies, f)
+            json.dump(cookies, f, indent=4)
 
     async def inject_anti_detection_script(self) -> None:
         """向页面注入反自动化检测脚本"""
