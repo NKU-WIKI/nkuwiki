@@ -13,7 +13,7 @@ export default hopeTheme({
 
   logo: "favicon.ico",
 
-  repo: "NKU-WIKI/nkuwiki/services/website",
+  repo: "NKU-WIKI/nkuwiki/tree/main/services/website",
 
   docsDir: "src",
 
