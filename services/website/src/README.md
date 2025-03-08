@@ -14,7 +14,7 @@ actions:
     type: primary
 
   - text: 联系我们
-    link: ./doc
+    link: ./communicate/
 
 highlights:
 - header: 愿景和目标
@@ -33,7 +33,46 @@ highlights:
     icon: ellipsis
     details: 通过协作与共享，创造一个长期稳定、相互支持的线上社交环境。
 
+- header: 在NKU wiki中了解你不知道的南开那些事儿
+  description: 我们收集了来自微信公众号，学校顶级域名的成吨信息。
+  image: /assets/image/box.svg
+  background-repeat: repeat
+  background-size: initial
+  features:
+  - title: 知识库简介
+    icon: clipboard-check
+    details: 介绍nkuwiki
+    link: ./docx/introduction
 
+  - title: 目录
+    icon: list
+    details: nkuwiki的目录
+    link: ./docx/
+
+  - title: 常用文档
+    icon: file-word
+    details: 超级多的文档
+    link: ./docx/word
+
+  - title: 常用链接
+    icon: link
+    details: 很多南开的官方链接，也继承了学长前辈的网页。
+    link: ./docx/links
+
+  - title: 南开地图
+    icon: map-location-dot
+    details: 包含八里台和津南，新生必备。
+    link: ./docx/map
+
+  - title: 帮助与合作
+    icon: align-center
+    details: 共创共建共享
+    link: ./communicate/
+
+  - title: 数据源清单
+    icon: clipboard-list
+    details: 我们收集的成吨信息出处列表。
+    link: ./docx/data_source.md
 
 
 copyright: false
