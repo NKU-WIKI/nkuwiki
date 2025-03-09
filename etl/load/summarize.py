@@ -98,8 +98,12 @@ def filter_recruitment_articles(articles: List[Dict]) -> List[Dict]:
     
     return filtered_articles
 
-def generate_markdown_summary(articles: List[Dict], output_file: str):
-    """生成markdown格式的总结"""
+def generate_markdown_summary(articles: List[Dict], output_file_base: str):
+    """
+    生成markdown格式的总结，按块分割
+    每块小于2000行，同一作者不会被分成两块
+    输出为job1.md, job2.md等多个文件
+    """
     # 按作者分组
     author_groups = defaultdict(list)
     for article in articles:
@@ -120,33 +124,97 @@ def generate_markdown_summary(articles: List[Dict], output_file: str):
         except (ValueError, KeyError) as e:
             print(f"获取最新发布日期时出错: {e}，使用当前日期")
     
-    latest_month_day = f"{latest_date.month:02d}月{latest_date.day:02d}日"
+    # 使用简短日期格式：MMDD
+    latest_short_date = f"{latest_date.month:02d}{latest_date.day:02d}"
+    output_file_base = Path(output_file_base).with_suffix('')  # 移除扩展名
     
-    output_file = Path(output_file)
-    output_file.parent.mkdir(parents=True, exist_ok=True)
-    # 生成markdown内容
-    with open(output_file, 'w', encoding='utf-8') as f:
-        f.write(f'## 2025大厂实习/春招/社招官方信息汇总（截至2025{latest_month_day}）\n\n')
+    # 预计算每个作者内容的行数
+    author_line_counts = {}
+    for author, posts in author_groups.items():
+        # 计算作者标题行 + 每篇文章的行数
+        total_lines = 2  # 作者标题 + 空行
+        for post in posts:
+            title = post['title']
+            content = post.get('content', '')
+            
+            # 截断过长的内容
+            if len(content) > 500:
+                content = content[:500] + "..."
+            
+            # 标题行 + 内容行 + 空行
+            content_lines = content.count('\n') + 1
+            post_lines = 2 + content_lines + 1
+            total_lines += post_lines
         
-        for author, posts in author_groups.items():
-            f.write(f'### {author}\n\n')
-            for post in posts:
-                title = post['title']
-                publish_time = post['publish_time']
-                url = post.get('original_url', '#')
-                content = post.get('content', '')
-                
-                # 截断过长的内容
-                if len(content) > 500:
-                    content = content[:500] + "..."
-                
-                f.write(f'#### [{title}]({url}) - {publish_time}\n\n')
-                f.write(f'{content}\n\n')
-            f.write('\n')
+        author_line_counts[author] = total_lines
+    
+    # 分组作者到不同的块，每块小于2000行
+    current_block = []
+    current_block_lines = 0
+    blocks = []
+    
+    # 添加标题计入总行数
+    header_lines = 2  # 标题 + 空行
+    
+    # 按照行数从大到小排序作者，优先放大块
+    sorted_authors = sorted(author_line_counts.items(), key=lambda x: x[1], reverse=True)
+    
+    for author, lines in sorted_authors:
+        # 如果当前作者的内容太大，超过2000行，单独成块
+        if lines > 2000:
+            if current_block:
+                blocks.append((current_block.copy(), current_block_lines + header_lines))
+                current_block = []
+                current_block_lines = 0
+            
+            blocks.append(([author], lines + header_lines))
+            continue
+        
+        # 如果添加当前作者会超过2000行，创建新块
+        if current_block_lines + lines + header_lines > 2000 and current_block:
+            blocks.append((current_block.copy(), current_block_lines + header_lines))
+            current_block = []
+            current_block_lines = 0
+        
+        current_block.append(author)
+        current_block_lines += lines
+    
+    # 最后一个块
+    if current_block:
+        blocks.append((current_block, current_block_lines + header_lines))
+    
+    # 生成多个markdown文件
+    for i, (authors_in_block, _) in enumerate(blocks, 1):
+        output_file = f"{output_file_base}{i}.md"
+        Path(output_file).parent.mkdir(parents=True, exist_ok=True)
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(f'## 2025大厂实习/春招/社招官方信息汇总（截至{latest_short_date}）[{i}]\n\n')
+            
+            for author in authors_in_block:
+                posts = author_groups[author]
+                f.write(f'### {author}\n\n')
+                for post in posts:
+                    title = post['title']
+                    publish_time = post['publish_time']
+                    url = post.get('original_url', '#')
+                    content = post.get('content', '')
+                    
+                    # 截断过长的内容
+                    if len(content) > 500:
+                        content = content[:500] + "..."
+                    
+                    f.write(f'#### [{title}]({url}) - {publish_time}\n\n')
+                    f.write(f'{content}\n\n')
+                f.write('\n')
+        
+        print(f"生成第{i}块文件: {output_file}")
+    
+    return len(blocks)
 
 def main():
     input_dir = './etl/data/raw/company'  # 指定JSON文件所在目录
-    output_file = './etl/data/summary/job.md'   # 输出文件路径
+    output_file_base = './etl/data/summary/job'   # 输出文件路径基础名
     
     # 时间范围参数 (开始时间, 结束时间)，格式为'YYYYmm'
     # 例如: ('202301', '202312') 表示2023年1月到12月
@@ -179,8 +247,8 @@ def main():
     # 不再过滤招聘相关文章
     print(f"Found {len(articles)} articles")
     
-    generate_markdown_summary(articles, output_file)
-    print(f"Summary generated: {output_file} (time range: {time_range[0]} to {time_range[1]})")
+    num_blocks = generate_markdown_summary(articles, output_file_base)
+    print(f"Summary generated: {output_file_base}[1-{num_blocks}].md (time range: {time_range[0]} to {time_range[1]})")
 
 if __name__ == '__main__':
     main()
