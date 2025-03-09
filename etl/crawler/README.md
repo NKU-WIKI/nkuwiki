@@ -8,7 +8,7 @@ crawler 模块负责从各种数据源抓取数据，是 ETL 流程中的"Extrac
 
 - `__init__.py` - 模块入口，导入模块专用的配置依赖
 - `base_crawler.py` - 基础爬虫类，定义了通用的爬虫接口和功能
-- `module_example.py` - 日志使用的示例代码
+- `module_example.py` - 示例爬虫
 - `wechat.py` - 微信公众号文章爬虫
 - `sina_finance.py` - 新浪财经数据爬虫
 - `market.py` - 校园集市数据爬虫
@@ -21,7 +21,7 @@ crawler 模块负责从各种数据源抓取数据，是 ETL 流程中的"Extrac
 
 ```python
 from __init__ import *
-
+from  base_crawler import BaseCrawler
 class MyCrawler(BaseCrawler):
     # 实现必要的方法
     pass
@@ -40,8 +40,10 @@ class MyCrawler(BaseCrawler):
 
 ```python
 # 初始化爬虫
-wechat = Wechat(authors = "club_official_accounts", debug=False, headless=True, use_proxy=True)  # 初始化
+wechat = Wechat(authors = "club_official_accounts", debug=False, headless=True, use_proxy=True)  # 抓取文章元信息
 wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量
+# 下载文章内容
+wechat.download(debug=True, headless=True, use_proxy=True)
 ```
 
 ## 注意事项

@@ -10,12 +10,12 @@ class Wechat(BaseCrawler):
         headless: 是否使用无头浏览器模式
         use_proxy: 是否使用代理
     """
-    def __init__(self, authors: str = "university_official_accounts", debug: bool = False, headless: bool = False, use_proxy: bool = False) -> None:
+    def __init__(self, authors: str = "university_official_accounts", tag: str = "nku", debug: bool = False, headless: bool = True, use_proxy: bool = False) -> None:
         self.platform = "wechat"
+        self.tag = tag
         self.content_type = "article"
         self.base_url = "https://mp.weixin.qq.com/"
-        super().__init__(self.platform, debug, headless, use_proxy)
-        
+        super().__init__(debug, headless, use_proxy)
         # 获取公众号列表
         accounts = os.environ.get(authors.upper(), "")
         if not accounts:
@@ -423,8 +423,6 @@ class Wechat(BaseCrawler):
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
 
 if __name__ == "__main__":
-    import asyncio
-
     async def main():
         """异步主函数"""
         # for authors in ["university_official_accounts", "unofficial_accounts", "club_official_accounts", "school_official_accounts"]:

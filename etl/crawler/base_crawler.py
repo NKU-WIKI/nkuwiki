@@ -1,6 +1,4 @@
 from __init__ import *
-import logging
-import asyncio
 
 class BaseCrawler():
     """通用爬虫基类，封装常用爬取方法和反反爬策略
@@ -10,9 +8,9 @@ class BaseCrawler():
         headless: 无头模式开关
         use_proxy: 是否使用代理
         platform: 平台名称
+        tag: 标签名称
     """
-    def __init__(self, platform: str, debug: bool = False, headless: bool = False, use_proxy: bool = False) -> None:
-        self.platform = platform
+    def __init__(self, debug: bool = False, headless: bool = False, use_proxy: bool = False, tag: str = "") -> None:
         self.debug = debug
         self.headless = headless
         self.use_proxy = use_proxy
@@ -20,7 +18,7 @@ class BaseCrawler():
         self.proxy_pool = self.load_proxies()
         self.current_proxy = None
         # 设置基本目录
-        self.base_dir = RAW_PATH / Path(self.platform)
+        self.base_dir = RAW_PATH / Path(self.platform) / Path(self.tag)
         self.base_dir.mkdir(exist_ok=True, parents=True)  # 创建目录，如果目录不存在
         self.counter = Counter()  # 初始化计数器
         self.lock_file = 'lock.txt'  # 锁文件，用于防止重复运行
@@ -30,8 +28,8 @@ class BaseCrawler():
         self.scraped_original_urls_file = 'scraped_original_urls.json'  # 已抓取链接文件
         self.cookies_file = 'cookies.txt'  # cookies文件，用于保存登录信息
         self.tz = pytz.timezone(DEFAULT_TIMEZONE)  # 设置时区
+         # 将在async_init方法中初始化
         self._playwright_context = None 
-        # 将在async_init方法中初始化
         self.playwright = None
         self.browser = None
         self.page = None
@@ -40,10 +38,7 @@ class BaseCrawler():
                 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
             ]),
-            'User-Agent': random.choice([
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15'
-            ]),
+            'User-Agent': random.choice(DEFAULT_USER_AGENTS),
             'Accept-Encoding': 'gzip, deflate, br',
             'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
             'Cache-Control': 'no-cache',
@@ -81,11 +76,10 @@ class BaseCrawler():
         if self.use_proxy and self.proxy_pool:
             await self.rotate_proxy()
         self.context = await self.browser.new_context(
-            user_agent=DEFAULT_USER_AGENT,
+            user_agent=self.headers['User-Agent'],
             locale=DEFAULT_LOCALE,
             timezone_id=DEFAULT_TIMEZONE,
             color_scheme='light', 
-            # 添加更多真实设备特征
             device_scale_factor=random.choice([1, 1.25, 1.5]),
             is_mobile=False,
             has_touch=False,
@@ -93,14 +87,11 @@ class BaseCrawler():
             extra_http_headers= self.headers
         )
         self.page = await self.context.new_page()
-        # 注入反检测脚本
         await self.inject_anti_detection_script()
         
     def __del__(self):
         """析构时安全释放资源，避免直接关闭异步资源"""
         try:
-            # 不在__del__中关闭异步资源
-            # 只关闭非异步资源
             if hasattr(self, 'update_f'):
                 self.update_f.close()
         except:
@@ -388,7 +379,7 @@ class BaseCrawler():
                     "server": self.current_proxy,
                     "bypass": "127.0.0.1,localhost"
                 },
-                user_agent=DEFAULT_USER_AGENT,
+                user_agent=self.headers['User-Agent'],
                 locale=DEFAULT_LOCALE,
                 timezone_id=DEFAULT_TIMEZONE
             )
