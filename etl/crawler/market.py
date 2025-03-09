@@ -4,11 +4,12 @@ from base_crawler import BaseCrawler
 class Market(BaseCrawler):
     """Zanao集市数据爬虫"""
     
-    def __init__(self, debug=False, headless=False):
+    def __init__(self, tag: str = "nku", debug=False, headless=False):
         self.platform = "market"
+        self.tag = tag
         self.content_type = "post"
         self.base_url = "https://c.zanao.com"
-        super().__init__(self.platform, debug, headless)
+        super().__init__(debug, headless)
 
         self.api_urls = {
             "list": "https://api.x.zanao.com/thread/v2/list",

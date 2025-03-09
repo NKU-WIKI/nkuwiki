@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
 
-# crawler模块通用配置
+# crawler模块专用配置
 import tempfile  
 import shutil  
 import pytz  
@@ -18,10 +18,8 @@ from collections import Counter
 from playwright.async_api import async_playwright  
 import hashlib
 import hmac
-import asyncio
 from urllib.parse import urlparse
 
-# crawler模块通用配置
 PROXY_POOL = config.get("etl.crawler.proxy_pool", "http://127.0.0.1:7897")
 MARKET_TOKEN = config.get("etl.crawler.market_token", "")
 UNOFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.unofficial_accounts", "")
@@ -36,13 +34,33 @@ os.environ["CLUB_OFFICIAL_ACCOUNTS"] = CLUB_OFFICIAL_ACCOUNTS
 os.environ["COMPANY_ACCOUNTS"] = COMPANY_ACCOUNTS
 
 # 浏览器配置
-DEFAULT_USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36"
+DEFAULT_USER_AGENTS = [
+    # Windows Chrome
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+    # Mac Chrome
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
+    # Safari
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.1 Safari/605.1.15",
+    # Firefox
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/116.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:109.0) Gecko/20100101 Firefox/117.0",
+    # Edge
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.69",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 Edg/116.0.1938.62",
+    # Mobile
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Mobile Safari/537.36"
+]
 DEFAULT_TIMEZONE = "Asia/Shanghai"
 DEFAULT_LOCALE = "zh-CN"
 
 # 创建crawler模块专用logger
 crawler_logger = logger.bind(module="crawler")
-log_path = LOG_PATH + "/crawler.log"
+log_path = LOG_PATH / 'crawler.log'
 log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
 logger.configure(
     handlers=[
@@ -53,7 +71,6 @@ logger.configure(
 
 def clean_filename(filename):
     """清理文件名，使其符合Windows和Linux文件系统规范，只保留汉字和字母"""
-    # 只保留汉字和字母，删除其他所有字符
     clean_name = re.sub(r'[^\u4e00-\u9fa5a-zA-Z]', '', filename)
 
     # 确保文件名不为空
@@ -71,6 +88,6 @@ __all__ = [
     'crawler_logger', 'Counter', 'tempfile', 'shutil', 'async_playwright', 'config', 'Dict', 'List', 'clean_filename',
     'Optional', 'Any', 'hashlib', 'hmac', 'asyncio', 'PROXY_POOL', 'MARKET_TOKEN', 
     'UNOFFICIAL_ACCOUNTS', 'UNIVERSITY_OFFICIAL_ACCOUNTS', 'SCHOOL_OFFICIAL_ACCOUNTS', 
-    'CLUB_OFFICIAL_ACCOUNTS', 'timedelta', 'RAW_PATH', 'LOG_PATH',
-    'BASE_PATH', 'DEFAULT_USER_AGENT', 'DEFAULT_TIMEZONE', 'DEFAULT_LOCALE'
+    'CLUB_OFFICIAL_ACCOUNTS', 'COMPANY_ACCOUNTS', 'timedelta', 'RAW_PATH', 'LOG_PATH',
+    'BASE_PATH', 'DEFAULT_USER_AGENTS', 'DEFAULT_TIMEZONE', 'DEFAULT_LOCALE'
 ] 

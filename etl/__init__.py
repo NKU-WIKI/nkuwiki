@@ -21,31 +21,31 @@ config.load_config()
 # ---------- 全局共享配置项 ----------
 # 基础路径配置
 BASE_PATH = Path(config.get("etl.data.base_path", "./etl/data"))
-RAW_PATH = BASE_PATH / config.get("etl.data.raw.path", "raw").lstrip("/")
-CACHE_PATH = BASE_PATH / config.get("etl.data.cache.path", "cache").lstrip("/")
-INDEX_PATH = BASE_PATH / config.get("etl.data.index.path", "index").lstrip("/")
-QDRANT_PATH = BASE_PATH / config.get("etl.data.qdrant.path", "qdrant").lstrip("/")
-LOG_PATH = str(Path(__file__).resolve().parent) + "/logs"
+RAW_PATH = BASE_PATH / config.get("etl.data.raw.path", "/raw").lstrip("/")
+CACHE_PATH = BASE_PATH / config.get("etl.data.cache.path", "/cache").lstrip("/")
+INDEX_PATH = BASE_PATH / config.get("etl.data.index.path", "/index").lstrip("/")
+QDRANT_PATH = BASE_PATH / config.get("etl.data.qdrant.path", "/qdrant").lstrip("/")
+NLTK_PATH = BASE_PATH / config.get("etl.data.nltk.path", "/nltk").lstrip("/")
+LOG_PATH = Path(__file__).resolve().parent / "logs"
 # 创建必要的目录
-for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, LOG_PATH]:
-    Path(path).mkdir(parents=True, exist_ok=True)
+for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, NLTK_PATH, LOG_PATH]:
+    path.mkdir(parents=True, exist_ok=True)
 
 # 环境变量配置
 HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
-HF_HOME = config.get('etl.data.models.hf_home', './etl/data/models')
-SENTENCE_TRANSFORMERS_HOME = config.get('etl.data.models.sentence_transformers_home', './etl/data/models')
-NLTK_DATA = config.get('etl.data.nltk.path', './etl/data/nltk_data/')
+HF_HOME = config.get("etl.data.base_path", "./etl/data") + config.get('etl.data.models.hf_home', '/models')
+SENTENCE_TRANSFORMERS_HOME = HF_HOME
 
 # 设置环境变量
 os.environ["HF_ENDPOINT"] = HF_ENDPOINT
 os.environ["HF_HOME"] = HF_HOME
 os.environ["SENTENCE_TRANSFORMERS_HOME"] = SENTENCE_TRANSFORMERS_HOME
-os.environ['NLTK_DATA'] = NLTK_DATA
+os.environ['NLTK_DATA'] = config.get('etl.data.base_path','./etl/data') + config.get('etl.data.nltk.path', './nltk')
 
 # 设置日志
-LOG_DIR = Path(LOG_PATH)
-LOG_DIR.mkdir(exist_ok=True, parents=True)
-logger.add(LOG_DIR / "etl.log", rotation="1 day", retention="3 months", level="INFO")
+
+LOG_PATH.mkdir(exist_ok=True, parents=True)
+logger.add(LOG_PATH / "etl.log", rotation="1 day", retention="3 months", level="INFO")
 
 # 数据库配置
 DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')
@@ -63,10 +63,10 @@ __all__ = [
     'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests','asyncio',
 
     # 路径配置
-    'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'LOG_PATH',
+    'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'LOG_PATH','NLTK_PATH',
     
     # 环境变量配置
-    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME', 'NLTK_DATA',
+    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME', 'NLTK_PATH',
     
     # 数据库配置
     'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'
