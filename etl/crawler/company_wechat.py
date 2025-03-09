@@ -1,5 +1,5 @@
 from __init__ import *
-from wechat import Wechat
+from etl.crawler.wechat import Wechat
 
  # 定义招聘相关关键词，模糊匹配所有招聘信息
 recruitment_keywords = [
@@ -68,8 +68,18 @@ class CompanyWechat(Wechat):
         for author in self.authors:
             await self.random_sleep()
             try:
-                button = self.page.get_by_text('选择其他账号')
-                await button.click()
+                # 尝试两种可能的按钮选择方式
+                try:
+                    # 首先尝试使用文本选择
+                    button = self.page.get_by_text('选择其他账号')
+                    await button.click()
+                except Exception:
+                    # 如果失败，尝试使用选择器
+                    button = await self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button', 
+                        timeout=3000,
+                        state='visible'
+                    )
+                    await button.click()
             except Exception as e:
                 self.logger.error(f'Failed to find account button: {e}')
                 await self.page.screenshot(path='viewport.png', full_page=True)
@@ -199,6 +209,10 @@ class CompanyWechat(Wechat):
             article: 文章信息字典（需包含original_url）
         """
         try:
+            # 初始化变量，防止未定义错误
+            content = ""
+            abstract = ""
+            title = "untitled"
 
             year_month = article.get('publish_time', datetime.now().strftime("%Y-%m%d"))[0:7].replace('-', '')
             title = clean_filename(article.get('title', 'untitled'))
@@ -250,52 +264,97 @@ class CompanyWechat(Wechat):
                     self.logger.error(f"Markdown转换命令执行失败: {title}")
                     self.counter['error'] += 1
 
-            self.logger.info(f'已下载文章: {title}, md长度: {len(content.strip())}, 摘要长度: {len(abstract)}')
+            # 使用安全方法获取内容长度
+            content_length = len(content.strip()) if content else 0
+            abstract_length = len(abstract) if abstract else 0
+            self.logger.info(f'已下载文章: {title}, md长度: {content_length}, 摘要长度: {abstract_length}')
 
         except Exception as e:
             self.counter['error'] += 1
-            self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
+            self.logger.exception(f'下载文章内容失败: {e}, URL: {article.get("original_url", "未知URL")}')
 
     async def download(self):
         data_dir = self.data_dir
         start_time = time.time()
         try:
-            # 过滤出202503及之后的文件夹
+            # 获取当前日期
+            today = datetime.now().date()
+            today_str = today.strftime('%Y-%m-%d')
+            current_ym = today.strftime('%Y%m')  # 当前年月，格式为YYYYMM
+            self.logger.info(f"只处理发布时间为今天 ({today_str}) 的文章")
+            
+            # 过滤出当前年月及之后的文件夹
             target_folders = []
             for folder in Path(data_dir).iterdir():
                 if folder.is_dir() and folder.name.isdigit() and len(folder.name) == 6:
-                    # 判断文件夹名是否为数字格式的年月(YYYYMM)且大于等于202501
-                    if folder.name >= "202503":
+                    # 判断文件夹名是否为数字格式的年月(YYYYMM)且大于等于当前年月
+                    if folder.name >= current_ym:
                         target_folders.append(folder.name)
             
-            self.logger.info(f"找到符合条件的文件夹: {target_folders}")
+            self.logger.info(f"找到符合条件的文件夹 (>= {current_ym}): {target_folders}")
             
-            # 只处理这些文件夹内的JSON文件
+            # 找出发布时间为当天的文件
+            today_files = []
             for folder_name in target_folders:
-                folder_path = data_dir  / folder_name
+                folder_path = data_dir / folder_name
                 for json_path in Path(folder_path).glob('**/*.json'):
                     try:
+                        # 读取JSON文件内容
                         with open(json_path, 'r', encoding='utf-8') as f:
                             article_data = json.load(f)
-
+                        
+                        # 检查是否是字典类型
                         if not isinstance(article_data, dict):
                             continue
                             
-                        md_files = list(json_path.parent.glob('*.md'))
-
-                        if not md_files:
-                            await self.download_article(article_data)
-                            self.counter['processed'] = self.counter.get('processed', 0) + 1
-                            if self.counter['processed'] % 100 == 0:
-                                self.logger.info(f"已处理 {self.counter['processed']} 篇招聘相关文章")
-                            await self.random_sleep()
+                        # 检查publish_time字段是否存在
+                        publish_time = article_data.get('publish_time')
+                        if not publish_time:
+                            continue
+                            
+                        # 如果publish_time是日期格式的字符串（如"2023-06-15"），直接比较
+                        if publish_time.startswith(today_str):
+                            today_files.append((json_path, article_data))
                     except Exception as e:
-                        self.counter['error'] = self.counter.get('error', 0) + 1
-                        self.logger.error(f"处理文件 {json_path} 时出错: {e}")
-                        if self.counter['error'] > 10 and self.counter['error'] % 10 == 0:
-                            self.logger.warning("错误过多，暂停120秒")
-                            await asyncio.sleep(120)
+                        self.logger.warning(f"读取文件 {json_path} 时出错: {e}")
+            
+            total_files = len(today_files)
+            self.logger.info(f"找到发布时间为今天 ({today_str}) 的 {total_files} 个JSON文件需要处理")
+            
+            if total_files == 0:
+                self.logger.info("没有找到今天发布的文章，任务结束")
+                return
+            
+            # 创建进度条
+            pbar = tqdm(total=total_files, desc="下载文章", unit="篇")
+            processed_count = 0
+            
+            # 只处理当天发布的文章
+            for json_path, article_data in today_files:
+                try:
+                    md_files = list(json_path.parent.glob('*.md'))
+
+                    if not md_files:
+                        await self.download_article(article_data)
+                        self.counter['processed'] = self.counter.get('processed', 0) + 1
+                        if self.counter['processed'] % 100 == 0:
+                            self.logger.info(f"已处理 {self.counter['processed']} 篇招聘相关文章")
+                        await self.random_sleep()
+                except Exception as e:
+                    self.counter['error'] = self.counter.get('error', 0) + 1
+                    self.logger.error(f"处理文件 {json_path} 时出错: {e}")
+                    if self.counter['error'] > 10 and self.counter['error'] % 10 == 0:
+                        self.logger.warning("错误过多，暂停120秒")
+                        await asyncio.sleep(120)
+                finally:
+                    # 更新进度条
+                    processed_count += 1
+                    pbar.update(1)
+                    pbar.set_postfix({"成功": self.counter.get('processed', 0), "错误": self.counter.get('error', 0)})
         finally:            
+            # 关闭进度条
+            if 'pbar' in locals():
+                pbar.close()
             self.save_counter(start_time)
             self.logger.info(f"下载完成，共处理 {self.counter.get('processed', 0)} 篇招聘相关文章, " +
                             f"错误 {self.counter.get('error', 0)} 篇")
@@ -311,7 +370,7 @@ if __name__ == "__main__":
         company_crawler = CompanyWechat(debug=True, headless=True, use_proxy=True)
         try:
             await company_crawler.async_init()
-            await company_crawler.scrape(max_article_num=10, total_max_article_num=1e10)
+            # await company_crawler.scrape(max_article_num=10, total_max_article_num=1e10)
             await company_crawler.download()
         finally:
             # 确保资源正确关闭

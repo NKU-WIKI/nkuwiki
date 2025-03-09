@@ -1,30 +1,16 @@
 """
 加载模块，负责数据加载和索引构建
 """
-import os
+
 import sys
-import json
-import time
-import asyncio
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from etl import *
+
 import numpy as np
 import torch
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Tuple
-from loguru import logger
-from datetime import datetime
 import pickle
-import re
 from collections import defaultdict
-
-# 从根模块导入共享配置
-from .. import (
-    # 路径配置
-    BASE_PATH, RAW_PATH, INDEX_PATH, CACHE_PATH, QDRANT_PATH, LOG_PATH,
-    # 环境变量配置
-    HF_ENDPOINT, HF_HOME, SENTENCE_TRANSFORMERS_HOME, NLTK_DATA,
-    # 配置工具
-    config
-)
 
 # 检索相关配置
 RE_ONLY = config.get('etl.retrieval.re_only', False)
@@ -70,12 +56,6 @@ QDRANT_URL = config.get('etl.data.qdrant.url', 'http://localhost:6333')
 COLLECTION_NAME = config.get('etl.data.qdrant.collection', 'main_index')
 VECTOR_SIZE = config.get('etl.data.qdrant.vector_size', 1024)
 
-# 数据库配置
-DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')
-DB_PORT = config.get('etl.data.mysql.port', 3306)
-DB_USER = config.get('etl.data.mysql.user', 'root')
-DB_PASSWORD = config.get('etl.data.mysql.password', '')
-DB_NAME = config.get('etl.data.mysql.name', 'mysql')
 
 # 创建加载模块专用logger
 load_logger = logger.bind(module="load")

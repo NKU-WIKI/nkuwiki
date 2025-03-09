@@ -72,16 +72,16 @@ class CozeAgent(Agent):
 
 
     def _get_api_base_url(self):
-        return Config().get("coze_api_base", "https://api.coze.cn/open_api/v2")
+        return "https://api.coze.cn/open_api/v2"
 
     def _get_headers(self):
         return {
-            'Authorization': f"Bearer {Config().get('coze_api_key', '')}"
+            'Authorization': f"Bearer {Config().get('core.agent.coze.api_key', '')}"
         }
 
     def _get_payload(self, user: str, query: str, chat_history: List[dict]):
         return {
-            'bot_id': Config().get('coze_bot_id'),
+            'bot_id': Config().get('core.agent.coze.wx_bot_id'),
             "user": user,
             "query": query,
             "chat_history": chat_history,

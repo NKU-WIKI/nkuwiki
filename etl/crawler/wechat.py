@@ -1,5 +1,5 @@
 from __init__ import *
-from base_crawler import BaseCrawler
+from etl.crawler.base_crawler import BaseCrawler
 
 class Wechat(BaseCrawler):
     """微信公众号爬虫
@@ -130,7 +130,6 @@ class Wechat(BaseCrawler):
                 self.logger.error(f'Failed to find search button: {e}')
                 break
             await self.random_sleep()
-            await asyncio.sleep(1.0)
             # 等待账号选择器出现
             try:
                 account_selector = await self.page.wait_for_selector(

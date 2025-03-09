@@ -1,22 +1,4 @@
-import os
-import sys
-import pathlib
-import asyncio
-import time
-import math
-import copy
-import uuid
-import hashlib
-import inspect
-import warnings
-import traceback
-from tqdm import tqdm
-from typing import List, Dict, Any, Optional, Union, Tuple, Callable, Set
-from pathlib import Path
-import re
-
-# 导入etl.load模块中的所有变量和函数
-from etl.load import *
+from __init__ import *
 
 from llama_index.core import Settings
 from llama_index.core.callbacks import CallbackManager, LlamaDebugHandler, TokenCountingHandler

@@ -84,7 +84,7 @@ def clean_filename(filename):
     return clean_name
 
 __all__ = [
-    'datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 'urlparse',
+    'datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 'urlparse','tqdm',
     'crawler_logger', 'Counter', 'tempfile', 'shutil', 'async_playwright', 'config', 'Dict', 'List', 'clean_filename',
     'Optional', 'Any', 'hashlib', 'hmac', 'asyncio', 'PROXY_POOL', 'MARKET_TOKEN', 
     'UNOFFICIAL_ACCOUNTS', 'UNIVERSITY_OFFICIAL_ACCOUNTS', 'SCHOOL_OFFICIAL_ACCOUNTS', 

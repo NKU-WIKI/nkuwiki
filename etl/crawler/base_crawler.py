@@ -1,5 +1,5 @@
 from __init__ import *
-
+from etl.crawler import crawler_logger
 class BaseCrawler():
     """通用爬虫基类，封装常用爬取方法和反反爬策略
     
