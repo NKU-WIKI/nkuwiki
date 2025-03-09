@@ -248,13 +248,51 @@ class Wechat(BaseCrawler):
         try:
             self.counter['total'] += 1
             title = article['title']
-            clean_title = re.sub(r'[\\/:*?"<>|]', '_', title)[:80]
+
+            clean_title = clean_filename(title)
+            
+            # 检查是否有publish_time字段
+            if 'publish_time' not in article:
+                self.logger.warning(f"跳过缺少publish_time字段的文章: {title}")
+                return
+                
+            # 尝试解析publish_time，不限制格式
             try:
-                subdir = datetime.strptime(article['publish_time'], '%Y-%m-%d %H:%M:%S').strftime('%Y/%m')
-            except (KeyError, ValueError):
-                # 如果没有publish_time字段或格式不正确，使用当前日期
-                self.logger.warning(f"文章缺少publish_time字段或格式不正确，使用当前日期: {title}")
-                subdir = datetime.now().strftime('%Y/%m')
+                publish_time = article['publish_time']
+                # 尝试多种格式
+                formats = [
+                    '%Y-%m-%d %H:%M:%S',
+                    '%Y-%m-%d',
+                    '%Y/%m/%d %H:%M:%S',
+                    '%Y/%m/%d',
+                    '%Y年%m月%d日 %H:%M:%S',
+                    '%Y年%m月%d日'
+                ]
+                
+                for fmt in formats:
+                    try:
+                        date_obj = datetime.strptime(publish_time, fmt)
+                        subdir = date_obj.strftime('%Y%m')  # 改为年月连接形式，不使用分隔符
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    # 如果所有格式都不匹配，检查publish_time是否包含年月信息
+                    if isinstance(publish_time, str) and len(publish_time) >= 7:
+                        # 尝试直接提取年月，假设前几位是年月，并删除任何分隔符
+                        year_month = publish_time[0:7].replace('-', '').replace('/', '')
+                        if re.match(r'^\d{6}$', year_month):  # 检查是否为6位数字（年月）
+                            subdir = year_month
+                        else:
+                            self.logger.warning(f"无法解析publish_time格式: {publish_time}，跳过该文章")
+                            return
+                    else:
+                        self.logger.warning(f"无法解析publish_time格式: {publish_time}，跳过该文章")
+                        return
+            except Exception as e:
+                self.logger.warning(f"处理publish_time时出错: {e}，跳过该文章")
+                return
+                
             save_dir = Path(self.base_dir) / subdir / clean_title
             save_dir.mkdir(parents=True, exist_ok=True)
             

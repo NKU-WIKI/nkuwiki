@@ -58,7 +58,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/aokimi0/nkuwiki.git
+git clone https://github.com/NKU-WIKI/nkuwiki.git
 cd nkuwiki
 ```
 
