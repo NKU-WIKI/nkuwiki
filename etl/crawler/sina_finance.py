@@ -8,8 +8,9 @@ class SinaFinance(BaseCrawler):
         headless: 是否使用无头浏览器模式
     """
     def __init__(self, debug: bool = False, headless: bool = False, use_proxy: bool = False) -> None:
-        self.platform = "sina_finance"
+        self.platform = "website"
         self.content_type = "news"
+        self.tag = "sina_finance"
         self.base_url = "https://finance.sina.com.cn/china"
         super().__init__(platform=self.platform, debug=debug, headless=headless, use_proxy=use_proxy)
 
@@ -145,7 +146,7 @@ class SinaFinance(BaseCrawler):
     async def download(self):
         """下载并补充文章内容及发布时间"""
         
-        data_dir = Path(self.base_dir)
+        data_dir = Path(self.data_dir)
         processed_count = 0
         
         # 递归查找所有JSON文件

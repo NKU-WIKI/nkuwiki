@@ -147,7 +147,6 @@ class Market(BaseCrawler):
             # 在异步方法中调用异步random_sleep
             await self.random_sleep()
             
-            
             response = await self.page.request.post(
                 self.api_urls["comment"],
                 headers=headers,

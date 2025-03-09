@@ -18,8 +18,9 @@ class BaseCrawler():
         self.proxy_pool = self.load_proxies()
         self.current_proxy = None
         # 设置基本目录
-        self.base_dir = RAW_PATH / Path(self.platform) / Path(self.tag)
-        self.base_dir.mkdir(exist_ok=True, parents=True)  # 创建目录，如果目录不存在
+        self.base_dir = RAW_PATH / Path(self.platform) 
+        self.data_dir = self.base_dir / Path(self.tag)
+        self.data_dir.mkdir(exist_ok=True, parents=True)  # 创建目录，如果目录不存在
         self.counter = Counter()  # 初始化计数器
         self.lock_file = 'lock.txt'  # 锁文件，用于防止重复运行
         self.counter_file = 'counter.txt'  # 计数器文件，用于记录运行统计
@@ -92,8 +93,14 @@ class BaseCrawler():
     def __del__(self):
         """析构时安全释放资源，避免直接关闭异步资源"""
         try:
-            if hasattr(self, 'update_f'):
-                self.update_f.close()
+            if hasattr(self, 'update_f') and self.update_f:
+                try:
+                    self.update_f.close()
+                except:
+                    pass
+                    
+            # 注意：不要在这里关闭异步资源，这可能导致I/O operation on closed pipe错误
+            # 应通过显式调用close()方法关闭异步资源
         except:
             pass
 
@@ -240,7 +247,7 @@ class BaseCrawler():
         for article in articles:    
             if(article['original_url'] not in scraped_original_urls):
                 year_month = article.get('publish_time', datetime.now().strftime("%Y-%m%d"))[0:7].replace('-', '')
-                save_dir = self.base_dir / year_month
+                save_dir = self.data_dir / year_month
                 save_dir.mkdir(exist_ok=True, parents=True)
                 clean_title = clean_filename(article.get('title', ''))
                 
@@ -344,17 +351,51 @@ class BaseCrawler():
     #         self.logger.error(f"An error occurred while cleaning {pdf_path}: {e}")  # 记录错误日志
 
     async def close(self) -> None:
-        """关闭浏览器和playwright"""
+        """关闭浏览器和playwright，避免I/O operation on closed pipe错误"""
         try:
-            if self.page:
-                await self.page.close()
-            if self.browser:
-                await self.browser.close()
-            if self.playwright:
-                await self.playwright.stop()
-            self.logger.info("浏览器和playwright已关闭")
+            # 关闭page
+            if hasattr(self, 'page') and self.page:
+                try:
+                    await self.page.close()
+                except Exception as e:
+                    self.logger.error(f"关闭页面出错: {e}")
+                self.page = None
+                
+            # 关闭context
+            if hasattr(self, 'context') and self.context:
+                try:
+                    await self.context.close()
+                except Exception as e:
+                    self.logger.error(f"关闭context出错: {e}")
+                self.context = None
+
+            # 关闭browser
+            if hasattr(self, 'browser') and self.browser:
+                try:
+                    await self.browser.close()
+                except Exception as e:
+                    self.logger.error(f"关闭浏览器出错: {e}")
+                self.browser = None
+
+            # 关闭playwright
+            if hasattr(self, 'playwright') and self.playwright:
+                try:
+                    await self.playwright.stop()
+                except Exception as e:
+                    self.logger.error(f"关闭playwright出错: {e}")
+                self.playwright = None
+                
+            # 关闭文件句柄
+            if hasattr(self, 'update_f') and self.update_f:
+                try:
+                    self.update_f.close()
+                except Exception as e:
+                    self.logger.error(f"关闭文件出错: {e}")
+                self.update_f = None
+                
+            self.logger.info("所有资源已正确关闭")
         except Exception as e:
-            self.logger.error(f"关闭浏览器和playwright出错: {e}")
+            self.logger.error(f"关闭资源时发生错误: {e}")
 
     async def rotate_proxy(self) -> None:
         """轮换代理"""

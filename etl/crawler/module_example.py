@@ -175,7 +175,7 @@ class ExampleCrawler(BaseCrawler):
 
     async def download(self):
         """下载所有已抓取但未下载的内容"""
-        data_dir = Path(self.base_dir)
+        data_dir = Path(self.data_dir)
         start_time = time.time()
 
         for json_path in data_dir.glob('**/*.json'):

@@ -1,7 +1,5 @@
 from __init__ import *
 from wechat import Wechat
-from datetime import datetime
-import shutil
 
  # 定义招聘相关关键词，模糊匹配所有招聘信息
 recruitment_keywords = [
@@ -70,13 +68,11 @@ class CompanyWechat(Wechat):
         for author in self.authors:
             await self.random_sleep()
             try:
-                button = await self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button', 
-                    timeout=3000,
-                    state='visible'
-                )
+                button = self.page.get_by_text('选择其他账号')
                 await button.click()
             except Exception as e:
                 self.logger.error(f'Failed to find account button: {e}')
+                await self.page.screenshot(path='viewport.png', full_page=True)
                 continue
             await self.random_sleep()
             try:
@@ -138,7 +134,6 @@ class CompanyWechat(Wechat):
                         
                         # 检查是否为今天发布的文章
                         if not article_publish_time.startswith(today_date):
-                            self.logger.debug(f'Skipping article not published today: {article_title}')
                             continue
                             
                         # 检查标题是否包含招聘关键词
@@ -149,7 +144,6 @@ class CompanyWechat(Wechat):
                                 break
                                 
                         if not has_recruitment_keyword:
-                            self.logger.debug(f'Skipping article without recruitment keywords: {article_title}')
                             continue
                             
                         if(article_original_url not in scraped_original_urls):
@@ -160,9 +154,11 @@ class CompanyWechat(Wechat):
                                 'original_url': article_original_url
                             })
                             cnt += 1
+                            self.logger.info(f'找到有效招聘文章: {article_title} ({author})')
                             
                     page += 1
-                    self.logger.debug(f'scraped {cnt} recruitment articles from {author} published today')
+                    if cnt > 0:
+                        self.logger.info(f'从 {author} 抓取到 {cnt} 篇今日发布的招聘文章')
                     
                     # 如果当前页面没有今天的文章，停止翻页
                     found_today_article = False
@@ -172,7 +168,6 @@ class CompanyWechat(Wechat):
                             break
                             
                     if not found_today_article:
-                        self.logger.info(f'No more articles from today found, stopping pagination for {author}')
                         break
                         
                     try: 
@@ -181,20 +176,21 @@ class CompanyWechat(Wechat):
                         await next_page_button.click()
                     except Exception as e:
                         self.counter['error'] += 1
-                        self.logger.warning(f'Page: {page}, Next Button error, {type(e)}: {e}, author: {author}')
                         break
                 except Exception as e:
                     self.counter['error'] += 1
-                    self.logger.error(f'Page: {page}, Get article links error, {type(e)}: {e}, author: {author}')
+                    self.logger.error(f'抓取 {author} 文章时出错: {type(e).__name__}')
                     break  # 如果处理页面出错，跳出当前账号的处理
 
             self.update_scraped_articles(scraped_original_urls, articles)
-            self.logger.info(f'save {len(articles)} recruitment articles from {author} published today')
+            if len(articles) > 0:
+                self.logger.info(f'已保存 {len(articles)} 篇来自 {author} 的今日招聘文章')
             total_articles.extend(articles)
             if len(total_articles) >= total_max_article_num:
                 break
 
-        self.logger.info(f'save total {len(total_articles)} recruitment articles from {self.authors} published today')
+        if len(total_articles) > 0:
+            self.logger.info(f'总共保存了 {len(total_articles)} 篇来自 {self.authors} 的今日招聘文章')
         return total_articles
 
     async def download_article(self, article: dict) -> None:
@@ -207,7 +203,7 @@ class CompanyWechat(Wechat):
             year_month = article.get('publish_time', datetime.now().strftime("%Y-%m%d"))[0:7].replace('-', '')
             title = clean_filename(article.get('title', 'untitled'))
 
-            save_dir = self.base_dir  / year_month / title
+            save_dir = self.data_dir / year_month / title
             Path(save_dir).mkdir(parents=True, exist_ok=True)
 
             if 'original_url' in article:
@@ -261,48 +257,48 @@ class CompanyWechat(Wechat):
             self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
 
     async def download(self):
-        data_dir = self.base_dir
+        data_dir = self.data_dir
         start_time = time.time()
-        # 过滤出202503及之后的文件夹
-        target_folders = []
-        for folder in Path(data_dir).iterdir():
-            if folder.is_dir() and folder.name.isdigit() and len(folder.name) == 6:
-                # 判断文件夹名是否为数字格式的年月(YYYYMM)且大于等于202501
-                if folder.name >= "202503":
-                    target_folders.append(folder.name)
-        
-        self.logger.info(f"找到符合条件的文件夹: {target_folders}")
-        
-        # 只处理这些文件夹内的JSON文件
-        for folder_name in target_folders:
-            folder_path = data_dir  / folder_name
-            for json_path in Path(folder_path).glob('**/*.json'):
-                try:
-                    with open(json_path, 'r', encoding='utf-8') as f:
-                        article_data = json.load(f)
+        try:
+            # 过滤出202503及之后的文件夹
+            target_folders = []
+            for folder in Path(data_dir).iterdir():
+                if folder.is_dir() and folder.name.isdigit() and len(folder.name) == 6:
+                    # 判断文件夹名是否为数字格式的年月(YYYYMM)且大于等于202501
+                    if folder.name >= "202503":
+                        target_folders.append(folder.name)
+            
+            self.logger.info(f"找到符合条件的文件夹: {target_folders}")
+            
+            # 只处理这些文件夹内的JSON文件
+            for folder_name in target_folders:
+                folder_path = data_dir  / folder_name
+                for json_path in Path(folder_path).glob('**/*.json'):
+                    try:
+                        with open(json_path, 'r', encoding='utf-8') as f:
+                            article_data = json.load(f)
 
-                    if not isinstance(article_data, dict):
-                        continue
-                        
-                    md_files = list(json_path.parent.glob('*.md'))
+                        if not isinstance(article_data, dict):
+                            continue
+                            
+                        md_files = list(json_path.parent.glob('*.md'))
 
-                    if not md_files:
-                        self.logger.debug(f"正在处理招聘相关文章: {article_data['title']}")
-                        await self.download_article(article_data)
-                        self.counter['processed'] = self.counter.get('processed', 0) + 1
-                        if self.counter['processed'] % 100 == 0:
-                            self.logger.info(f"已处理 {self.counter['processed']} 篇招聘相关文章")
-                        await self.random_sleep()
-                except Exception as e:
-                    self.counter['error'] = self.counter.get('error', 0) + 1
-                    self.logger.error(f"处理文件 {json_path} 时出错: {e}")
-                    if self.counter['error'] > 10 and self.counter['error'] % 10 == 0:
-                        self.logger.warning("错误过多，暂停120秒")
-                        await asyncio.sleep(120)
-                        
-        self.save_counter(start_time)
-        self.logger.info(f"下载完成，共处理 {self.counter.get('processed', 0)} 篇招聘相关文章, " +
-                         f"错误 {self.counter.get('error', 0)} 篇")
+                        if not md_files:
+                            await self.download_article(article_data)
+                            self.counter['processed'] = self.counter.get('processed', 0) + 1
+                            if self.counter['processed'] % 100 == 0:
+                                self.logger.info(f"已处理 {self.counter['processed']} 篇招聘相关文章")
+                            await self.random_sleep()
+                    except Exception as e:
+                        self.counter['error'] = self.counter.get('error', 0) + 1
+                        self.logger.error(f"处理文件 {json_path} 时出错: {e}")
+                        if self.counter['error'] > 10 and self.counter['error'] % 10 == 0:
+                            self.logger.warning("错误过多，暂停120秒")
+                            await asyncio.sleep(120)
+        finally:            
+            self.save_counter(start_time)
+            self.logger.info(f"下载完成，共处理 {self.counter.get('processed', 0)} 篇招聘相关文章, " +
+                            f"错误 {self.counter.get('error', 0)} 篇")
 
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
@@ -313,9 +309,13 @@ if __name__ == "__main__":
     async def main():
         """异步主函数"""
         company_crawler = CompanyWechat(debug=True, headless=True, use_proxy=True)
-        await company_crawler.async_init()
-        await company_crawler.scrape(max_article_num=10, total_max_article_num=1e10)
-        await company_crawler.download()
+        try:
+            await company_crawler.async_init()
+            await company_crawler.scrape(max_article_num=10, total_max_article_num=1e10)
+            await company_crawler.download()
+        finally:
+            # 确保资源正确关闭
+            await company_crawler.close()
 
     # 运行异步主函数
     asyncio.run(main())

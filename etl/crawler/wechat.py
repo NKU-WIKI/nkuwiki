@@ -104,10 +104,7 @@ class Wechat(BaseCrawler):
         for author in self.authors:
             await self.random_sleep()
             try:
-                button = await self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button', 
-                    timeout=3000,
-                    state='visible'
-                )
+                button = await self.page.get_by_text('选择其他账号')
                 await button.click()
             except Exception as e:
                 self.logger.error(f'Failed to find account button: {e}')
@@ -133,6 +130,7 @@ class Wechat(BaseCrawler):
                 self.logger.error(f'Failed to find search button: {e}')
                 break
             await self.random_sleep()
+            await asyncio.sleep(1.0)
             # 等待账号选择器出现
             try:
                 account_selector = await self.page.wait_for_selector(
@@ -382,7 +380,7 @@ class Wechat(BaseCrawler):
             self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
 
     async def download(self):
-        data_dir = Path(self.base_dir)
+        data_dir = Path(self.data_dir)
         start_time = time.time()
 
         for json_path in data_dir.glob('**/*.json'):
