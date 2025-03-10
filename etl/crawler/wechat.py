@@ -236,145 +236,66 @@ class Wechat(BaseCrawler):
         except Exception as e:
             self.logger.error(f"抓取出错: {e}")
 
-    async def download_article(self, article: dict) -> None:
+    async def download_article(self, article: dict, save_dir: Path = None) -> None:
         """下载单篇文章内容
         Args:
             article: 文章信息字典（需包含original_url）
+            save_dir: 文章保存目录，如果为None则使用默认目录
         """
         try:
-            self.counter['total'] += 1
             title = article['title']
-
             clean_title = clean_filename(title)
-            
-            # 检查是否有publish_time字段
-            if 'publish_time' not in article:
-                self.logger.warning(f"跳过缺少publish_time字段的文章: {title}")
-                return
-                
-            # 尝试解析publish_time，不限制格式
-            try:
-                publish_time = article['publish_time']
-                # 尝试多种格式
-                formats = [
-                    '%Y-%m-%d %H:%M:%S',
-                    '%Y-%m-%d',
-                    '%Y/%m/%d %H:%M:%S',
-                    '%Y/%m/%d',
-                    '%Y年%m月%d日 %H:%M:%S',
-                    '%Y年%m月%d日'
-                ]
-                
-                for fmt in formats:
-                    try:
-                        date_obj = datetime.strptime(publish_time, fmt)
-                        subdir = date_obj.strftime('%Y%m')  # 改为年月连接形式，不使用分隔符
-                        break
-                    except ValueError:
-                        continue
-                else:
-                    # 如果所有格式都不匹配，检查publish_time是否包含年月信息
-                    if isinstance(publish_time, str) and len(publish_time) >= 7:
-                        # 尝试直接提取年月，假设前几位是年月，并删除任何分隔符
-                        year_month = publish_time[0:7].replace('-', '').replace('/', '')
-                        if re.match(r'^\d{6}$', year_month):  # 检查是否为6位数字（年月）
-                            subdir = year_month
+            from etl.transform.wechatmp2md import wechatmp2md
+            success = wechatmp2md(article['original_url'], str(save_dir))
+            if success:
+                generated_dirs = [d for d in save_dir.iterdir() if d.is_dir() and d.name != 'imgs']
+                if generated_dirs:
+                    generated_dir = generated_dirs[0]
+
+                    generated_md_files = list(generated_dir.glob("*.md"))
+                    if generated_md_files:
+                        md_file = save_dir / f"{clean_title}.md"
+                        shutil.copy2(generated_md_files[0], md_file)
+
+                        with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
+                            content = f.read()
+                        content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
+                        content = re.sub(r'\n\s*\n', '\n', content)
+                        with open(md_file, 'w', encoding='utf-8') as f:
+                            f.write(content.strip())
+                        from etl.transform.abstract import generate_abstract
+                        abstract = generate_abstract(md_file)
+                        if abstract:
+                            article['content'] = abstract
+                            with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                                json.dump(article, f, ensure_ascii=False, indent=4)
+                            self.logger.debug(f"生成摘要成功: {clean_title}")
+                            preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
+                            self.logger.debug(f"原始URL: {article['original_url']}\n摘要内容预览: {preview_abstract}")
                         else:
-                            self.logger.warning(f"无法解析publish_time格式: {publish_time}，跳过该文章")
-                            return
+                            self.logger.error(f"生成摘要失败: {clean_title}")
+                            article['content'] = ""
+                            with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                                json.dump(article, f, ensure_ascii=False, indent=4)
+                            self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
+                        
+                        # 清理文件
+                        if md_file.exists():
+                            md_file.unlink()
+                        if generated_dir.exists():
+                            shutil.rmtree(generated_dir)
                     else:
-                        self.logger.warning(f"无法解析publish_time格式: {publish_time}，跳过该文章")
-                        return
-            except Exception as e:
-                self.logger.warning(f"处理publish_time时出错: {e}，跳过该文章")
-                return
-                
-            save_dir = Path(self.base_dir) / subdir / clean_title
-            save_dir.mkdir(parents=True, exist_ok=True)
-            
-            # 检查是否存在html文件并删除
-            html_files = list(save_dir.glob("*.html"))
-            for html_file in html_files:
-                html_file.unlink()
-                self.logger.debug(f"删除HTML文件: {html_file}")
-            
-            # 检查是否已有md文件
-            md_files = list(save_dir.glob("*.md"))
-            if md_files:
-                self.logger.debug(f"目录中已有MD文件，跳过转换: {save_dir}")
-                # 检查是否已有json文件
-                json_file = save_dir / f"{clean_title}.json"
-                if not json_file.exists():
-                    # 使用已有的第一个md文件生成摘要
-                    from etl.transform.abstract import generate_abstract
-                    abstract = generate_abstract(md_files[0])
-                    if abstract:
-                        article['content'] = abstract
-                        with open(json_file, 'w', encoding='utf-8') as f:
-                            json.dump(article, f, ensure_ascii=False, indent=4)
-                        self.logger.debug(f"为已有MD文件生成摘要成功: {clean_title}")
-                    else:
-                        self.logger.error(f"为已有MD文件生成摘要失败: {clean_title}")
-                        article['content'] = ""
-                        with open(json_file, 'w', encoding='utf-8') as f:
-                            json.dump(article, f, ensure_ascii=False, indent=4)
+                        self.logger.error(f"转换失败，未生成MD文件: {clean_title}")
+                else:
+                    self.logger.error(f"转换失败，未生成新的文件夹: {clean_title}")
             else:
-                from etl.transform.wechatmp2md import wechatmp2md
-                # 没有md文件，执行转换逻辑
-                success = wechatmp2md(article['original_url'], str(save_dir))
-                if success:
-                    generated_dirs = [d for d in save_dir.iterdir() if d.is_dir() and d.name != 'imgs']
-                    if generated_dirs:
-                        generated_dir = generated_dirs[0]
-                        md_with_imgs_dir = save_dir / "md_with_imgs"
-                        generated_dir.rename(md_with_imgs_dir)
+                self.logger.error(f"Markdown转换命令执行失败: {clean_title}")
 
-                        generated_md_files = list(md_with_imgs_dir.glob("*.md"))
-                        if generated_md_files:
-                            md_file = save_dir / f"{clean_title}.md"
-                            shutil.copy2(generated_md_files[0], md_file)
-
-                            with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
-                                content = f.read()
-                            content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
-                            content = re.sub(r'\n\s*\n', '\n', content)
-                            with open(md_file, 'w', encoding='utf-8') as f:
-                                f.write(content.strip())
-                            from etl.transform.abstract import generate_abstract
-                            abstract = generate_abstract(md_file)
-                            if abstract:
-                                article['content'] = abstract
-                                with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
-                                    json.dump(article, f, ensure_ascii=False, indent=4)
-                                self.logger.debug(f"生成摘要成功: {clean_title}")
-                                # 添加日志输出原始URL和摘要内容
-                                preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
-                                self.logger.info(f"原始URL: {article['original_url']}\n摘要内容预览: {preview_abstract}")
-                            else:
-                                self.logger.error(f"生成摘要失败: {clean_title}")
-                                self.counter['error'] += 1
-                                # 摘要生成失败时，将content置空并保存
-                                article['content'] = ""
-                                with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
-                                    json.dump(article, f, ensure_ascii=False, indent=4)
-                                self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
-                        else:
-                            self.logger.error(f"转换失败，未生成MD文件: {clean_title}")
-                            self.counter['error'] += 1
-                    else:
-                        self.logger.error(f"转换失败，未生成新的文件夹: {clean_title}")
-                        self.counter['error'] += 1
-                else:
-                    self.logger.error(f"Markdown转换命令执行失败: {clean_title}")
-                    self.counter['error'] += 1
-
-            # 使用安全的字符串长度计算方法
             content_length = len(article.get('content', '').strip())
             abstract_length = len(article.get('content', '')) if 'content' in article else 0
             self.logger.info(f'已下载文章: {clean_title}, md长度: {content_length}, 摘要长度: {abstract_length}')
 
         except Exception as e:
-            self.counter['error'] += 1
             self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
 
     async def download(self):
@@ -382,35 +303,32 @@ class Wechat(BaseCrawler):
         start_time = time.time()
 
         for json_path in data_dir.glob('**/*.json'):
-            try:
-                with open(json_path, 'r', encoding='utf-8') as f:
-                    article_data = json.load(f)
+            with open(json_path, 'r', encoding='utf-8') as f:
+                article_data = json.load(f)
 
-                if not isinstance(article_data, dict):
-                    continue
+            if not isinstance(article_data, dict):
+                continue
+            
+            # 检查是否缺少publish_time字段，如果缺少则删除该文章及相关文件
+            if 'publish_time' not in article_data:
+                title = article_data.get('title', '未知标题')
+                self.logger.warning(f"删除缺少publish_time字段的文章: {title}")
+                
+                # 删除json文件
+                json_path.unlink()
+                
+                clean_title = clean_filename(title) if 'title' in article_data else json_path.stem
+                for related_file in json_path.parent.glob(f"{clean_title}.*"):
+                    related_file.unlink()
+                
+                self.logger.debug(f"已删除文章相关文件: {json_path}")
+                continue
 
-                # 检查是否有HTML文件需要删除
-                html_files = list(json_path.parent.glob('*.html'))
-                if html_files:
-                    for html_file in html_files:
-                        html_file.unlink()
-                        self.logger.debug(f"删除HTML文件: {html_file}")
-                
-                # 检查是否缺少MD文件或内容为空
-                md_files = list(json_path.parent.glob('*.md'))
-                content = article_data.get('content', '')
-                
-                if not md_files or not content:
-                    await self.download_article(article_data)
-                    self.counter['processed'] = self.counter.get('processed', 0) + 1
-                    if self.counter['processed'] % 100 == 0:
-                        self.logger.info(f"已处理 {self.counter['processed']} 篇文章")
-                    await self.random_sleep()
-            except Exception as e:
-                self.counter['error'] = self.counter.get('error', 0) + 1
-                if self.counter['error'] > 10 and self.counter['error'] % 10 == 0:
-                    await asyncio.sleep(120)
-        self.save_counter(start_time)
+            content = article_data.get('content', '')
+            if not content:
+                await self.download_article(article_data, save_dir=json_path.parent)
+                await self.random_sleep()
+
         self.logger.info(f"下载完成，共处理 {self.counter.get('processed', 0)} 篇文章, " +
                          f"错误 {self.counter.get('error', 0)} 篇")
 
