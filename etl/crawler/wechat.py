@@ -44,7 +44,7 @@ class Wechat(BaseCrawler):
             if not await self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
                 self.logger.info('检测到已登录状态')
                 await self.random_sleep()
-                return {cookie['name']: cookie['value'] for cookie in self.context.cookies()}
+                return {cookie['name']: cookie['value'] for cookie in await self.context.cookies()}
 
             while max_wait > 0:
                 self.logger.info('请扫描二维码登录...')
@@ -52,7 +52,7 @@ class Wechat(BaseCrawler):
                 if not await self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
                     time.sleep(5)  # 给登录后页面加载留出时间
                     self.logger.info('登录成功')
-                    return {cookie['name']: cookie['value'] for cookie in self.context.cookies()}
+                    return {cookie['name']: cookie['value'] for cookie in await self.context.cookies()}
                 time.sleep(5)
                 max_wait -= 5
                 
@@ -60,7 +60,6 @@ class Wechat(BaseCrawler):
                 raise TimeoutError("登录超时")
         except Exception as e:
             # 增加失败后清理
-            self.context.clear_cookies()
             self.context.clear_cache()
             raise e
 

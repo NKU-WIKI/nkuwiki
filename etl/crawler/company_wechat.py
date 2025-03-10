@@ -1,5 +1,6 @@
-from __init__ import *
+from etl.crawler import *
 from etl.crawler.wechat import Wechat
+from tqdm import tqdm
 
  # 定义招聘相关关键词，模糊匹配所有招聘信息
 recruitment_keywords = [
@@ -47,6 +48,9 @@ class CompanyWechat(Wechat):
         # 获取今天的日期字符串，格式为"YYYY-MM-DD"
         today_date = datetime.now().strftime('%Y-%m-%d')
         self.logger.info(f'Only scraping articles published today ({today_date}) with recruitment keywords')
+        
+        # 创建作者处理进度条
+        author_pbar = tqdm(total=len(self.authors), desc="处理公众号", unit="个")
         
         try:
             await self.random_sleep()
@@ -109,7 +113,7 @@ class CompanyWechat(Wechat):
             try:
                 account_selector = await self.page.wait_for_selector(
                     '//li[@class="inner_link_account_item"]/div[1]',
-                    timeout=3000
+                    timeout=6000
                 )
                 await account_selector.click()
 
@@ -129,6 +133,9 @@ class CompanyWechat(Wechat):
                 max_page_num = 1
             page = 1
             articles = []
+            # 创建文章处理进度条
+            article_pbar = tqdm(total=max_article_num, desc=f"抓取{author}文章", unit="篇", leave=False)
+            
             while len(articles) < max_article_num and page <= max_page_num:
                 try:
                     await asyncio.sleep(1.0) 
@@ -165,6 +172,7 @@ class CompanyWechat(Wechat):
                             })
                             cnt += 1
                             self.logger.info(f'找到有效招聘文章: {article_title} ({author})')
+                            article_pbar.update(1)
                             
                     page += 1
                     if cnt > 0:
@@ -192,6 +200,9 @@ class CompanyWechat(Wechat):
                     self.logger.error(f'抓取 {author} 文章时出错: {type(e).__name__}')
                     break  # 如果处理页面出错，跳出当前账号的处理
 
+            article_pbar.close()
+            author_pbar.update(1)
+            
             self.update_scraped_articles(scraped_original_urls, articles)
             if len(articles) > 0:
                 self.logger.info(f'已保存 {len(articles)} 篇来自 {author} 的今日招聘文章')
@@ -199,6 +210,7 @@ class CompanyWechat(Wechat):
             if len(total_articles) >= total_max_article_num:
                 break
 
+        author_pbar.close()
         if len(total_articles) > 0:
             self.logger.info(f'总共保存了 {len(total_articles)} 篇来自 {self.authors} 的今日招聘文章')
         return total_articles

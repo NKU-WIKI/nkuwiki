@@ -37,7 +37,7 @@ def find_executable():
     
     return None
 
-def wechatmp2md(original_url, data_path, image_option='save'):
+def wechatmp2md(original_url, data_path, image_option='url'):
     """
     调用wechatmp2markdown将微信公众号文章转换为Markdown
     

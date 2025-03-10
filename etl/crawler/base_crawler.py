@@ -1,5 +1,5 @@
-from __init__ import *
-from etl.crawler import crawler_logger
+from etl.crawler import *
+
 class BaseCrawler():
     """通用爬虫基类，封装常用爬取方法和反反爬策略
     
@@ -164,14 +164,14 @@ class BaseCrawler():
         return 0, None
 
     
-    def save_cookies(self, cookies: Dict[str, str]) -> None:
-        """保存cookies到文件
-
-        Args:
-            cookies: 要保存的cookies
-        """
-        with open(self.base_dir / self.cookies_file, 'w') as f:
-            json.dump(cookies, f, indent=4)
+    def save_cookies(self, cookies):
+        # 保存cookies到文件
+        f = self.base_dir / self.cookies_file
+        now_ts = int(time.time())
+        lines = f'{now_ts}\n'
+        for k, v in cookies.items():
+            lines += f'{k}: {v}\n'
+        f.write_text(lines) 
 
     async def inject_anti_detection_script(self) -> None:
         """向页面注入反自动化检测脚本"""

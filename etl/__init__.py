@@ -56,6 +56,12 @@ DB_USER = config.get('etl.data.mysql.user', 'root')
 DB_PASSWORD = config.get('etl.data.mysql.password', '')
 DB_NAME = config.get('etl.data.mysql.name', 'mysql')
 
+# Qdrant配置
+QDRANT_URL = config.get('etl.data.qdrant.url', 'http://localhost:6333')
+QDRANT_TIMEOUT = config.get('etl.data.qdrant.timeout', 30.0)
+COLLECTION_NAME = config.get('etl.data.qdrant.collection', 'main_index')
+VECTOR_SIZE = config.get('etl.data.qdrant.vector_size', 1024)
+
 # 版本信息
 __version__ = "1.0.0"
 
@@ -72,7 +78,10 @@ __all__ = [
     'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME', 'NLTK_PATH',
     
     # 数据库配置
-    'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'
+    'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME',
+
+    # Qdrant配置
+    'QDRANT_URL', 'QDRANT_TIMEOUT', 'COLLECTION_NAME', 'VECTOR_SIZE'
 ]
 
 # etl模块的公用配置和包

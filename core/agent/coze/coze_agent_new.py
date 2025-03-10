@@ -85,7 +85,7 @@ class CozeAgentNew(object):
             agent_logger.exception(e)
             return None, None
 
-    def coze_poll_chat_status(self, conversation_id: str, chat_id: str, max_retries: int = 5, poll_interval: float = 20):
+    def coze_poll_chat_status(self, conversation_id: str, chat_id: str, max_retries: int = 3, poll_interval: float = 5):
         """
         轮询检查对话状态
         
