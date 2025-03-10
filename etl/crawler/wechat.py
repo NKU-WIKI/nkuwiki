@@ -242,95 +242,231 @@ class Wechat(BaseCrawler):
             article: 文章信息字典（需包含original_url）
             save_dir: 文章保存目录，如果为None则使用默认目录
         """
+        if not save_dir:
+            save_dir = self.data_dir
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
         try:
-            title = article['title']
+            # 确保original_url字段存在
+            if 'original_url' not in article:
+                self.logger.error(f"文章缺少original_url字段: {article.get('title', '未知标题')}")
+                return
+                
+            title = article.get('title', '未知标题')
             clean_title = clean_filename(title)
-            from etl.transform.wechatmp2md import wechatmp2md
-            success = wechatmp2md(article['original_url'], str(save_dir))
+            original_url = article['original_url']
+            
+            self.logger.info(f"开始处理文章: {title}, URL: {original_url}")
+            
+            # 检查文章是否已经有内容
+            if article.get('content') and len(article.get('content', '').strip()) > 0:
+                self.logger.info(f"文章已有内容，跳过处理: {title}")
+                return
+            
+            # 直接使用异步版本
+            from etl.transform.wechatmp2md import wechatmp2md_async
+            # 使用异步版本的wechatmp2md函数
+            try:
+                success = await wechatmp2md_async(original_url, str(save_dir))
+            except Exception as e:
+                self.logger.error(f"wechatmp2md_async执行失败: {e}, URL: {original_url}")
+                return
+                
             if success:
-                generated_dirs = [d for d in save_dir.iterdir() if d.is_dir() and d.name != 'imgs']
-                if generated_dirs:
+                try:
+                    generated_dirs = [d for d in save_dir.iterdir() if d.is_dir() and d.name != 'imgs']
+                    if not generated_dirs:
+                        self.logger.error(f"转换失败，未生成新的文件夹: {clean_title}")
+                        return
+                        
                     generated_dir = generated_dirs[0]
-
                     generated_md_files = list(generated_dir.glob("*.md"))
-                    if generated_md_files:
-                        md_file = save_dir / f"{clean_title}.md"
+                    
+                    if not generated_md_files:
+                        self.logger.error(f"转换失败，未生成MD文件: {clean_title}")
+                        return
+                        
+                    md_file = save_dir / f"{clean_title}.md"
+                    try:
                         shutil.copy2(generated_md_files[0], md_file)
+                    except Exception as e:
+                        self.logger.error(f"复制MD文件失败: {e}")
+                        return
 
+                    try:
                         with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
                             content = f.read()
                         content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
                         content = re.sub(r'\n\s*\n', '\n', content)
                         with open(md_file, 'w', encoding='utf-8') as f:
                             f.write(content.strip())
-                        from etl.transform.abstract import generate_abstract
-                        abstract = generate_abstract(md_file)
-                        if abstract:
+                    except Exception as e:
+                        self.logger.error(f"处理MD文件内容失败: {e}")
+                        if md_file.exists():
+                            md_file.unlink()
+                        return
+                            
+                    # 使用异步版本的摘要生成
+                    from etl.transform.abstract import generate_abstract_async
+                    try:
+                        abstract = await generate_abstract_async(md_file)
+                    except Exception as e:
+                        self.logger.error(f"生成摘要时发生错误: {e}")
+                        abstract = None
+                        
+                    if abstract:
+                        try:
                             article['content'] = abstract
                             with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
-                                json.dump(article, f, ensure_ascii=False, indent=4)
+                                json.dump(article, f, ensure_ascii=False)
                             self.logger.debug(f"生成摘要成功: {clean_title}")
                             preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
-                            self.logger.debug(f"原始URL: {article['original_url']}\n摘要内容预览: {preview_abstract}")
-                        else:
+                            self.logger.debug(f"原始URL: {original_url}\n摘要内容预览: {preview_abstract}")
+                        except Exception as e:
+                            self.logger.error(f"保存摘要失败: {e}")
+                    else:
+                        try:
                             self.logger.error(f"生成摘要失败: {clean_title}")
                             article['content'] = ""
                             with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
                                 json.dump(article, f, ensure_ascii=False, indent=4)
                             self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
-                        
-                        # 清理文件
+                        except Exception as e:
+                            self.logger.error(f"保存空摘要失败: {e}")
+                    
+                    # 清理文件
+                    try:
                         if md_file.exists():
                             md_file.unlink()
                         if generated_dir.exists():
                             shutil.rmtree(generated_dir)
-                    else:
-                        self.logger.error(f"转换失败，未生成MD文件: {clean_title}")
-                else:
-                    self.logger.error(f"转换失败，未生成新的文件夹: {clean_title}")
+                    except Exception as e:
+                        self.logger.warning(f"清理临时文件失败: {e}")
+                        
+                except Exception as e:
+                    self.logger.error(f"处理生成的文件失败: {e}")
             else:
-                self.logger.error(f"Markdown转换命令执行失败: {clean_title}")
-
-            content_length = len(article.get('content', '').strip())
-            abstract_length = len(article.get('content', '')) if 'content' in article else 0
-            self.logger.info(f'已下载文章: {clean_title}, md长度: {content_length}, 摘要长度: {abstract_length}')
-
+                self.logger.error(f"转换失败: {clean_title}")
         except Exception as e:
-            self.logger.exception(f'下载文章内容失败: {e}, URL: {article["original_url"]}')
+            self.logger.error(f"下载文章失败: {e}, URL: {article.get('original_url', '未知URL')}")
 
     async def download(self):
-        data_dir = Path(self.data_dir)
-        start_time = time.time()
-
-        for json_path in data_dir.glob('**/*.json'):
-            with open(json_path, 'r', encoding='utf-8') as f:
-                article_data = json.load(f)
-
-            if not isinstance(article_data, dict):
-                continue
+        """下载爬取到的文章"""
+        self.logger.info("开始下载文章...")
+        data_dir = self.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 导入tqdm进度条库
+        from tqdm import tqdm
+        
+        # 递归查找所有JSON文件
+        json_files = list(data_dir.glob('**/*.json'))
+        self.logger.info(f"找到 {len(json_files)} 个JSON文件")
+        
+        if not json_files:
+            self.logger.error("没有找到需要处理的文章，任务结束")
+            return
+        
+        # 创建计数器，用于进度展示
+        total_files = len(json_files)
+        processed = 0
+        success = 0
+        skipped = 0
+        failed = 0
+        
+        # 创建进度条
+        pbar = tqdm(total=total_files, desc="下载文章", unit="篇")
+        
+        # 创建任务列表用于并行处理
+        tasks = []
+        for json_file in json_files:
+            try:
+                # 检查文件是否为空
+                if json_file.stat().st_size == 0:
+                    self.logger.warning(f"跳过空JSON文件: {json_file}")
+                    skipped += 1
+                    pbar.update(1)
+                    continue
+                    
+                try:
+                    with open(json_file, 'r', encoding='utf-8') as f:
+                        article = json.load(f)
+                except json.JSONDecodeError as je:
+                    self.logger.warning(f"无法解析JSON文件: {json_file}, 错误: {je}")
+                    failed += 1
+                    pbar.update(1)
+                    continue
+                except UnicodeDecodeError as ue:
+                    # 尝试其他编码
+                    try:
+                        with open(json_file, 'r', encoding='gbk') as f:
+                            article = json.load(f)
+                    except:
+                        self.logger.warning(f"无法解码JSON文件: {json_file}, 错误: {ue}")
+                        failed += 1
+                        pbar.update(1)
+                        continue
+                
+                if not isinstance(article, dict) or 'original_url' not in article:
+                    self.logger.warning(f"跳过无效文章: {json_file}")
+                    skipped += 1
+                    pbar.update(1)
+                    continue
+                
+                # 使用文章所在目录作为保存目录
+                save_dir = json_file.parent
+                # 创建自定义任务，包含文件信息用于进度更新
+                tasks.append((self.download_article(article, save_dir), json_file))
+            except Exception as e:
+                self.logger.error(f"处理JSON文件失败: {json_file}, 错误: {e}")
+                failed += 1
+                pbar.update(1)
+        
+        # 并行执行所有下载任务，但限制并发数
+        if tasks:
+            # 增加并发数，系统有足够CPU余量
+            max_concurrency = 40  # 提高到更高的并发数
             
-            # 检查是否缺少publish_time字段，如果缺少则删除该文章及相关文件
-            if 'publish_time' not in article_data:
-                title = article_data.get('title', '未知标题')
-                self.logger.warning(f"删除缺少publish_time字段的文章: {title}")
+            self.logger.info(f"开始并行处理 {len(tasks)} 篇文章，并发数限制为{max_concurrency}")
+            # 创建信号量以限制并发数
+            semaphore = asyncio.Semaphore(max_concurrency)
+            
+            async def process_with_semaphore(task_info):
+                task, json_file = task_info
+                try:
+                    async with semaphore:
+                        result = await task
+                        nonlocal success
+                        success += 1
+                        return result
+                except Exception as e:
+                    self.logger.error(f"任务执行失败: {json_file}, 错误: {e}")
+                    nonlocal failed
+                    failed += 1
+                    return None
+                finally:
+                    nonlocal processed
+                    processed += 1
+                    # 更新进度条
+                    pbar.update(1)
+                    pbar.set_postfix({"成功": success, "跳过": skipped, "失败": failed})
+                    
+            # 用信号量包装所有任务
+            limited_tasks = [process_with_semaphore(task_info) for task_info in tasks]
+            
+            try:
+                # 并行执行任务，但受信号量限制
+                await asyncio.gather(*limited_tasks)
+            except Exception as e:
+                self.logger.error(f"任务执行过程中发生错误: {e}")
+            finally:
+                # 关闭进度条
+                pbar.close()
                 
-                # 删除json文件
-                json_path.unlink()
-                
-                clean_title = clean_filename(title) if 'title' in article_data else json_path.stem
-                for related_file in json_path.parent.glob(f"{clean_title}.*"):
-                    related_file.unlink()
-                
-                self.logger.debug(f"已删除文章相关文件: {json_path}")
-                continue
-
-            content = article_data.get('content', '')
-            if not content:
-                await self.download_article(article_data, save_dir=json_path.parent)
-                await self.random_sleep()
-
-        self.logger.info(f"下载完成，共处理 {self.counter.get('processed', 0)} 篇文章, " +
-                         f"错误 {self.counter.get('error', 0)} 篇")
+            self.logger.info(f"所有文章下载完成: 总数 {total_files}, 成功 {success}, 跳过 {skipped}, 失败 {failed}")
+        else:
+            pbar.close()
+            self.logger.warning("没有有效的文章需要处理")
 
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
