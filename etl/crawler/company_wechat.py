@@ -1,6 +1,5 @@
 from etl.crawler import *
 from etl.crawler.wechat import Wechat
-from tqdm import tqdm
 
  # 定义招聘相关关键词，模糊匹配所有招聘信息
 recruitment_keywords = [
@@ -47,7 +46,7 @@ class CompanyWechat(Wechat):
         total_articles = []
         # 获取今天的日期字符串，格式为"YYYY-MM-DD"
         today_date = datetime.now().strftime('%Y-%m-%d')
-        self.logger.info(f'Only scraping articles published today ({today_date}) with recruitment keywords')
+        self.logger.debug(f'Only scraping articles published today ({today_date}) with recruitment keywords')
         
         # 创建作者处理进度条
         author_pbar = tqdm(total=len(self.authors), desc="处理公众号", unit="个")
@@ -66,7 +65,6 @@ class CompanyWechat(Wechat):
             await element.click()
         except Exception as e:
             await self.page.screenshot(path='viewport.png', full_page=True)
-            self.counter['error'] += 1
             self.logger.error(f'get articles from {self.authors} error, {type(e)}: {e}')
             return total_articles
         for author in self.authors:
@@ -171,12 +169,11 @@ class CompanyWechat(Wechat):
                                 'original_url': article_original_url
                             })
                             cnt += 1
-                            self.logger.info(f'找到有效招聘文章: {article_title} ({author})')
-                            article_pbar.update(1)
+                            self.logger.debug(f'找到有效招聘文章: {article_title} ({author})')
                             
                     page += 1
                     if cnt > 0:
-                        self.logger.info(f'从 {author} 抓取到 {cnt} 篇今日发布的招聘文章')
+                        self.logger.debug(f'从 {author} 抓取到 {cnt} 篇今日发布的招聘文章')
                     
                     # 如果当前页面没有今天的文章，停止翻页
                     found_today_article = False
@@ -193,16 +190,10 @@ class CompanyWechat(Wechat):
                         next_page_button = self.page.get_by_text("下一页")
                         await next_page_button.click()
                     except Exception as e:
-                        self.counter['error'] += 1
                         break
                 except Exception as e:
-                    self.counter['error'] += 1
                     self.logger.error(f'抓取 {author} 文章时出错: {type(e).__name__}')
                     break  # 如果处理页面出错，跳出当前账号的处理
-
-            article_pbar.close()
-            author_pbar.update(1)
-            
             self.update_scraped_articles(scraped_original_urls, articles)
             if len(articles) > 0:
                 self.logger.info(f'已保存 {len(articles)} 篇来自 {author} 的今日招聘文章')
@@ -210,7 +201,6 @@ class CompanyWechat(Wechat):
             if len(total_articles) >= total_max_article_num:
                 break
 
-        author_pbar.close()
         if len(total_articles) > 0:
             self.logger.info(f'总共保存了 {len(total_articles)} 篇来自 {self.authors} 的今日招聘文章')
         return total_articles
@@ -254,7 +244,7 @@ class CompanyWechat(Wechat):
                             with open(md_file, 'w', encoding='utf-8') as f:
                                 f.write(content.strip())
                             from etl.transform.abstract import generate_abstract
-                            abstract = generate_abstract(md_file)
+                            abstract = generate_abstract(md_file,bot_tag="job")
                             if abstract:
                                 with open(save_dir / "abstract.md", 'w', encoding='utf-8') as f:
                                     f.write(abstract)
@@ -279,7 +269,7 @@ class CompanyWechat(Wechat):
             # 使用安全方法获取内容长度
             content_length = len(content.strip()) if content else 0
             abstract_length = len(abstract) if abstract else 0
-            self.logger.info(f'已下载文章: {title}, md长度: {content_length}, 摘要长度: {abstract_length}')
+            self.logger.debug(f'已下载文章: {title}, md长度: {content_length}, 摘要长度: {abstract_length}')
 
         except Exception as e:
             self.counter['error'] += 1
@@ -331,45 +321,65 @@ class CompanyWechat(Wechat):
                         self.logger.warning(f"读取文件 {json_path} 时出错: {e}")
             
             total_files = len(today_files)
-            self.logger.info(f"找到发布时间为今天 ({today_str}) 的 {total_files} 个JSON文件需要处理")
+            self.logger.debug(f"找到发布时间为今天 ({today_str}) 的 {total_files} 个JSON文件需要处理")
             
             if total_files == 0:
-                self.logger.info("没有找到今天发布的文章，任务结束")
+                self.logger.debug("没有找到今天发布的文章，任务结束")
                 return
+            
+            # 初始化计数器
+            success_count = 0
+            error_count = 0
             
             # 创建进度条
             pbar = tqdm(total=total_files, desc="下载文章", unit="篇")
-            processed_count = 0
             
             # 只处理当天发布的文章
             for json_path, article_data in today_files:
                 try:
                     md_files = list(json_path.parent.glob('*.md'))
-
                     if not md_files:
                         await self.download_article(article_data)
+                        success_count += 1
                         self.counter['processed'] = self.counter.get('processed', 0) + 1
-                        if self.counter['processed'] % 100 == 0:
-                            self.logger.info(f"已处理 {self.counter['processed']} 篇招聘相关文章")
-                        await self.random_sleep()
+                    else:
+                        self.logger.debug(f"已存在MD文件，跳过: {json_path}")
+                    await self.random_sleep()
                 except Exception as e:
+                    error_count += 1
                     self.counter['error'] = self.counter.get('error', 0) + 1
                     self.logger.error(f"处理文件 {json_path} 时出错: {e}")
-                    if self.counter['error'] > 10 and self.counter['error'] % 10 == 0:
-                        self.logger.warning("错误过多，暂停120秒")
-                        await asyncio.sleep(120)
                 finally:
                     # 更新进度条
-                    processed_count += 1
                     pbar.update(1)
-                    pbar.set_postfix({"成功": self.counter.get('processed', 0), "错误": self.counter.get('error', 0)})
-        finally:            
+                    # 更新进度条描述，显示成功和错误数量
+                    pbar.set_postfix({
+                        "成功": success_count, 
+                        "错误": error_count,
+                        "总计": f"{pbar.n}/{total_files}"
+                    })
+                    
+                    # 每处理10篇文章，显示一次详细进度
+                    if pbar.n % 10 == 0 or pbar.n == total_files:
+                        elapsed = time.time() - start_time
+                        remaining = (elapsed / pbar.n) * (total_files - pbar.n) if pbar.n > 0 else 0
+                        self.logger.info(
+                            f"进度: {pbar.n}/{total_files} ({pbar.n/total_files*100:.1f}%), "
+                            f"成功: {success_count}, 错误: {error_count}, "
+                            f"已用时: {elapsed/60:.1f}分钟, 预计剩余: {remaining/60:.1f}分钟"
+                        )
+            
             # 关闭进度条
-            if 'pbar' in locals():
-                pbar.close()
-            self.save_counter(start_time)
-            self.logger.info(f"下载完成，共处理 {self.counter.get('processed', 0)} 篇招聘相关文章, " +
-                            f"错误 {self.counter.get('error', 0)} 篇")
+            pbar.close()
+            
+            # 计算总耗时
+            total_time = time.time() - start_time
+        finally:            
+            self.logger.info(
+                f"下载完成，耗时: {(time.time()-start_time)/60:.2f}分钟, "
+                f"共处理: {total_files}篇, 成功: {self.counter.get('processed', 0)}篇, "
+                f"错误: {self.counter.get('error', 0)}篇"
+            )
 
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
