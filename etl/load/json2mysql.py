@@ -1,31 +1,22 @@
 from __init__ import *
-import mysql.connector
-from typing import List, Dict, Any, Optional, Tuple, Union
-import sys
-import re
-import json
-from datetime import datetime
-from pathlib import Path
 
 def init_database():
     """分步初始化数据库
     
     步骤：
-    1. 创建nkuwiki数据库（如果不存在）
+    1. 检查nkuwiki数据库连接是否正常
     2. 执行所有SQL文件创建表结构
     
     Raises:
         Exception: 任一阶段失败时抛出异常
     """
     try:
-        # 第一步：连接无数据库状态，创建nkuwiki数据库
-        conn = get_conn(use_database=False)
-        cursor = conn.cursor()
-        cursor.execute("CREATE DATABASE IF NOT EXISTS nkuwiki CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci")
-        load_logger.info("数据库 nkuwiki 创建成功或已存在")
+        # 第一步：连接到nkuwiki数据库，检查连接是否正常
+        conn = get_conn(use_database=True)
+        load_logger.info("成功连接到nkuwiki数据库")
         conn.close()
     except mysql.connector.Error as err:
-        load_logger.error(f"创建nkuwiki数据库失败: {err}")
+        load_logger.error(f"连接nkuwiki数据库失败: {err}")
         sys.exit(1)
         
     # 检查必要的表是否存在，不存在则创建
@@ -663,7 +654,7 @@ def transfer_table_from_mysql_to_nkuwiki(table_name: str) -> bool:
         mysql_conn = mysql.connector.connect(
             host=DB_HOST,
             port=DB_PORT,
-            user=DB_USER,
+            user='nkuwiki',  # 使用nkuwiki用户
             password=DB_PASSWORD,
             database="mysql"
         )
@@ -726,7 +717,7 @@ if __name__ == "__main__":
     # delete_table("wechat_articles")
     init_database()
     # 转移web_articles表从mysql到nkuwiki
-    transfer_table_from_mysql_to_nkuwiki("web_articles")
+    # transfer_table_from_mysql_to_nkuwiki("web_articles")
     # export_wechat_to_mysql(n = 10)
     # print(query_table('wechat_articles', 5))  # 测试查询功能
     # create_table("market_posts")

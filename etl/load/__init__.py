@@ -31,7 +31,7 @@ def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
     params = {
         'host': DB_HOST,
         'port': DB_PORT,
-        'user': DB_USER,
+        'user': 'nkuwiki',  # 强制使用nkuwiki用户
         'password': DB_PASSWORD,
         'charset': 'utf8mb4',
         'autocommit': True
@@ -42,9 +42,9 @@ def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
 
 # 定义导出的变量和函数
 __all__ = [
-    'os', 'sys', 'json', 'time', 'asyncio', 'Path', 'Dict', 'List',
-    'Optional', 'Any', 'Union', 'Tuple', 'load_logger', 'datetime',
-    'defaultdict', 'get_conn', 'mysql',
+    'os', 'sys', 'json', 'time', 'asyncio', 'Path', 'Dict', 'List','Tuple',
+    'Optional', 'Any', 'Union', 'load_logger', 'datetime',
+    'defaultdict', 'get_conn', 'mysql','re','json','time',
     # 路径配置
     'BASE_PATH', 'RAW_PATH', 'INDEX_PATH', 'CACHE_PATH', 'QDRANT_PATH', 'LOG_PATH',
     

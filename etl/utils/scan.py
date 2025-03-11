@@ -4,6 +4,7 @@
 import os
 import json
 import random  # 添加random模块
+import shutil  # 添加shutil模块用于删除目录
 from collections import defaultdict
 from pathlib import Path
 from datetime import datetime
@@ -27,12 +28,16 @@ def scan_wechat_nku_directories():
     has_abstract_dirs = 0
     has_html_dirs = 0
     total_json_dirs = 0
+    deleted_dirs = 0  # 新增：记录被删除的目录数量
     
     # 存储所有找到的包含json文件的目录
     json_dirs = []
     
     # 存储非空content
     non_empty_contents = []
+    
+    # 存储要删除的目录
+    dirs_to_delete = []
     
     # 是否打印过示例目录内容
     printed_example = False
@@ -57,8 +62,12 @@ def scan_wechat_nku_directories():
         for root, dirs, files in os.walk(year_month_dir):
             # 如果当前目录包含json文件，则认为它是我们要找的叶子目录
             json_files = [f for f in files if f.endswith('.json')]
+            
+            root_path = Path(root)
+            # 检查是否存在有效的JSON文件
+            has_valid_json = False
+            
             if json_files:
-                root_path = Path(root)
                 json_dirs.append(root_path)
                 time_periods[year] += 1
                 total_json_dirs += 1
@@ -106,12 +115,14 @@ def scan_wechat_nku_directories():
                             if isinstance(data, dict):
                                 if "content" not in data:
                                     data["content"] = ""
-                                    # 保存修改后的文件
-                                    with open(file_path, "w", encoding="utf-8") as f:
-                                        json.dump(data, f, ensure_ascii=False, indent=2)
+                                
+                                # 无论如何都重新保存文件，使用indent=4
+                                with open(file_path, "w", encoding="utf-8") as f:
+                                    json.dump(data, f, ensure_ascii=False, indent=4)
                                 
                                 if data["content"].strip():
                                     has_non_empty_content = True
+                                    has_valid_json = True  # 有非空内容的JSON
                                     # 收集非空content
                                     non_empty_contents.append({
                                         'path': str(file_path),
@@ -124,10 +135,29 @@ def scan_wechat_nku_directories():
                 
                 if has_non_empty_content:
                     non_empty_content_dirs += 1
+                    
+                # 如果没有有效的JSON文件，标记该目录为待删除
+                if not has_valid_json:
+                    dirs_to_delete.append(root_path)
+            else:
+                # 如果目录中没有JSON文件，也标记为待删除
+                # 但仅删除叶子目录（不包含子目录的目录）
+                if not dirs:
+                    dirs_to_delete.append(root_path)
+    
+    # 删除标记的目录
+    for dir_path in dirs_to_delete:
+        try:
+            print(f"正在删除目录: {dir_path}")
+            shutil.rmtree(dir_path)
+            deleted_dirs += 1
+        except Exception as e:
+            print(f"删除目录 {dir_path} 时出错: {str(e)}")
     
     # 打印结果
     print("\n===== 扫描结果 =====")
     print(f"总共找到 {total_json_dirs} 个包含json文件的叶子目录")
+    print(f"删除了 {deleted_dirs} 个无效的目录")
     
     print("\n按年份统计叶子目录数量:")
     for year in sorted(time_periods.keys()):

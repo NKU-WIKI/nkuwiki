@@ -12,7 +12,7 @@ from tqdm.auto import tqdm
 from datetime import datetime, timedelta
 from pathlib import Path
 from loguru import logger
-from typing import Dict, List, Any, Set, Union, Optional
+from typing import Dict, List, Any, Set, Tuple, Union, Optional
 from collections import defaultdict
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from config import Config
@@ -68,7 +68,7 @@ __version__ = "1.0.0"
 # 定义导出的符号列表 
 __all__ = [
     # 基础库和工具
-    'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 
+    'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Tuple',
     'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests','asyncio','tqdm','defaultdict',
 
     # 路径配置
