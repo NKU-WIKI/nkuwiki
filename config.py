@@ -14,7 +14,7 @@ available_setting = {
             # Coze AI配置
             "coze": {
                 "base_url": "https://api.coze.cn",  # API基础URL
-                "bot_id": "",  # Coze机器人ID
+                "wx_bot_id": "",  # Coze机器人ID
                 "api_key": ""  # Coze API密钥
             },
             # OpenAI配置

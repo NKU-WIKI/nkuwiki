@@ -2,7 +2,7 @@
   "core": {
     "agent": {
       "coze": {
-        "bot_id": "your_bot_id",
+        "wx_bot_id": "your_bot_id",
         "api_key": "your_api_key"
       }
     }
