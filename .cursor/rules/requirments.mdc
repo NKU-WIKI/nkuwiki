@@ -21,3 +21,8 @@ markdown代码符合vscode的markdownlint插件的语法规范。
 
 禁止自行运行代码。
 禁止乱删乱改代码
+
+## 日志
+
+重要日志才info级
+一般日志debug级

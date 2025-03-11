@@ -1,8 +1,10 @@
 """Sentence splitter."""
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, ClassVar, Any
 
-from llama_index.core.bridge.pydantic import Field, PrivateAttr
+# 替换llama_index的pydantic桥接，直接使用pydantic v2
+# from llama_index.core.bridge.pydantic import Field, PrivateAttr
+from pydantic import Field, model_validator, PrivateAttr
 from llama_index.core.callbacks.base import CallbackManager
 from llama_index.core.callbacks.schema import CBEventType, EventPayload
 from llama_index.core.constants import DEFAULT_CHUNK_SIZE
@@ -56,62 +58,59 @@ class SentenceSplitter(MetadataAwareTextSplitter):
     secondary_chunking_regex: str = Field(
         default=CHUNKING_REGEX, description="Backup regex for splitting into sentences."
     )
+    include_metadata: bool = Field(
+        default=True, description="Whether to include metadata in splits"
+    )
+    include_prev_next_rel: bool = Field(
+        default=True, description="Whether to include prev/next relationships"
+    )
+    tokenizer: Optional[Callable] = Field(
+        default=None, description="Optional tokenizer to use"
+    )
+    chunking_tokenizer_fn: Optional[Callable[[str], List[str]]] = Field(
+        default=None, description="Optional chunking tokenizer function"
+    )
+    callback_manager: Optional[CallbackManager] = Field(
+        default=None, description="Callback manager"
+    )
+    id_func: Optional[Callable[[int, Document], str]] = Field(
+        default=None, description="Function to generate IDs"
+    )
 
-    _chunking_tokenizer_fn: Callable[[str], List[str]] = PrivateAttr()
-    _tokenizer: Callable = PrivateAttr()
-    _split_fns: List[Callable] = PrivateAttr()
-    _sub_sentence_split_fns: List[Callable] = PrivateAttr()
+    # 私有属性
+    _chunking_tokenizer_fn: Callable[[str], List[str]] = PrivateAttr(default=None)
+    _tokenizer: Callable = PrivateAttr(default=None)
+    _split_fns: List[Callable] = PrivateAttr(default=None)
+    _sub_sentence_split_fns: List[Callable] = PrivateAttr(default=None)
 
-    def __init__(
-            self,
-            separator: str = " ",
-            chunk_size: int = DEFAULT_CHUNK_SIZE,
-            chunk_overlap: int = SENTENCE_CHUNK_OVERLAP,
-            tokenizer: Optional[Callable] = None,
-            paragraph_separator: str = DEFAULT_PARAGRAPH_SEP,
-            chunking_tokenizer_fn: Optional[Callable[[str], List[str]]] = None,
-            secondary_chunking_regex: str = CHUNKING_REGEX,
-            callback_manager: Optional[CallbackManager] = None,
-            include_metadata: bool = True,
-            include_prev_next_rel: bool = True,
-            id_func: Optional[Callable[[int, Document], str]] = None,
-    ):
-        """Initialize with parameters."""
-        if chunk_overlap > chunk_size:
+    @model_validator(mode='after')
+    def init_private_attrs(self) -> 'SentenceSplitter':
+        """在创建模型后初始化私有属性。"""
+        if self.chunk_overlap > self.chunk_size:
             raise ValueError(
-                f"Got a larger chunk overlap ({chunk_overlap}) than chunk size "
-                f"({chunk_size}), should be smaller."
+                f"Got a larger chunk overlap ({self.chunk_overlap}) than chunk size "
+                f"({self.chunk_size}), should be smaller."
             )
-        id_func = id_func or default_id_func
-
-        callback_manager = callback_manager or CallbackManager([])
+        
+        self.id_func = self.id_func or default_id_func
+        self.callback_manager = self.callback_manager or CallbackManager([])
+        
         self._chunking_tokenizer_fn = (
-                chunking_tokenizer_fn or split_by_sentence_tokenizer()
+                self.chunking_tokenizer_fn or split_by_sentence_tokenizer()
         )
-        self._tokenizer = tokenizer or get_tokenizer()
+        self._tokenizer = self.tokenizer or get_tokenizer()
 
         self._split_fns = [
-            split_by_sep(paragraph_separator),
+            split_by_sep(self.paragraph_separator),
             self._chunking_tokenizer_fn,
         ]
 
         self._sub_sentence_split_fns = [
-            split_by_regex(secondary_chunking_regex),
-            split_by_sep(separator),
+            split_by_regex(self.secondary_chunking_regex),
+            split_by_sep(self.separator),
             split_by_char(),
         ]
-
-        super().__init__(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            secondary_chunking_regex=secondary_chunking_regex,
-            separator=separator,
-            paragraph_separator=paragraph_separator,
-            callback_manager=callback_manager,
-            include_metadata=include_metadata,
-            include_prev_next_rel=include_prev_next_rel,
-            id_func=id_func,
-        )
+        return self
 
     @classmethod
     def from_defaults(
@@ -128,7 +127,7 @@ class SentenceSplitter(MetadataAwareTextSplitter):
             include_prev_next_rel: bool = True,
     ) -> "SentenceSplitter":
         """Initialize with parameters."""
-        callback_manager = callback_manager or CallbackManager([])
+        # 直接使用pydantic的模型构造方式，不再调用__init__
         return cls(
             separator=separator,
             chunk_size=chunk_size,

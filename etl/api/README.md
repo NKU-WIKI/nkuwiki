@@ -1,251 +1,140 @@
-# API模块开发指南
+# MySQL API 接口文档
 
-## 模块概述
+## 基本信息
 
-api 模块提供了对外的服务接口，用于将 ETL 处理后的数据以 API 的形式提供给其他系统使用。包括 RESTful API 接口和 WebUI 界面。
+- 基础路径: `mysql/`
+- API 描述: 南开百科知识平台的 MySQL 数据访问接口
+- 版本: 1.0.0
 
-## 文件结构
+## 接口列表
 
-- `__init__.py` - 模块入口，定义了导出的函数和类
-- `api.py` - RESTful API 实现
-- `webui.py` - Web 用户界面实现
-- `coze_datasource.py` - Coze 数据源集成
+### 1. 获取数据库表列表
 
-## 开发新 API 端点
+- **接口**: `GET /tables`
+- **描述**: 获取数据库中所有表的列表
+- **响应模型**: `TablesResponse`
+- **返回示例**:
+  ```json
+  {
+    "tables": ["表1", "表2", "表3"]
+  }
+  ```
 
-1. **创建新端点**:
+### 2. 获取表结构
 
-```python
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+- **接口**: `GET /table/{table_name}/structure`
+- **描述**: 获取指定表的字段结构信息
+- **参数**: 
+  - `table_name` (path): 要查询的表名
+- **响应模型**: `TableStructureResponse`
+- **返回示例**:
+  ```json
+  {
+    "fields": [
+      {"field": "id", "type": "int", "null": "NO", "key": "PRI", "default": null, "extra": "auto_increment"},
+      {"field": "name", "type": "varchar(100)", "null": "YES", "key": "", "default": null, "extra": ""}
+    ]
+  }
+  ```
 
-# 定义请求模型
-class SearchRequest(BaseModel):
-    query: str
-    top_k: int = 5
+### 3. 查询数据
 
-# 创建路由
-router = APIRouter()
+- **接口**: `POST /query`
+- **描述**: 根据条件查询表数据
+- **请求体**: `QueryRequest`
+  ```json
+  {
+    "table_name": "要查询的表名",
+    "conditions": {"字段名": "值"},
+    "order_by": "排序字段",
+    "limit": 100,
+    "offset": 0
+  }
+  ```
+- **参数说明**:
+  - `table_name` (必填): 要查询的表名
+  - `conditions` (可选): 查询条件，键值对形式
+  - `order_by` (可选): 排序字段
+  - `limit` (可选): 返回记录数量限制，默认100
+  - `offset` (可选): 分页偏移量，默认0
+- **响应模型**: `List[Dict[str, Any]]`
+- **返回示例**:
+  ```json
+  [
+    {"id": 1, "name": "示例1"},
+    {"id": 2, "name": "示例2"}
+  ]
+  ```
 
-@router.post("/search")
-async def search_endpoint(request: SearchRequest):
-    """
-    搜索接口
-    """
-    try:
-        # 实现搜索逻辑
-        results = perform_search(request.query, request.top_k)
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-```
+### 4. 统计记录数量
 
-1. **集成到主 API 应用**:
+- **接口**: `POST /count`
+- **描述**: 统计符合条件的记录数量
+- **请求体**: `CountRequest`
+  ```json
+  {
+    "table_name": "要统计的表名",
+    "conditions": {"字段名": "值"}
+  }
+  ```
+- **参数说明**:
+  - `table_name` (必填): 要统计的表名
+  - `conditions` (可选): 统计条件，键值对形式
+- **响应模型**: `CountResponse`
+- **返回示例**:
+  ```json
+  {
+    "count": 42
+  }
+  ```
 
-```python
-from fastapi import FastAPI
-from etl.api.my_endpoints import router as my_router
+### 5. 自定义SQL查询
 
-app = FastAPI(title="ETL API")
-app.include_router(my_router, prefix="/my-api", tags=["My API"])
-```
+- **接口**: `POST /custom_query`
+- **描述**: 执行自定义SQL查询语句（仅支持SELECT操作）
+- **请求体**: `CustomQueryRequest`
+  ```json
+  {
+    "query": "SELECT * FROM users WHERE age > ?",
+    "params": [18],
+    "fetch": true
+  }
+  ```
+- **参数说明**:
+  - `query` (必填): 自定义SQL查询语句
+  - `params` (可选): 查询参数列表，用于替换SQL中的占位符
+  - `fetch` (可选): 是否获取查询结果，默认为true
+- **安全限制**: 仅支持SELECT查询，不允许执行INSERT、UPDATE、DELETE、DROP、ALTER、TRUNCATE等操作
+- **返回示例**:
+  ```json
+  {
+    "result": [
+      {"id": 1, "name": "用户1", "age": 25},
+      {"id": 2, "name": "用户2", "age": 30}
+    ]
+  }
+  ```
 
-## WebUI 开发
+## 错误处理
 
-为数据可视化和交互添加 WebUI 组件：
+所有接口在出现错误时将返回以下格式的错误信息：
 
-```python
-import streamlit as st
+- **400错误**: 客户端请求参数错误
+  ```json
+  {
+    "detail": "错误详情信息"
+  }
+  ```
 
-def create_search_page():
-    st.title("搜索界面")
-    
-    # 用户输入
-    query = st.text_input("请输入搜索词")
-    top_k = st.slider("返回结果数量", 1, 20, 5)
-    
-    if st.button("搜索"):
-        # 调用 API
-        results = call_search_api(query, top_k)
-        
-        # 显示结果
-        for i, result in enumerate(results):
-            st.subheader(f"结果 {i+1}")
-            st.write(result["content"])
-            st.write(f"相关度: {result['score']}")
-```
-
-## Coze 数据源集成
-
-使用 `coze_datasource.py` 将数据集成到 Coze 平台：
-
-```python
-from etl.api.coze_datasource import CozeDatasource
-
-# 创建 Coze 数据源
-datasource = CozeDatasource(
-    name="我的数据源",
-    description="ETL 处理后的数据",
-    vector_store="qdrant",
-    collection_name="my_collection"
-)
-
-# 注册数据源
-datasource.register()
-```
+- **500错误**: 服务器内部错误
+  ```json
+  {
+    "detail": "错误详情信息"
+  }
+  ```
 
 ## 注意事项
 
-1. **安全性**: 实现适当的认证和授权机制
-1. **性能优化**: 对于高频调用的 API，考虑实现缓存
-1. **错误处理**: 提供清晰的错误信息和错误码
-1. **版本控制**: 考虑实现 API 版本控制，确保兼容性
-1. **文档生成**: 使用 FastAPI 的自动文档功能，保持文档更新
-
-## 调试与测试
-
-1. 运行 API 服务:
-
-```bash
-uvicorn etl.api.api:app --host 0.0.0.0 --port 8000 --reload
-```
-
-1. 运行 WebUI:
-
-```bash
-streamlit run etl/api/webui.py
-```
-
-## 参考
-
-- 查看 `api.py` 了解 API 开发的最佳实践
-- 参考 `webui.py` 了解 WebUI 实现方法
-
----
-
-EasyRAG: Efficient Retrieval-Augmented Generation Framework for Automated Network Operations
-
-[![license](https://img.shields.io/github/license/mashape/apistatus.svg?maxAge=2592000)](https://github.com/BUAADreamer/EasyRAG/blob/main/licence)
-[![arxiv badge](https://img.shields.io/badge/arxiv-2410.10315-red)](https://arxiv.org/abs/2410.10315)
-[![GitHub Repo stars](https://img.shields.io/github/stars/BUAADreamer/EasyRAG?style=social)](https://github.com/BUAADreamer/EasyRAG/stargazers)
-[![zhihu blog](https://img.shields.io/badge/zhihu-Blog-informational)](https://zhuanlan.zhihu.com/p/7272025344)
-
-## 目录
-
-- [概述](#概述)
-- [要求](#要求)
-- [复现](#复现)
-- [使用方法](#使用方法)
-- [项目结构](#项目结构)
-- [引用](#引用)
-- [致谢](#致谢)
-
-## 概述
-
-本文介绍了EasyRAG，这是一个简单、轻量级且高效的检索增强生成框架，用于自动化网络运维。我们的框架有三个优势。首先是准确的问答能力。我们设计了一个直接的RAG方案，基于(1)特定的数据处理工作流(2)双路稀疏检索进行粗排(3)LLM重排序器进行重排(4)LLM答案生成和优化。这一方法在初赛中获得了GLM4赛道的第一名，在半决赛中获得了GLM4赛道的第二名。其次是简单部署。我们的方法主要由BM25检索和BGE-reranker重排组成，无需微调任何模型，占用极少的VRAM，易于部署且高度可扩展；我们提供了一个灵活的代码库，具有各种搜索和生成策略，便于自定义过程实现。最后是高效推理。我们为整个粗排、重排和生成过程设计了一个高效的推理加速方案，显著减少了RAG的推理延迟，同时保持了良好的准确度；每个加速方案都可以即插即用到RAG过程的任何组件中，持续提高RAG系统的效率。
-
-![系统概览](assets/overview.png)
-
-## 要求
-
-EasyRAG需要Python3.10.14和至少1个16GB的GPU。
-
-您需要将`src/easyrag.yaml`中的`llm_keys`更改为您的GLM密钥。
-
-```shell
-pip install -r requirements.txt
-git lfs install
-bash scripts/download.sh # 下载模型
-bash scripts/process.sh # 处理zedx数据
-```
-
-## 复现
-
-### 1. 直接运行
-
-```bash
-cd src
-# 运行挑战问题
-python3 main.py 
-# 复制答案文件
-cp submit_result.jsonl ../answer.jsonl
-```
-
-### 2. 使用Docker运行
-
-```bash
-chmod +x scripts/run.sh
-./scripts/run.sh
-```
-
-## 使用方法
-
-### 1. API
-
-```bash
-cd src
-uvicorn api:app --host 0.0.0.0 --port 8000 --workers 1
-```
-
-### 2. WebUI
-
-您需要先运行API
-
-```bash
-cd src
-streamlit run webui.py
-```
-
-## 项目结构
-
-仅解释半决赛中可能使用的代码。
-
-```yaml
-- src
-    - custom
-        - splitter.py # 自定义分块器
-        - hierarchical.py # 分层分块器
-        - transformation.py # 文件路径和标题提取
-        - embeddings # 为GTE实现单独的嵌入类
-            - ...
-        - retrievers.py # 实现基于qdrant的密集检索器、中文BM25检索器、带有rrf和简单合并的融合检索器
-        - rerankers.py # 为bge系列重排序器实现一些单独的类，便于自定义使用
-        - template.py # QA提示模板
-    - pipeline
-        - ingestion.py # 数据处理流程：数据读取器、元数据提取、文档分块、文档编码、元数据过滤器、向量数据库创建
-        - pipeline.py # EasyRAG管道类，包含各种数据和模型的初始化，自定义RAG管道定义
-        - rag.py # 一些RAG的工具函数
-        - qa.py # 读取问题文件并保存答案
-    - utils # 适用于中国的hf自适应自定义llm，直接从相应模型hf链接中的代码复制而来
-        - ...
-    - configs
-        - easyrag.yaml # 配置文件
-    - data
-        - nltk_data # nltk中的停用词列表和分词器数据
-        - hit_stopwords.txt # 哈工大中文停用词表
-        - imgmap_filtered.json # 由get_ocr_data.py处理
-        - question.jsonl # 半决赛测试集
-    - main.py # 主函数，入口文件
-    - api.py # FastAPI服务
-    - preprocess_zedx.py # zedx数据预处理
-    - get_ocr_data.py # paddleocr+glm4v提取图像内容
-    - submit.py # 向挑战提交结果
-- requirements.txt # python依赖
-- run.sh # docker运行脚本
-- Dockerfile # docker配置文件
-```
-
-## 引用
-
-```latex
-@article{feng2024easyrag,
-  title={EasyRAG: Efficient Retrieval-Augmented Generation Framework for Automated Network Operations},
-  author={Feng, Zhangchi, Kuang Dongdong, Wang Zhongyuan, Nie Zhijie, Zheng Yaowei and Zhang, Richong},
-  journal={arXiv preprint arXiv:2410.10315},
-  year={2024}
-}
-```
-
-## 致谢
-
-感谢[CCF AIOps 2024挑战赛组委会](https://competition.aiops-challenge.com/home/competition/1780211530478944282)，他们提供了高质量的数据和良好的氛围。
+1. 所有查询接口均会进行SQL注入防护
+2. 自定义查询仅支持SELECT操作，不支持数据修改操作
+3. 默认查询结果限制为100条记录，可通过limit参数调整

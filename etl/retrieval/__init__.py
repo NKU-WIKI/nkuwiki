@@ -1,10 +1,13 @@
 """
 检索模块，负责文档检索和重排序
 """
+
+# 从根模块导入共享配置
 import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
+
 import numpy as np
 import torch
 
@@ -27,6 +30,12 @@ R_EMBED_BS = config.get('etl.reranker.r_embed_bs', 32)
 RERANKER_NAME = config.get('etl.reranker.name', "cross-encoder/stsb-distilroberta-base")
 R_USE_EFFICIENT = config.get('etl.reranker.r_use_efficient', 0)
 
+HYDE_ENABLED = config.get('etl.hyde.enabled', False)
+HYDE_MERGING = config.get('etl.hyde.merging', False)
+
+COMPRESS_METHOD = config.get('etl.compression.compress_method', "")
+COMPRESS_RATE = config.get('etl.compression.compress_rate', 0.5)
+
 # 本地LLM配置
 LOCAL_LLM_NAME = config.get('etl.local_llm_name', "")
 
@@ -38,7 +47,7 @@ VECTOR_SIZE = config.get('etl.data.qdrant.vector_size', 1024)
 
 # 创建检索模块专用logger
 retrieval_logger = logger.bind(module="retrieval")
-log_path = LOG_PATH + "/retrieval.log"
+log_path = LOG_PATH / "retrieval.log"
 log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
 logger.configure(
     handlers=[
@@ -63,5 +72,11 @@ __all__ = [
     'R_TOPK', 'R_TOPK_1', 'R_EMBED_BS', 'RERANKER_NAME', 'R_USE_EFFICIENT',
     
     # LLM和Qdrant配置
-    'LOCAL_LLM_NAME', 'QDRANT_URL', 'QDRANT_TIMEOUT', 'COLLECTION_NAME', 'VECTOR_SIZE'
+    'LOCAL_LLM_NAME', 'QDRANT_URL', 'QDRANT_TIMEOUT', 'COLLECTION_NAME', 'VECTOR_SIZE',
+    
+    # 重排配置
+    'HYDE_ENABLED', 'HYDE_MERGING',
+    
+    # 压缩配置
+    'COMPRESS_METHOD', 'COMPRESS_RATE'
 ] 

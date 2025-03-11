@@ -1,4 +1,34 @@
-from __init__ import *
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from etl import *
+from etl.load import get_conn, load_logger
+
+"""
+etl/load/py_mysql.py - MySQL数据库操作模块
+
+主要函数:
+- init_database(): 分步初始化数据库
+- create_table(table_name): 根据表名创建对应的表结构
+- process_file(file_path): 处理指定的JSON文件并返回数据字典
+- export_wechat_to_mysql(n): 将微信文章数据导出到MySQL数据库
+- query_table(table_name, limit): 查询指定表中的数据
+- delete_table(table_name): 删除指定的表
+- insert_record(table_name, data): 向指定表中插入单条记录
+- update_record(table_name, record_id, data): 更新指定表中的记录
+- delete_record(table_name, record_id): 删除指定表中的记录
+- get_record_by_id(table_name, record_id): 根据ID获取指定表中的记录
+- query_records(table_name, conditions, order_by, limit, offset): 按条件查询表中记录
+- count_records(table_name, conditions): 计算符合条件的记录数量
+- batch_insert(table_name, records, batch_size): 批量插入记录
+- execute_custom_query(query, params, fetch): 执行自定义SQL查询
+- upsert_record(table_name, data, unique_fields): 更新或插入记录
+- get_all_tables(): 获取数据库中所有表
+- get_table_structure(table_name): 获取表结构
+- get_nkuwiki_tables(): 获取nkuwiki数据库中的所有表
+- transfer_table_from_mysql_to_nkuwiki(table_name): 将表从MySQL迁移到nkuwiki数据库
+- import_json_dir_to_table(dir_path, table_name, platform, tag, batch_size): 将目录中的JSON文件导入到指定表
+"""
 
 def init_database():
     """分步初始化数据库
@@ -19,19 +49,47 @@ def init_database():
         load_logger.error(f"连接nkuwiki数据库失败: {err}")
         sys.exit(1)
         
-    # 检查必要的表是否存在，不存在则创建
-    try:
-        create_table("wechat_articles")
-        load_logger.info("必要的表已创建或已存在")
-    except mysql.connector.Error as err:
-        load_logger.error(f"创建必要表失败: {err}")
+    # 获取mysql_tables目录
+    sql_dir = Path(__file__).parent / "mysql_tables"
+    if not sql_dir.exists():
+        load_logger.error(f"SQL文件目录不存在: {sql_dir}")
         sys.exit(1)
+    
+    # 获取目录下所有SQL文件
+    sql_files = list(sql_dir.glob("*.sql"))
+    if not sql_files:
+        load_logger.warning("未找到任何SQL文件")
+        return
+    
+    # 尝试创建所有表
+    success_count = 0
+    failed_tables = []
+    
+    for sql_file in sql_files:
+        table_name = sql_file.stem  # 获取文件名（不含扩展名）
+        try:
+            create_table(table_name)
+            success_count += 1
+            load_logger.info(f"表 {table_name} 已创建或已存在")
+        except Exception as e:
+            load_logger.error(f"创建表 {table_name} 失败: {e}")
+            failed_tables.append(table_name)
+    
+    # 报告创建结果
+    if failed_tables:
+        load_logger.warning(f"共{len(sql_files)}个表，成功创建{success_count}个，失败{len(failed_tables)}个")
+        load_logger.warning(f"创建失败的表: {', '.join(failed_tables)}")
+    else:
+        load_logger.info(f"所有表({success_count}个)均已成功创建或已存在")
 
-def create_table(table_name: str):
+def create_table(table_name: str) -> bool:
     """根据表名执行对应的SQL文件创建表结构
     
     Args:
         table_name: 要创建的表名称（对应.sql文件名）
+        
+    Returns:
+        bool: 表是否创建成功
         
     Raises:
         FileNotFoundError: 当SQL文件不存在时抛出
@@ -61,25 +119,27 @@ def create_table(table_name: str):
                         except mysql.connector.Error as err:
                             load_logger.error(f"执行SQL失败: {err}\n{statement}")
                             conn.rollback()
-                            raise
+                            return False
                 conn.commit()
-                load_logger.info(f"表 {table_name} 在nkuwiki数据库中创建成功，使用SQL文件: {sql_file.name}")
+                load_logger.debug(f"表 {table_name} 在nkuwiki数据库中创建成功，使用SQL文件: {sql_file.name}")
+                return True
 
     except (FileNotFoundError, ValueError) as e:
         load_logger.error(str(e))
-        raise
+        return False
     except mysql.connector.Error as err:
         load_logger.error(f"数据库错误: {err}")
-        raise
+        return False
     except Exception as e:
         load_logger.exception("表结构创建失败")
-        raise
+        return False
 
-def process_file(file_path: str) -> Dict:
+def process_file(file_path: str, platform: str = "wechat") -> Dict:
     """处理单个JSON文件并返回清洗后的数据
     
     Args:
         file_path: JSON文件路径
+        platform: 平台名称，默认为wechat
         
     Returns:
         dict: 清洗后的结构化数据
@@ -99,13 +159,35 @@ def process_file(file_path: str) -> Dict:
                 raise ValueError(f"缺少必要字段: {field}")
 
         # 数据清洗
-        return {
+        processed_data = {
+            "platform": platform,
             "scrape_time": data["scrape_time"].replace(" ", "T"),
             "publish_time": data["publish_time"],
             "title": str(data.get("title", "")).strip(),
             "author": str(data.get("author", "")).strip(),
             "original_url": data["original_url"]
         }
+        
+        # 添加内容字段处理
+        if "content" in data:
+            processed_data["content"] = str(data["content"])
+        else:
+            # 尝试从其他可能的字段获取内容
+            content_fields = ["text", "article_content", "body", "html"]
+            for field in content_fields:
+                if field in data and data[field]:
+                    processed_data["content"] = str(data[field])
+                    break
+            
+            # 如果仍然没有找到内容，设置为摘要信息
+            if "content" not in processed_data:
+                processed_data["content"] = f"未找到内容。标题: {processed_data['title']}"
+        
+        # 处理可能的内容类型字段
+        if "content_type" in data:
+            processed_data["content_type"] = data["content_type"]
+        
+        return processed_data
     except json.JSONDecodeError as e:
         load_logger.error(f"文件 {file_path} 不是有效的JSON: {str(e)}")
         raise
@@ -145,7 +227,7 @@ def export_wechat_to_mysql(n: int):
         try:
             with open(file, 'r', encoding='utf-8') as f:
                 metadata.extend(json.load(f))
-                load_logger.info(f"已加载元数据文件：{file.name}（{len(metadata)}条记录）")
+                load_logger.debug(f"已加载元数据文件：{file.name}（{len(metadata)}条记录）")
         except Exception as e:
             load_logger.error(f"加载元数据文件失败 {file}: {str(e)}")
             continue
@@ -176,7 +258,7 @@ def export_wechat_to_mysql(n: int):
 
                     if i % batch_size == 0 or i == len(process_data):
                         cursor.executemany("""
-                            INSERT INTO wechat_articles 
+                            INSERT INTO wechat_nku_articles 
                             (publish_time, title, author, original_url, platform, content_type)
                             VALUES (%s, %s, %s, %s, %s, %s)
                             ON DUPLICATE KEY UPDATE 
@@ -276,7 +358,7 @@ def insert_record(table_name: str, data: Dict[str, Any]) -> int:
                 cursor.execute(query, values)
                 conn.commit()
                 last_id = cursor.lastrowid
-                load_logger.info(f"向表 {table_name} 插入记录成功，ID: {last_id}")
+                load_logger.debug(f"向表 {table_name} 插入记录成功，ID: {last_id}")
                 return last_id
     except mysql.connector.Error as e:
         load_logger.error(f"插入记录失败: {str(e)}")
@@ -303,15 +385,15 @@ def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool
             return False
             
         set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
-        values = list(data.values()) + [record_id]  # 添加WHERE条件的值
+        values = list(data.values())
         
         with get_conn() as conn:
             with conn.cursor() as cursor:
                 query = f"UPDATE {table_name} SET {set_clause} WHERE id = %s"
-                cursor.execute(query, values)
+                cursor.execute(query, [*values, record_id])
                 conn.commit()
                 affected_rows = cursor.rowcount
-                load_logger.info(f"更新表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
+                load_logger.debug(f"更新表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
                 return affected_rows > 0
     except mysql.connector.Error as e:
         load_logger.error(f"更新记录失败: {str(e)}")
@@ -338,7 +420,7 @@ def delete_record(table_name: str, record_id: int) -> bool:
                 cursor.execute(query, (record_id,))
                 conn.commit()
                 affected_rows = cursor.rowcount
-                load_logger.info(f"删除表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
+                load_logger.debug(f"删除表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
                 return affected_rows > 0
     except mysql.connector.Error as e:
         load_logger.error(f"删除记录失败: {str(e)}")
@@ -365,10 +447,10 @@ def get_record_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]
                 cursor.execute(query, (record_id,))
                 result = cursor.fetchone()
                 if result:
-                    load_logger.info(f"查询表 {table_name} 记录成功，ID: {record_id}")
-                else:
-                    load_logger.warning(f"未找到表 {table_name} 中ID为 {record_id} 的记录")
-                return result
+                    # 直接返回字典结果，因为我们使用了dictionary=True
+                    load_logger.debug(f"查询表 {table_name} 记录成功，ID: {record_id}")
+                    return result
+                return None
     except mysql.connector.Error as e:
         load_logger.error(f"查询记录失败: {str(e)}")
         return None
@@ -409,8 +491,10 @@ def query_records(table_name: str, conditions: Dict[str, Any] = None, order_by: 
             with conn.cursor(dictionary=True) as cursor:
                 query = f"SELECT * FROM {table_name} {where_clause} {order_clause} {limit_clause}"
                 cursor.execute(query, values)
+                
+                # 获取结果集
                 result = cursor.fetchall()
-                load_logger.info(f"条件查询表 {table_name} 成功，获取 {len(result)} 条记录")
+                load_logger.debug(f"条件查询表 {table_name} 成功，获取 {len(result)} 条记录")
                 return result
     except mysql.connector.Error as e:
         load_logger.error(f"条件查询失败: {str(e)}")
@@ -446,7 +530,7 @@ def count_records(table_name: str, conditions: Dict[str, Any] = None) -> int:
                 query = f"SELECT COUNT(*) FROM {table_name} {where_clause}"
                 cursor.execute(query, values)
                 count = cursor.fetchone()[0]
-                load_logger.info(f"统计表 {table_name} 记录数: {count}")
+                load_logger.debug(f"统计表 {table_name} 记录数: {count}")
                 return count
     except mysql.connector.Error as e:
         load_logger.error(f"统计记录数失败: {str(e)}")
@@ -481,6 +565,7 @@ def batch_insert(table_name: str, records: List[Dict[str, Any]], batch_size: int
             conn.autocommit = False
             with conn.cursor() as cursor:
                 query = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({placeholders})"
+                # 批量处理数据
                 for i in range(0, len(records), batch_size):
                     batch = records[i:i+batch_size]
                     values = [[record.get(field) for field in fields] for record in batch]
@@ -488,12 +573,12 @@ def batch_insert(table_name: str, records: List[Dict[str, Any]], batch_size: int
                         cursor.executemany(query, values)
                         conn.commit()
                         success_count += cursor.rowcount
-                        load_logger.info(f"批量插入进度: {i+len(batch)}/{len(records)} ({(i+len(batch))/len(records):.1%})")
+                        load_logger.debug(f"批量插入进度: {i+len(batch)}/{len(records)} ({(i+len(batch))/len(records):.1%})")
                     except mysql.connector.Error as e:
                         conn.rollback()
                         load_logger.error(f"批量插入批次 {i//batch_size + 1} 失败: {str(e)}")
                 
-        load_logger.info(f"批量插入完成，成功: {success_count}/{len(records)}")
+        load_logger.debug(f"批量插入完成，成功: {success_count}/{len(records)}")
         return success_count
     except mysql.connector.Error as e:
         load_logger.error(f"批量插入失败: {str(e)}")
@@ -512,24 +597,37 @@ def execute_custom_query(query: str, params: Tuple = None, fetch: bool = True) -
     """
     try:
         with get_conn() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                cursor.execute(query, params or ())
+            cursor = conn.cursor(dictionary=True, prepared=True)
+            cursor.execute(query, params or ())
+            
+            if fetch:
+                # 获取结果
+                result = cursor.fetchall()
+                # 如果是SHOW COLUMNS查询，需要特殊处理
+                if query.strip().upper().startswith("SHOW"):
+                    processed_result = []
+                    for row in result:
+                        processed_row = {}
+                        for key, value in row.items():
+                            processed_row[key] = value
+                        processed_result.append(processed_row)
+                    result = processed_result
                 
-                if fetch:
-                    result = cursor.fetchall()
-                    load_logger.info(f"自定义查询成功，返回 {len(result)} 条记录")
-                    return result
-                else:
-                    conn.commit()
-                    affected_rows = cursor.rowcount
-                    load_logger.info(f"自定义查询成功，影响 {affected_rows} 行")
-                    return affected_rows
+                load_logger.debug(f"自定义查询成功，返回 {len(result)} 条记录")
+                cursor.close()
+                return result
+            else:
+                # 返回影响的行数
+                affected_rows = cursor.rowcount
+                load_logger.debug(f"自定义查询成功，影响 {affected_rows} 行")
+                cursor.close()
+                return affected_rows
     except mysql.connector.Error as e:
         load_logger.error(f"自定义查询失败: {str(e)}")
         if fetch:
             return []
         else:
-            return -1
+            return 0
 
 def upsert_record(table_name: str, data: Dict[str, Any], unique_fields: List[str]) -> bool:
     """插入或更新记录（ON DUPLICATE KEY UPDATE）
@@ -565,33 +663,31 @@ def upsert_record(table_name: str, data: Dict[str, Any], unique_fields: List[str
                 cursor.execute(query, values)
                 conn.commit()
                 affected_rows = cursor.rowcount
-                load_logger.info(f"Upsert操作成功，表: {table_name}, 影响行数: {affected_rows}")
+                load_logger.debug(f"Upsert操作成功，表: {table_name}, 影响行数: {affected_rows}")
                 return True
     except mysql.connector.Error as e:
         load_logger.error(f"Upsert操作失败: {str(e)}")
         return False
 
 def get_all_tables() -> List[str]:
-    """获取mysql系统数据库中所有表名
-    
-    注意：该函数返回的是mysql系统数据库的表，而不是应用使用的nkuwiki数据库的表
+    """获取nkuwiki数据库中所有表名
     
     Returns:
-        List[str]: mysql系统数据库中的表名列表
+        List[str]: nkuwiki数据库中的表名列表
     """
     try:
-        # 使用information_schema查询，明确指定只查询mysql数据库的表
+        # 使用information_schema查询，获取nkuwiki数据库的表
         with get_conn(use_database=True) as conn:
             with conn.cursor() as cursor:
-                # 使用information_schema.tables查询mysql数据库中的表
+                # 使用information_schema.tables查询nkuwiki数据库中的表
                 cursor.execute("""
                     SELECT table_name 
                     FROM information_schema.tables 
-                    WHERE table_schema = 'mysql'
+                    WHERE table_schema = 'nkuwiki'
                     ORDER BY table_name
                 """)
                 tables = [table[0] for table in cursor.fetchall()]
-                load_logger.info(f"获取mysql数据库中的表成功，共 {len(tables)} 个表")
+                load_logger.debug(f"获取nkuwiki数据库中的表成功，共 {len(tables)} 个表")
                 return tables
     except mysql.connector.Error as e:
         load_logger.error(f"获取表列表失败: {str(e)}")
@@ -615,7 +711,7 @@ def get_table_structure(table_name: str) -> List[Dict[str, Any]]:
             with conn.cursor(dictionary=True) as cursor:
                 cursor.execute(f"DESCRIBE {table_name}")
                 result = cursor.fetchall()
-                load_logger.info(f"获取表 {table_name} 结构成功")
+                load_logger.debug(f"获取表 {table_name} 结构成功")
                 return result
     except mysql.connector.Error as e:
         load_logger.error(f"获取表结构失败: {str(e)}")
@@ -632,7 +728,7 @@ def get_nkuwiki_tables() -> List[str]:
             with conn.cursor() as cursor:
                 cursor.execute("SHOW TABLES")
                 tables = [table[0] for table in cursor.fetchall()]
-                load_logger.info(f"获取nkuwiki数据库中的表成功，共 {len(tables)} 个表")
+                load_logger.debug(f"获取nkuwiki数据库中的表成功，共 {len(tables)} 个表")
                 return tables
     except mysql.connector.Error as e:
         load_logger.error(f"获取nkuwiki表列表失败: {str(e)}")
@@ -713,21 +809,148 @@ def transfer_table_from_mysql_to_nkuwiki(table_name: str) -> bool:
         load_logger.error(f"转移表 {table_name} 失败: {str(e)}")
         return False
 
+def import_json_dir_to_table(dir_path: str = None, table_name: str = None, platform: str = None, tag: str = "nku", batch_size: int = 100) -> Dict[str, Any]:
+    """将指定目录下的JSON文件导入到指定表（递归处理所有子目录）
+    
+    Args:
+        dir_path: JSON文件所在目录路径，默认为RAW_PATH / platform / tag
+        table_name: 要导入的表名（可选，如果不提供则使用platform和tag构建）
+        platform: 平台名称（如wechat、web等）
+        tag: 标签，默认为nku
+        batch_size: 批量插入的大小，默认100
+        
+    Returns:
+        Dict[str, Any]: 包含导入结果的字典，包括成功数量、失败数量和失败文件列表
+    """
+    
+    # 如果没有提供表名但提供了platform，则构建表名
+    if table_name is None and platform is not None:
+        table_name = f"{platform}_{tag}"
+    
+    if table_name is None:
+        load_logger.error("必须提供table_name参数或platform参数")
+        return {"success": 0, "failed": 0, "failed_files": []}
+    
+    # 如果没有提供dir_path但提供了platform，则构建目录路径
+    if dir_path is None:
+        if platform is None:
+            load_logger.error("必须提供dir_path参数或platform参数")
+            return {"success": 0, "failed": 0, "failed_files": []}
+        dir_path = RAW_PATH / platform / tag
+    
+    load_logger.info(f"开始将目录 {dir_path} 及其子目录下的JSON文件导入到表 {table_name}")
+    
+    # 确保目录存在
+    if not os.path.isdir(dir_path):
+        load_logger.error(f"目录 {dir_path} 不存在")
+        return {"success": 0, "failed": 0, "failed_files": []}
+    
+    # 确保表存在
+    tables = get_all_tables()
+    if table_name not in tables:
+        load_logger.debug(f"表 {table_name} 不存在，尝试创建")
+        if not create_table(table_name):
+            load_logger.error(f"创建表 {table_name} 失败")
+            return {"success": 0, "failed": 0, "failed_files": []}
+    
+    # 用于收集所有JSON文件路径的列表
+    json_files = []
+    
+    # 递归查找所有JSON文件
+    for root, _, files in os.walk(dir_path):
+        for file in files:
+            if file.lower().endswith('.json'):
+                json_files.append(os.path.join(root, file))
+    
+    total_files = len(json_files)
+    load_logger.debug(f"递归发现 {total_files} 个JSON文件")
+    
+    # 调试输出前5个文件路径，而不是10个
+    if total_files > 0:
+        load_logger.debug("示例文件路径:")
+        for i, path in enumerate(json_files[:5]):  # 减少为5个
+            load_logger.debug(f"  {i+1}. {path}")
+    
+    success_count = 0
+    failed_count = 0
+    failed_files = []
+    
+    # 用于批量插入的记录列表
+    records_batch = []
+    
+    # 调试预览计数器
+    preview_count = 0
+    max_previews = 3  # 最多只显示3个文件的内容预览
+    
+    # 处理每个JSON文件
+    for file_path in tqdm(json_files, desc="处理JSON文件", unit="文件"):
+        try:
+            # 尝试读取并解析JSON文件
+            with open(file_path, 'r', encoding='utf-8') as f:
+                file_content = f.read().strip()
+                if not file_content:
+                    raise ValueError("文件内容为空")
+                
+                # 只对前几个文件输出内容预览
+                if preview_count < max_previews:
+                    load_logger.debug(f"文件内容预览 ({os.path.basename(file_path)}): {file_content[:50]}...")
+                    preview_count += 1
+            
+            # 处理文件
+            data = process_file(file_path, platform)
+            if data:
+                # 确保数据中包含内容字段
+                if "content" not in data or not data["content"]:
+                    load_logger.warning(f"文件 {file_path} 处理后没有内容字段")
+                    # 尝试从文件名或路径中获取一些信息作为内容
+                    parent_dir = os.path.basename(os.path.dirname(file_path))
+                    data["content"] = f"从文件路径提取的信息：{parent_dir}"
+                
+                records_batch.append(data)
+                
+                # 当记录数达到批量大小时进行插入
+                if len(records_batch) >= batch_size:
+                    inserted = batch_insert(table_name, records_batch, batch_size)
+                    success_count += inserted
+                    records_batch = []
+            else:
+                load_logger.warning(f"文件 {file_path} 处理后无数据")
+                failed_count += 1
+                failed_files.append(file_path)
+        except Exception as e:
+            load_logger.error(f"处理文件 {file_path} 失败: {str(e)}")
+            failed_count += 1
+            failed_files.append(file_path)
+    
+    # 处理剩余的记录
+    if records_batch:
+        inserted = batch_insert(table_name, records_batch, batch_size)
+        success_count += inserted
+    
+    result = {
+        "success": success_count,
+        "failed": failed_count,
+        "failed_files": failed_files
+    }
+    
+    # 显示导入结果的进度条总结
+    total_processed = success_count + failed_count
+    success_rate = success_count / total_files * 100 if total_files > 0 else 0
+    
+    # 输出一个进度条样式的总结
+    progress_bar = "=" * int(success_rate / 2)
+    load_logger.info(f"导入完成 [{progress_bar}{' ' * (50 - len(progress_bar))}] {success_rate:.1f}%")
+    load_logger.info(f"总计: {total_files} 文件, 成功: {success_count}, 失败: {failed_count}")
+    
+    # 如果有失败的文件，输出前5个以供排查
+    if failed_files:
+        load_logger.warning("部分文件处理失败，前5个失败文件：")
+        for i, f in enumerate(failed_files[:5]):
+            load_logger.warning(f"  {i+1}. {f}")
+    
+    return result
+
 if __name__ == "__main__":
-    # delete_table("wechat_articles")
-    init_database()
-    # 转移web_articles表从mysql到nkuwiki
-    # transfer_table_from_mysql_to_nkuwiki("web_articles")
-    # export_wechat_to_mysql(n = 10)
-    # print(query_table('wechat_articles', 5))  # 测试查询功能
-    # create_table("market_posts")
-    # print(get_table_structure("wechat_articles"))
-    print(get_nkuwiki_tables())  # 使用新函数获取nkuwiki数据库的表
-    # articles = query_records(
-    # "wechat_articles", 
-    #     conditions={"platform": "wechat"},
-    #     order_by="publish_time DESC",
-    #     limit=10,
-    #     offset=0
-    # )
-    # print(articles)
+    delete_table("wechat_nku")  # 注释掉删除表的操作
+    init_database()  # 初始化数据库
+    import_json_dir_to_table(platform="wechat", tag="nku")  # 导入数据

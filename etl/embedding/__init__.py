@@ -1,26 +1,20 @@
 """
 嵌入模块，负责文本向量化
 """
-import os
 import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from etl import *
+
 import torch
 import numpy as np
-import asyncio
-import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Tuple
-from loguru import logger
 from sentence_transformers import SentenceTransformer
-
-# 从根模块导入共享配置
-from .. import (
-    # 路径配置
-    BASE_PATH, CACHE_PATH, INDEX_PATH, RAW_PATH, LOG_PATH,
-    # 环境变量配置
-    HF_ENDPOINT, HF_HOME, SENTENCE_TRANSFORMERS_HOME, NLTK_DATA,
-    # 配置工具
-    config
-)
+from llama_index.core.base.embeddings.base import DEFAULT_EMBED_BATCH_SIZE, BaseEmbedding
+from llama_index.core.bridge.pydantic import Field, ConfigDict
+from llama_index.core.schema import BaseNode, Document, MetadataMode, TextNode, NodeWithScore
+from llama_index.core import SimpleDirectoryReader
+from llama_index.core.schema import TransformComponent
+from etl.transform.splitter import SentenceSplitter
 
 # 嵌入配置
 EMBEDDING_NAME = config.get('etl.embedding.name', 'BAAI/bge-large-zh-v1.5')
@@ -38,7 +32,7 @@ SPLIT_TYPE = config.get('split_type', 0)  # 0-->Sentence 1-->Hierarchical
 
 # 创建嵌入模块专用logger
 embedding_logger = logger.bind(module="embedding")
-log_path = LOG_PATH + "/embedding.log"
+log_path = LOG_PATH / "embedding.log"
 log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
 logger.configure(
     handlers=[
@@ -60,30 +54,18 @@ def normalize_embedding(embedding):
     else:
         raise TypeError("Embedding must be either numpy.ndarray or torch.Tensor")
 
-# 导入必要的LlamaIndex组件
-from llama_index.core.base.embeddings.base import DEFAULT_EMBED_BATCH_SIZE, BaseEmbedding
-from llama_index.core.bridge.pydantic import Field, ConfigDict
-from llama_index.core.schema import BaseNode, Document, MetadataMode, TextNode, NodeWithScore
-from llama_index.core import SimpleDirectoryReader
-from llama_index.core.ingestion.transformations import TransformComponent
-# 导入本地模块
-from etl.embedding.splitter import SentenceSplitter
-from etl.embedding.hierarchical import HierarchicalNodeParser
-from etl.embedding.ingestion import get_node_content
-
 # 定义导出
 __all__ = [
-    'os', 'sys', 'torch', 'np', 'asyncio', 'logging', 'Path', 'Dict', 'List', 'Optional',
+    'os', 'sys', 'torch', 'np', 'asyncio', 'Path', 'Dict', 'List', 'Optional',
     'Any', 'Union', 'Tuple', 'embedding_logger', 'SentenceTransformer', 'normalize_embedding',
     'DEFAULT_EMBED_BATCH_SIZE', 'BaseEmbedding', 'Field', 'ConfigDict', 'BaseNode', 
     'Document', 'MetadataMode', 'TextNode', 'NodeWithScore', 'SimpleDirectoryReader', 
-    'SentenceSplitter', 'HierarchicalNodeParser', 'get_node_content', 'TransformComponent'
-    
+    'SentenceSplitter', 'TransformComponent',
     # 路径配置
-    'BASE_PATH', 'CACHE_PATH', 'INDEX_PATH', 'RAW_PATH', 'LOG_PATH',
+    'BASE_PATH', 'CACHE_PATH', 'INDEX_PATH', 'RAW_PATH', 'LOG_PATH', 'NLTK_PATH',
     
     # 环境变量配置
-    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME', 'NLTK_DATA',
+    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME',
     
     # 嵌入配置
     'EMBEDDING_NAME', 'VECTOR_SIZE', 'EMBED_DIM', 'F_EMBED_TYPE_1', 'F_EMBED_TYPE_2',

@@ -1,6 +1,23 @@
-from etl.embedding import *
-from llama_index.core.schema import NodeWithScore, TextNode
-
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from etl import *
+from llama_index.core.ingestion import IngestionPipeline
+from llama_index.core.vector_stores.types import BasePydanticVectorStore
+from llama_index.core.schema import TransformComponent, TextNode, NodeRelationship, MetadataMode, Document
+from llama_index.core.callbacks.base import CallbackManager
+from llama_index.core.selectors.llm_selectors import LLMSingleSelector
+from llama_index.core.vector_stores import MetadataFilters, MetadataFilter, FilterOperator, FilterCondition
+from llama_index.vector_stores.qdrant import QdrantVectorStore
+from llama_index.core import SimpleDirectoryReader
+from llama_index.core.base.embeddings.base import BaseEmbedding
+from etl.transform.splitter import SentenceSplitter
+from llama_index.core.node_parser import HierarchicalNodeParser
+from etl.transform.transformation import CustomTitleExtractor, CustomFilePathExtractor
+from qdrant_client import AsyncQdrantClient, models
+from qdrant_client.http.exceptions import UnexpectedResponse
+from qdrant_client.http.models import Filter, FieldCondition, MatchValue
+from __init__ import *
 
 def merge_strings(A, B):
     # 找到A的结尾和B的开头最长的匹配子串
@@ -16,7 +33,7 @@ def merge_strings(A, B):
     return merged_string
 
 
-def get_node_content(node: NodeWithScore, embed_type=0, nodes: list[TextNode] = None, nodeid2idx: dict = None) -> str:
+def get_node_content(node, embed_type=0, nodes: list[TextNode] = None, nodeid2idx: dict = None) -> str:
     # 添加空节点检查
     if node is None:
         return "无内容"
@@ -132,7 +149,7 @@ def build_preprocess(
     transformation = [
         parser,
         CustomTitleExtractor(metadata_mode=MetadataMode.EMBED),
-        CustomFilePathExtractor(last_path_length=100000, data_path=data_path, metadata_mode=MetadataMode.EMBED),
+        CustomFilePathExtractor(last_path_length=100000, data_path=str(data_path) if data_path else "", metadata_mode=MetadataMode.EMBED),
     ]
     return transformation
 
@@ -155,7 +172,7 @@ def build_preprocess_pipeline(
 
 
 def build_pipeline(
-        llm: LLM,
+        llm: None,
         embed_model: BaseEmbedding,
         template: str = None,
         vector_store: BasePydanticVectorStore = None,
@@ -188,11 +205,15 @@ async def build_vector_store(
         collection_name: str = "aiops24",
         vector_size: int = 3584,
 ) -> tuple[AsyncQdrantClient, QdrantVectorStore]:
-    if qdrant_url:
+    # 如果qdrant_url是标准的http地址，则使用URL连接
+    # 否则使用本地路径
+    if qdrant_url and qdrant_url.startswith(('http://', 'https://')):
+        print(f"使用远程Qdrant服务: {qdrant_url}")
         client = AsyncQdrantClient(
             url=qdrant_url,
         )
     else:
+        print(f"使用本地Qdrant存储: {cache_path}")
         client = AsyncQdrantClient(
             path=cache_path,
         )

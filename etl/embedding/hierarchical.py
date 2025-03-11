@@ -6,7 +6,7 @@ from llama_index.core.bridge.pydantic import Field
 from llama_index.core.callbacks.base import CallbackManager
 from llama_index.core.callbacks.schema import CBEventType, EventPayload
 from llama_index.core.node_parser.interface import NodeParser
-from etl.embedding.splitter import SentenceSplitter
+from etl.transform.splitter import SentenceSplitter
 from llama_index.core.schema import BaseNode, Document, NodeRelationship
 from llama_index.core.utils import get_tqdm_iterable
 

@@ -9,7 +9,7 @@ transformers>=4.49.0
 sentence-transformers==3.4.1
 numpy==1.26.4
 llama-index-vector-stores-qdrant==0.4.3
-
+nltk==3.9b1
 ## other dependencies without version control
 
 ### utils

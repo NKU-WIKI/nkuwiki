@@ -1,11 +1,12 @@
 from __init__ import *
-
+from etl.embedding import *
+from etl.retrieval import *
 from llama_index.core import Settings
 from llama_index.core.callbacks import CallbackManager, LlamaDebugHandler, TokenCountingHandler
 from llama_index.core import StorageContext, QueryBundle, PromptTemplate
 from llama_index.core.retrievers import AutoMergingRetriever
 from llama_index.core.storage.docstore import SimpleDocumentStore
-
+import nest_asyncio
 # 初始化回调管理器和全局设置
 callback_manager = CallbackManager([
     LlamaDebugHandler(),
@@ -34,7 +35,11 @@ from etl.utils.template import QA_TEMPLATE, MERGE_TEMPLATE
 from etl.embedding.compressors import ContextCompressor
 from etl.utils.llm_utils import local_llm_generate as _local_llm_generate
 from etl.utils.rag import generation as _generation
-from config import Config
+
+def load_stopwords(path):
+    with open(path, 'r', encoding='utf-8') as file:
+        stopwords = set([line.strip() for line in file])
+    return stopwords
 
 def merge_strings(A, B):
     # 找到A的结尾和B的开头最长的匹配子串
@@ -63,6 +68,7 @@ class EasyRAGPipeline:
 
     def __init__(self):
         # 使用__init__.py中的配置
+        self.logger = logger.bind(module='etl.rag_pipeline')
         self.re_only = RE_ONLY
         self.rerank_fusion_type = RERANK_FUSION_TYPE
         self.ans_refine_type = ANS_REFINE_TYPE
@@ -98,7 +104,7 @@ class EasyRAGPipeline:
         self.chunk_size = CHUNK_SIZE
         self.chunk_overlap = CHUNK_OVERLAP
           
-        # 设置路径 - 使用__init__.py中定义的路径变量
+        
         self.raw_dir = RAW_PATH
         self.index_dir = INDEX_PATH
         self.qdrant_dir = QDRANT_PATH
@@ -114,6 +120,11 @@ class EasyRAGPipeline:
         self.hyde_merging = HYDE_MERGING
 
         self.qdrant_client = None
+
+        # 添加缺少的属性
+        self.use_embeddings = True  # 默认启用embeddings
+        self.embeddings = None
+        self.docstore = None
 
     async def __aenter__(self):
         """异步上下文管理器入口"""
@@ -224,16 +235,17 @@ class EasyRAGPipeline:
             
         # 初始化 docstore
         self.docstore = SimpleDocumentStore()
-            
-        # Load existing state
-        await self.load_state()
         
-        self.embedding = HuggingFaceEmbedding(
+        # 先初始化嵌入模型
+        self.embeddings = HuggingFaceEmbedding(
             model_name=self.embedding_name,
             embed_batch_size=128,
             embed_type=self.f_embed_type_1
         )
-        Settings.embed_model = self.embedding
+        Settings.embed_model = self.embeddings
+            
+        # 加载现有状态
+        await self.load_state()
 
         # 文档预处理成节点
         documents = read_data(self.raw_dir)
@@ -243,6 +255,7 @@ class EasyRAGPipeline:
 
         client, vector_store = await build_vector_store(
             qdrant_url=self.qdrant_url,
+            cache_path=str(self.qdrant_dir),  # 明确提供qdrant_dir作为本地缓存路径
             reindex=self.reindex,
             collection_name=self.collection_name,
             vector_size=self.vector_size,
@@ -257,15 +270,15 @@ class EasyRAGPipeline:
         self.llm = None
         
         # 初始化密集检索器 - 无论集合是否为空都需要初始化
-        if self.embedding is not None:
+        if self.embeddings is not None:
             f_topk_1 = self.f_topk_1
-            self.dense_retriever = QdrantRetriever(vector_store, self.embedding, similarity_top_k=f_topk_1)
+            self.dense_retriever = QdrantRetriever(vector_store, self.embeddings, similarity_top_k=f_topk_1)
             print(f"创建{self.embedding_name}密集检索器成功")
         
         if collection_info.points_count == 0:
             pipeline = build_pipeline(
                 self.llm, 
-                self.embedding, 
+                self.embeddings, 
                 vector_store=vector_store, 
                 data_path=self.raw_dir,
                 chunk_size=self.chunk_size,
@@ -296,7 +309,7 @@ class EasyRAGPipeline:
             print(f"索引已建立，一共有{len(nodes_)}个节点")
 
             # 加载稀疏检索
-            self.stp_words = load_stopwords("./data/hit_stopwords.txt")
+            self.stp_words = load_stopwords("./data/nltk/hit_stopwords.txt")
             import jieba
             self.sparse_tk = jieba.Tokenizer()
             if self.split_type == 1:
@@ -364,7 +377,7 @@ class EasyRAGPipeline:
         else:
             # 如果集合已存在，需要从存储加载相关数据
             # 加载稀疏检索所需数据
-            self.stp_words = load_stopwords("./data/hit_stopwords.txt")
+            self.stp_words = load_stopwords("./data/nltk/hit_stopwords.txt")
             import jieba
             self.sparse_tk = jieba.Tokenizer()
             
@@ -444,7 +457,7 @@ class EasyRAGPipeline:
                         print(f"重新生成了{len(nodes_)}个节点")
                         
                         # 加载稀疏检索
-                        self.stp_words = load_stopwords("./data/hit_stopwords.txt")
+                        self.stp_words = load_stopwords("./data/nltk/hit_stopwords.txt")
                         import jieba
                         self.sparse_tk = jieba.Tokenizer()
                         

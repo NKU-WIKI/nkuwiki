@@ -34,9 +34,12 @@ def filter_image(cap, title, text, content):
 
 class CustomFilePathExtractor(BaseExtractor):
     last_path_length: int = 4
-    data_path: str
+    data_path: str = ""
 
     def __init__(self, last_path_length: int = 4, data_path: str = "", **kwargs):
+        # 确保data_path是字符串
+        if hasattr(data_path, '__str__'):
+            data_path = str(data_path)
         super().__init__(
             last_path_length=last_path_length,
             data_path=data_path,
@@ -87,7 +90,10 @@ class CustomFilePathExtractor(BaseExtractor):
 
 
 class CustomTitleExtractor(BaseExtractor):
+    """提取文档标题的自定义提取器"""
+    
     def __init__(self, *args, **kwargs):
+        # 确保所有参数都以pydantic兼容方式传递
         super().__init__(**kwargs)
 
     @classmethod

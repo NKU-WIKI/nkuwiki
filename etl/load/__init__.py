@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
+
+
 import mysql.connector
 # 创建加载模块专用logger
 load_logger = logger.bind(module="load")
@@ -34,7 +36,8 @@ def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
         'user': 'nkuwiki',  # 强制使用nkuwiki用户
         'password': DB_PASSWORD,
         'charset': 'utf8mb4',
-        'autocommit': True
+        'autocommit': True,
+        'use_pure': True  # 使用纯Python实现
     }
     if use_database:
         params["database"] = "nkuwiki"  # 默认连接到nkuwiki数据库
@@ -42,7 +45,7 @@ def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
 
 # 定义导出的变量和函数
 __all__ = [
-    'os', 'sys', 'json', 'time', 'asyncio', 'Path', 'Dict', 'List','Tuple',
+    'os', 'sys', 'json', 'time', 'asyncio', 'Path', 'Dict', 'List','Tuple','tqdm',
     'Optional', 'Any', 'Union', 'load_logger', 'datetime',
     'defaultdict', 'get_conn', 'mysql','re','json','time',
     # 路径配置

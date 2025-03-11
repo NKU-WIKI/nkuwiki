@@ -37,17 +37,38 @@ for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, NLTK_PATH
 HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
 HF_HOME = config.get("etl.data.base_path", "./etl/data") + config.get('etl.data.models.hf_home', '/models')
 SENTENCE_TRANSFORMERS_HOME = HF_HOME
+NLTK_DATA_PATH = str(NLTK_PATH.absolute())
 
-# 设置环境变量
+# 设置环境变量 - 必须在导入nltk前设置
 os.environ["HF_ENDPOINT"] = HF_ENDPOINT
 os.environ["HF_HOME"] = HF_HOME
 os.environ["SENTENCE_TRANSFORMERS_HOME"] = SENTENCE_TRANSFORMERS_HOME
-os.environ['NLTK_DATA'] = config.get('etl.data.base_path','./etl/data') + config.get('etl.data.nltk.path', './nltk')
+os.environ['NLTK_DATA'] = NLTK_DATA_PATH
 
-# 设置日志
-
+# 设置日志目录
 LOG_PATH.mkdir(exist_ok=True, parents=True)
+
 logger.add(LOG_PATH / "etl.log", rotation="1 day", retention="3 months", level="INFO")
+
+import nltk
+# 检查并下载NLTK资源
+try:
+    resources = ['wordnet.zip', 'omw-1.4.zip', 'wordnet2022.zip']
+    for resource in resources:
+        try:
+            nltk.data.find(f'corpora/{resource}')
+            logger.debug(f"NLTK资源 {resource} 已安装")
+        except LookupError:
+            logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
+            try:
+                nltk.download(resource, download_dir=NLTK_DATA_PATH, quiet=False)
+                logger.debug(f"NLTK资源 {resource} 下载成功")
+            except Exception as e:
+                logger.error(f"NLTK资源 {resource} 下载失败: {e}")
+                logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {NLTK_DATA_PATH}")
+except Exception as e:
+    logger.error(f"NLTK资源检查失败: {e}")
+    logger.warning(f"请确保已手动下载所需NLTK资源到: {NLTK_DATA_PATH}")
 
 # 数据库配置
 DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')
@@ -70,7 +91,6 @@ __all__ = [
     # 基础库和工具
     'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Tuple',
     'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests','asyncio','tqdm','defaultdict',
-
     # 路径配置
     'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'LOG_PATH','NLTK_PATH',
     

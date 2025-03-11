@@ -1,21 +1,12 @@
 import torch
-from zhipuai import ZhipuAI
+# from zhipuai import ZhipuAI
 import base64
 
-client = ZhipuAI(api_key="4f3c198f8bcbfa81e2ef9fbea428d9d8.DGBE51vKXQP65ceE")
+# client = ZhipuAI(api_key="4f3c198f8bcbfa81e2ef9fbea428d9d8.DGBE51vKXQP65ceE")
 
 
 def zhipu_generate(text, model="glm-4", system=""):
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": text})
-    response = client.chat.completions.create(
-        model=model,  # 填写需要调用的模型名称
-        max_tokens=2048,
-        messages=messages,
-    )
-    return response.choices[0].message.content
+    return ""
 
 
 def encode_image(image_path):
@@ -43,16 +34,7 @@ def zhipu_chat_vision(content: list, model="glm-4v", system=""):
     if system:
         messages.append({"role": "system", "content": [{"type": "text", "text": system}]})
     messages.append({"role": "user", "content": content})
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        top_p=0.7,
-        temperature=0.95,
-        max_tokens=1024,
-    )
-    print(response)
-    reply = response.choices[0].message.content
-    return reply
+    return ""
 
 
 def local_llm_generate(query, model, tokenizer, device="cuda"):

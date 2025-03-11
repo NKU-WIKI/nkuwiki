@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS market_posts (
+CREATE TABLE IF NOT EXISTS market_nku (
     id INT AUTO_INCREMENT PRIMARY KEY,
     publish_time DATETIME NOT NULL COMMENT '帖子发布时间',
     title VARCHAR(255) NOT NULL COMMENT '帖子标题',

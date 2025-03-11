@@ -13,7 +13,7 @@ from llama_index.core.schema import NodeWithScore, BaseNode, IndexNode
 from llama_index.core.storage.docstore import BaseDocumentStore
 from llama_index.core.vector_stores import VectorStoreQuery
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-from etl.pipeline.ingestion import get_node_content
+from etl.embedding.ingestion import get_node_content
 from nltk import PorterStemmer
 from rank_bm25 import BM25Okapi
 from pydantic import ConfigDict, BaseModel, Field
