@@ -169,26 +169,35 @@ async def generate_abstract_async(file_path, max_length: int = 300, bot_tag: str
 
 def generate_abstract(file_path, max_length: int = 300, bot_tag: str = "abstract") -> Optional[str]:
     """
-    为了兼容性保留的同步版本，内部使用异步版本实现
+    生成文档摘要的同步包装函数
     
     Args:
-        file_path: Markdown文件路径 (pathlib.Path对象或字符串)
-        max_length: 摘要的最大长度
-        bot_tag: 机器人标签，默认为"abstract"（抽象摘要）
-    
+        file_path: 文档路径
+        max_length: 摘要最大长度
+        bot_tag: 机器人标签
+        
     Returns:
         生成的摘要文本，如果失败则返回None
     """
     if not isinstance(file_path, Path):
         file_path = Path(file_path)
         
-    # 创建事件循环并运行异步函数
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
-        return loop.run_until_complete(generate_abstract_async(file_path, max_length, bot_tag))
-    finally:
-        loop.close()
+        # 检查是否已有事件循环在运行
+        loop = asyncio.get_running_loop()
+        # 如果有，直接在当前循环中运行
+        return asyncio.run_coroutine_threadsafe(
+            generate_abstract_async(file_path, max_length, bot_tag),
+            loop
+        ).result()
+    except RuntimeError:
+        # 如果没有事件循环，创建一个新的
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(generate_abstract_async(file_path, max_length, bot_tag))
+        finally:
+            loop.close()
 
 # 如果作为脚本直接运行
 if __name__ == "__main__":

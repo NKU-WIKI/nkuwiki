@@ -50,6 +50,7 @@ class CompanyWechat(Wechat):
         
         # 创建作者处理进度条
         author_pbar = tqdm(total=len(self.authors), desc="处理公众号", unit="个")
+        start_time = time.time()
         
         try:
             await self.random_sleep()
@@ -66,8 +67,17 @@ class CompanyWechat(Wechat):
         except Exception as e:
             await self.page.screenshot(path='viewport.png', full_page=True)
             self.logger.error(f'get articles from {self.authors} error, {type(e)}: {e}')
+            author_pbar.close()  # 确保关闭进度条
             return total_articles
-        for author in self.authors:
+            
+        # 初始化统计数据
+        success_authors = 0
+        failed_authors = 0
+        total_found_articles = 0
+            
+        for idx, author in enumerate(self.authors):
+            author_start_time = time.time()
+            self.logger.debug(f"开始处理公众号 [{idx+1}/{len(self.authors)}]: {author}")
             await self.random_sleep()
             try:
                 # 尝试两种可能的按钮选择方式
@@ -79,12 +89,20 @@ class CompanyWechat(Wechat):
                     # 如果失败，尝试使用选择器
                     button = await self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button', 
                         timeout=3000,
-                        state='visible'
+                        state='attached'
                     )
                     await button.click()
             except Exception as e:
                 self.logger.error(f'Failed to find account button: {e}')
                 await self.page.screenshot(path='viewport.png', full_page=True)
+                failed_authors += 1
+                # 更新作者进度条，显示失败信息
+                author_pbar.update(1)
+                author_pbar.set_postfix({
+                    "成功": success_authors,
+                    "失败": failed_authors,
+                    "文章": total_found_articles
+                })
                 continue
             await self.random_sleep()
             try:
@@ -95,6 +113,14 @@ class CompanyWechat(Wechat):
                 await search_account_field.fill(author)
             except Exception as e:
                 self.logger.error(f'Failed to find search field,{str(e)}')
+                failed_authors += 1
+                # 更新作者进度条，显示失败信息
+                author_pbar.update(1)
+                author_pbar.set_postfix({
+                    "成功": success_authors,
+                    "失败": failed_authors,
+                    "文章": total_found_articles
+                })
                 break
             await self.random_sleep()
             try:
@@ -105,18 +131,35 @@ class CompanyWechat(Wechat):
                 await search_button.click()
             except Exception as e:
                 self.logger.error(f'Failed to find search button: {e}')
+                failed_authors += 1
+                # 更新作者进度条，显示失败信息
+                author_pbar.update(1)
+                author_pbar.set_postfix({
+                    "成功": success_authors,
+                    "失败": failed_authors,
+                    "文章": total_found_articles
+                })
                 break
             await self.random_sleep()
             # 等待账号选择器出现
             try:
                 account_selector = await self.page.wait_for_selector(
                     '//li[@class="inner_link_account_item"]/div[1]',
-                    timeout=6000
+                    timeout=8000,
+                    state='attached'
                 )
                 await account_selector.click()
 
             except Exception as e:
                 self.logger.error(f'failed to click account, {author} seems does not exist')
+                await self.page.screenshot(path='failed_to_click_account.png', full_page=True)
+                failed_authors += 1
+                author_pbar.update(1)
+                author_pbar.set_postfix({
+                    "成功": success_authors,
+                    "失败": failed_authors,
+                    "文章": total_found_articles
+                })
                 continue
             await self.random_sleep()
             # 获取页码信息
@@ -133,6 +176,7 @@ class CompanyWechat(Wechat):
             articles = []
             # 创建文章处理进度条
             article_pbar = tqdm(total=max_article_num, desc=f"抓取{author}文章", unit="篇", leave=False)
+            article_count = 0
             
             while len(articles) < max_article_num and page <= max_page_num:
                 try:
@@ -169,6 +213,10 @@ class CompanyWechat(Wechat):
                                 'original_url': article_original_url
                             })
                             cnt += 1
+                            article_count += 1
+                            # 更新文章进度条
+                            article_pbar.update(1)
+                            article_pbar.set_postfix({"页码": f"{page}/{max_page_num}"})
                             self.logger.debug(f'找到有效招聘文章: {article_title} ({author})')
                             
                     page += 1
@@ -194,15 +242,50 @@ class CompanyWechat(Wechat):
                 except Exception as e:
                     self.logger.error(f'抓取 {author} 文章时出错: {type(e).__name__}')
                     break  # 如果处理页面出错，跳出当前账号的处理
+            
+            # 关闭文章进度条
+            article_pbar.close()
+            
             self.update_scraped_articles(scraped_original_urls, articles)
             if len(articles) > 0:
+                success_authors += 1
+                total_found_articles += len(articles)
                 self.logger.info(f'已保存 {len(articles)} 篇来自 {author} 的今日招聘文章')
+            else:
+                self.logger.debug(f'未找到来自 {author} 的今日招聘文章')
+                
             total_articles.extend(articles)
+            
+            # 更新作者进度条
+            author_pbar.update(1)
+            author_pbar.set_postfix({
+                "成功": success_authors, 
+                "失败": failed_authors,
+                "文章": total_found_articles
+            })
+            
+            # 计算并显示处理时间
+            author_elapsed = time.time() - author_start_time
+            self.logger.info(f"完成处理公众号 {author}, 耗时: {author_elapsed:.2f}秒, 找到文章: {len(articles)}篇")
+            
             if len(total_articles) >= total_max_article_num:
+                self.logger.debug(f"已达到最大文章数量限制 ({total_max_article_num}), 提前结束抓取")
                 break
 
+        # 关闭作者进度条
+        author_pbar.close()
+        
+        # 计算总耗时
+        total_elapsed = time.time() - start_time
+        
         if len(total_articles) > 0:
-            self.logger.info(f'总共保存了 {len(total_articles)} 篇来自 {self.authors} 的今日招聘文章')
+            self.logger.info(
+                f'总共保存了 {len(total_articles)} 篇来自 {len(self.authors)} 个公众号的今日招聘文章, '
+                f'成功处理 {success_authors} 个公众号, 失败 {failed_authors} 个, 总耗时: {total_elapsed:.2f}秒'
+            )
+        else:
+            self.logger.info(f'未找到任何今日发布的招聘文章, 共尝试 {len(self.authors)} 个公众号, 总耗时: {total_elapsed:.2f}秒')
+            
         return total_articles
 
     async def download_article(self, article: dict) -> None:
@@ -211,6 +294,9 @@ class CompanyWechat(Wechat):
             article: 文章信息字典（需包含original_url）
         """
         try:
+            if not isinstance(article, dict):
+                self.logger.error(f"文章数据不是字典类型，而是 {type(article)}")
+                return
             # 初始化变量，防止未定义错误
             content = ""
             abstract = ""
@@ -223,8 +309,8 @@ class CompanyWechat(Wechat):
             Path(save_dir).mkdir(parents=True, exist_ok=True)
 
             if 'original_url' in article:
-                from etl.transform.wechatmp2md import wechatmp2md
-                success = wechatmp2md(article['original_url'], str(save_dir))
+                from etl.transform.wechatmp2md import wechatmp2md_async
+                success = await wechatmp2md_async(article['original_url'], str(save_dir))
                 if success:
                     generated_dirs = [d for d in Path(save_dir).iterdir() if d.is_dir() and d.name != 'imgs']
                     if generated_dirs:
@@ -243,8 +329,8 @@ class CompanyWechat(Wechat):
                             content = re.sub(r'\n\s*\n', '\n', content)
                             with open(md_file, 'w', encoding='utf-8') as f:
                                 f.write(content.strip())
-                            from etl.transform.abstract import generate_abstract
-                            abstract = generate_abstract(md_file,bot_tag="job")
+                            from etl.transform.abstract import generate_abstract_async
+                            abstract = await generate_abstract_async(md_file, bot_tag="job")
                             if abstract:
                                 with open(save_dir / "abstract.md", 'w', encoding='utf-8') as f:
                                     f.write(abstract)

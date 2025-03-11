@@ -352,11 +352,12 @@ class Config(dict):
         self.plugin_config = {}
 
     def _convert_keys_to_lower(self, d):
-        """递归地将字典的所有键转换为小写"""
-        if not isinstance(d, dict):
-            return d
-            
-        return {k.lower(): self._convert_keys_to_lower(v) for k, v in d.items()}
+        """递归地将字典的所有键转换为小写，同时处理数组"""
+        if isinstance(d, dict):
+            return {k.lower(): self._convert_keys_to_lower(v) for k, v in d.items()}
+        elif isinstance(d, list):
+            return [self._convert_keys_to_lower(item) for item in d]
+        return d
 
     def __getitem__(self, key):
         """支持嵌套键的访问，如 config['etl.data.cache.path']"""
@@ -418,14 +419,26 @@ class Config(dict):
             logger.exception(f"[config] 配置设置异常: {str(e)}")
 
     def update(self, other):
-        """递归更新配置字典
-        
-        Args:
-            other: 要更新的配置字典
-        """
+        """递归更新配置字典，支持数组合并"""
         for k, v in other.items():
+            k = k.lower()
             if isinstance(v, dict) and k in self and isinstance(self[k], dict):
                 self[k].update(self._convert_keys_to_lower(v))
+            elif isinstance(v, list) and k in self and isinstance(self[k], list):
+                # 对于数组，我们合并而不是覆盖
+                existing_list = self[k]
+                new_list = self._convert_keys_to_lower(v)
+                # 移除重复项并保持顺序
+                seen = set()
+                merged = []
+                for item in existing_list + new_list:
+                    if isinstance(item, (str, int, float, bool)):
+                        if item not in seen:
+                            seen.add(item)
+                            merged.append(item)
+                    else:
+                        merged.append(item)
+                self[k] = merged
             else:
                 self[k] = self._convert_keys_to_lower(v)
 

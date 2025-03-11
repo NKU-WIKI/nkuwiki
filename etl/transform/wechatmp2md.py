@@ -75,26 +75,25 @@ async def wechatmp2md_async(original_url, data_path, image_option='url'):
         cmd = [exe_path, original_url, str(output_dir), f"--image={image_option}"]
         
         try:
-            # 使用异步子进程运行外部程序
+            # 使用线程池执行外部命令，避免阻塞事件循环
             print(f"执行命令: {' '.join(cmd)}")
-            process = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(None, lambda: subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                check=False
+            ))
             
-            # 等待进程完成
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode == 0:
+            if result.returncode == 0:
                 print("转换完成!")
                 return True
             else:
-                print(f"错误: 转换失败 (返回码: {process.returncode})")
-                if stdout:
-                    print(f"输出: {stdout.decode('utf-8', errors='ignore')}")
-                if stderr:
-                    print(f"错误输出: {stderr.decode('utf-8', errors='ignore')}")
+                print(f"错误: 转换失败 (返回码: {result.returncode})")
+                if result.stdout:
+                    print(f"输出: {result.stdout}")
+                if result.stderr:
+                    print(f"错误输出: {result.stderr}")
                 return False
         except Exception as e:
             print(f"错误: {str(e)}")
@@ -102,7 +101,7 @@ async def wechatmp2md_async(original_url, data_path, image_option='url'):
 
 def wechatmp2md(original_url, data_path, image_option='url'):
     """
-    调用wechatmp2markdown将微信公众号文章转换为Markdown (同步版本)
+    调用wechatmp2markdown将微信公众号文章转换为Markdown
     
     Args:
         original_url: 微信公众号文章URL
@@ -112,13 +111,22 @@ def wechatmp2md(original_url, data_path, image_option='url'):
     Returns:
         bool: 转换是否成功
     """
-    # 创建一个新的事件循环来运行异步函数
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
+    # 检查当前是否有正在运行的事件循环
     try:
-        return loop.run_until_complete(wechatmp2md_async(original_url, data_path, image_option))
-    finally:
-        loop.close()
+        loop = asyncio.get_running_loop()
+        # 在已有事件循环中，直接创建任务执行
+        return asyncio.run_coroutine_threadsafe(
+            wechatmp2md_async(original_url, data_path, image_option), 
+            loop
+        ).result()
+    except RuntimeError:
+        # 如果没有正在运行的事件循环，则创建一个新的
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(wechatmp2md_async(original_url, data_path, image_option))
+        finally:
+            loop.close()
 
 async def main_async():
     """异步版本的main函数"""

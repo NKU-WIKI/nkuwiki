@@ -1,6 +1,6 @@
 from __init__ import *
 from etl.transform import transform_logger
-
+from etl.crawler import clean_filename
 def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 'summarize', header_text: str = ''):
     """
     加载指定目录下的JSON文件并生成markdown格式的总结，按块分割
@@ -15,21 +15,18 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         header_text: 在每个生成的文件顶部添加的文本
     """
     # 处理标题中的路径分隔符，避免被当做目录路径
-    safe_title = title.replace('/', '-').replace('\\', '-')
-    # 去除标题中可能存在的特殊字符或不可见字符
-    safe_title = ''.join(c for c in safe_title if c.isprintable() and c != '\t')
-    # 记录原始安全标题
+    file_name = clean_filename(title)
     title_text = title + '（{date}）[{block_num}]'
     title_text_single = title + '（{date}）'
-    title_template = safe_title+'（{date}）[{block_num}]'
-    title_template_single = safe_title+'（{date}）'  # 当只有一个块时使用的模板
+    file_name_template = file_name +'（{date}）[{block_num}]'
+    file_name_template_single = file_name +'（{date}）'  
     articles = []
     
     # 获取所有子目录
     base_dir = Path(input_dir)
     all_dirs = []
     
-    transform_logger.info("正在收集目录...")
+    transform_logger.debug("正在收集目录...")
     # 如果指定了时间范围，首先过滤顶层目录
     if time_range:
         start_time, end_time = time_range
@@ -62,10 +59,10 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
     
     # 计算含有abstract.md的文件夹数量
     valid_dirs = [d for d in all_dirs if (d / "abstract.md").exists()]
-    transform_logger.info(f"找到 {len(all_dirs)} 个嵌套目录，其中 {len(valid_dirs)} 个包含 abstract.md")
+    transform_logger.debug(f"找到 {len(all_dirs)} 个嵌套目录，其中 {len(valid_dirs)} 个包含 abstract.md")
     
     # 遍历所有符合条件的目录
-    transform_logger.info("正在加载文章数据...")
+    transform_logger.debug("正在加载文章数据...")
     for dir_path in tqdm(valid_dirs, desc="处理数据目录"):
         # 读取并处理abstract.md文件
         abstract_path = dir_path / "abstract.md"
@@ -73,9 +70,29 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         has_abstract = False
         if abstract_path.exists():
             try:
-                with open(abstract_path, 'r', encoding='utf-8') as af:
-                    abstract_content = af.read().strip()
-                    has_abstract = bool(abstract_content)
+                # 首先检查同目录下是否有对应的json文件
+                json_files = list(dir_path.glob('*.json'))
+                is_weixin = False
+                
+                # 检查目录下的json文件是否为微信文章
+                for json_path in json_files:
+                    with open(json_path, 'r', encoding='utf-8') as jf:
+                        try:
+                            json_data = json.load(jf)
+                            original_url = json_data.get('original_url', '')
+                            if original_url.startswith('https://mp.weixin.qq.com/'):
+                                is_weixin = True
+                                break
+                        except json.JSONDecodeError:
+                            continue
+                
+                # 只有微信文章才读取abstract
+                if is_weixin:
+                    with open(abstract_path, 'r', encoding='utf-8') as af:
+                        abstract_content = af.read().strip()
+                        has_abstract = bool(abstract_content)
+                else:
+                    transform_logger.debug(f"跳过非微信公众号文章的abstract: {abstract_path}")
             except Exception as e:
                 transform_logger.error(f"读取abstract.md时出错: {e}, 路径: {abstract_path}")
         
@@ -87,6 +104,12 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                     # 跳过没有publish_time字段的文章
                     if 'publish_time' not in data:
                         transform_logger.warning(f"跳过没有发布时间的文章: {file_path}")
+                        continue
+                    
+                    # 跳过非微信公众号的文章
+                    original_url = data.get('original_url', '')
+                    if not original_url.startswith('https://mp.weixin.qq.com/'):
+                        transform_logger.debug(f"跳过非微信公众号文章: {file_path}")
                         continue
                     
                     # 标记这篇文章是否有abstract
@@ -111,17 +134,17 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                 except json.JSONDecodeError:
                     transform_logger.error(f"Error loading {file_path}")
     
-    transform_logger.info(f"找到 {len(articles)} 篇文章")
+    transform_logger.debug(f"找到 {len(articles)} 篇文章")
     
     # 按作者分组
-    transform_logger.info("正在按作者分组...")
+    transform_logger.debug("正在按作者分组...")
     author_groups = defaultdict(list)
     for article in articles:
         author = article.get('author', '未知作者')
         author_groups[author].append(article)
     
     # 对每个作者的文章按时间排序
-    transform_logger.info("正在排序文章...")
+    transform_logger.debug("正在排序文章...")
     for author, posts in tqdm(author_groups.items(), desc="排序作者文章"):
         posts.sort(key=lambda x: datetime.strptime(x['publish_time'], '%Y-%m-%d'), reverse=True)
     
@@ -140,7 +163,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
     output_file_base = Path(output_dir).with_suffix('')  # 移除扩展名
     
     # 预计算每个作者内容的行数
-    transform_logger.info("正在计算内容行数...")
+    transform_logger.debug("正在计算内容行数...")
     author_line_counts = {}
     
     # 如果有头部文本，计入总行数
@@ -167,7 +190,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         author_line_counts[author] = total_lines
     
     # 分组作者到不同的块，每块小于2000行
-    transform_logger.info("正在分组内容...")
+    transform_logger.debug("正在分组内容...")
     current_block = []
     current_block_lines = 0
     blocks = []
@@ -200,7 +223,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         blocks.append((current_block, current_block_lines + header_lines))
     
     # 生成多个markdown文件
-    transform_logger.info("正在生成Markdown文件...")
+    transform_logger.debug("正在生成Markdown文件...")
     # 确保输出目录存在，使用绝对路径
     if not os.path.isabs(output_dir):
         output_dir = os.path.abspath(output_dir)
@@ -214,10 +237,10 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         # 构建文件名和完整路径
         # 如果只有一个块，使用不含块号的标题格式
         if total_blocks == 1:
-            file_name = title_template_single.format(date=latest_short_date) + '.md'
+            file_name = file_name_template_single.format(date=latest_short_date) + '.md'
             title_text = title_text_single.format(date=latest_short_date)
         else:
-            file_name = title_template.format(date=latest_short_date, block_num=i) + '.md'
+            file_name = file_name_template.format(date=latest_short_date, block_num=i) + '.md'
             title_text = title_text.format(date=latest_short_date, block_num=i)
             
         output_file = os.path.join(output_dir, file_name)
@@ -228,6 +251,19 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                 # 如果有头部文本，在标题后写入头部文本
                 if header_text:
                     f.write(f'*{header_text}*\n\n')
+                
+                # 添加目录
+                f.write(f'### 目录\n\n')
+                for author in authors_in_block:
+                    author_anchor = author.replace(' ', '-')
+                    f.write(f'- [{author}](#{author_anchor})\n')
+                    posts = author_groups[author]
+                    # 添加每位作者下的文章作为二级目录项
+                    for post in posts:
+                        title = post['title']
+                        title_anchor = title.replace(' ', '-').replace('[', '').replace(']', '').replace('(', '').replace(')', '')
+                        f.write(f'  - [{title}](#{title_anchor})\n')
+                f.write('\n')
                 
                 for author in authors_in_block:
                     posts = author_groups[author]
