@@ -1,7 +1,10 @@
 import sys
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from agent import config,agent_logger,requests,time
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent.parent))
+from core import config,logger
+import requests
+import time
+
 base_url = config.get("core.agent.coze.base_url", "")
 api_key = config.get("core.agent.coze.api_key", "")
 class CozeAgentNew(object):
@@ -19,24 +22,24 @@ class CozeAgentNew(object):
         conversation_id, chat_id = self.create_chat(query)
 
         if conversation_id is None or chat_id is None:
-            agent_logger.error(f"创建对话失败: {query}")
+            logger.error(f"创建对话失败: {query}")
             return None
               
         status = self.coze_poll_chat_status(conversation_id, chat_id)
         if status != "success":
-            agent_logger.error(f"对话状态轮询失败: {conversation_id} {chat_id}")
+            logger.error(f"对话状态轮询失败: {conversation_id} {chat_id}")
             return None
             
         messages = self.coze_get_chat_messages(conversation_id, chat_id)
         if not messages:
-            agent_logger.error(f"获取对话消息失败: {conversation_id} {chat_id}")
+            logger.error(f"获取对话消息失败: {conversation_id} {chat_id}")
             return None
             
         for message in messages:
             if(message.get("role") == "assistant" and message.get("type") == "answer"):
                 return message.get("content")
         
-        agent_logger.error(f"未找到助手回复: {conversation_id} {chat_id}")
+        logger.error(f"未找到助手回复: {conversation_id} {chat_id}")
         return None
 
     def create_chat(self,content: str):
@@ -68,12 +71,12 @@ class CozeAgentNew(object):
             
             response_data = response.json()
             if not response_data:
-                agent_logger.error("API返回空响应")
+                logger.error("API返回空响应")
                 return None, None
                 
             data = response_data.get("data")
             if not data:
-                agent_logger.error(f"API响应中没有data字段: {response_data}")
+                logger.error(f"API响应中没有data字段: {response_data}")
                 return None, None
                 
             conversation_id = data.get("conversation_id")
@@ -82,7 +85,7 @@ class CozeAgentNew(object):
             return conversation_id, chat_id
         
         except Exception as e:
-            agent_logger.exception(e)
+            logger.exception(e)
             return None, None
 
     def coze_poll_chat_status(self, conversation_id: str, chat_id: str, max_retries: int = 3, poll_interval: float = 5):
@@ -99,7 +102,7 @@ class CozeAgentNew(object):
             对话状态，如果获取失败则返回None
         """
         if not conversation_id or not chat_id:
-            agent_logger.error("conversation_id或chat_id为空，无法轮询状态")
+            logger.error("conversation_id或chat_id为空，无法轮询状态")
             return None
             
         url = f"{base_url}/v3/chat/retrieve?chat_id={chat_id}&conversation_id={conversation_id}"
@@ -114,23 +117,23 @@ class CozeAgentNew(object):
                 response.raise_for_status()
                 response_data = response.json()
                 if not response_data:
-                    agent_logger.error("API返回空响应")
+                    logger.error("API返回空响应")
                     continue
                     
                 data = response_data.get("data")
                 if not data:
-                    agent_logger.error(f"API响应中没有data字段: {response_data}")
+                    logger.error(f"API响应中没有data字段: {response_data}")
                     continue
                     
                 status = data.get("status")
-                agent_logger.debug(f"当前对话状态: {status}, 尝试次数: {attempt+1}/{max_retries}")
+                logger.debug(f"当前对话状态: {status}, 尝试次数: {attempt+1}/{max_retries}")
                 if status in ["completed", "required_action"]:
-                    agent_logger.info(f"对话已完成，状态: {status}")
+                    logger.info(f"对话已完成，状态: {status}")
                     return "success"
             except Exception as e:
-                agent_logger.exception(e)
+                logger.exception(e)
                 continue
-        agent_logger.warning(f"对话状态轮询达到最大次数 {max_retries}，可能未完成")
+        logger.warning(f"对话状态轮询达到最大次数 {max_retries}，可能未完成")
         return None
 
     def coze_get_chat_messages(self,conversation_id: str, chat_id: str):
@@ -145,7 +148,7 @@ class CozeAgentNew(object):
             消息列表，如果获取失败则返回None
         """
         if not conversation_id or not chat_id:
-            agent_logger.error("conversation_id或chat_id为空，无法获取消息")
+            logger.error("conversation_id或chat_id为空，无法获取消息")
             return None
             
         url = f"{base_url}/v3/chat/message/list?chat_id={chat_id}&conversation_id={conversation_id}"
@@ -155,18 +158,18 @@ class CozeAgentNew(object):
             response.raise_for_status()
             response_data = response.json()
             if not response_data:
-                agent_logger.error("API返回空响应")
+                logger.error("API返回空响应")
                 return None
                 
             data = response_data.get("data")
             if not data:
-                agent_logger.error(f"API响应中没有data字段: {response_data}")
+                logger.error(f"API响应中没有data字段: {response_data}")
                 return None
                 
-            agent_logger.info(f"成功获取对话消息列表，共 {len(data)} 条消息")
+            logger.info(f"成功获取对话消息列表，共 {len(data)} 条消息")
             return data
         except Exception as e:
-            agent_logger.exception(e)
+            logger.exception(e)
             return None
 
 
