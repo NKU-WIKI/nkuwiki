@@ -12,6 +12,7 @@ import uvicorn
 
 from config import Config
 from etl.api.mysql_api import mysql_router
+from core.api.agent_api import agent_router
 
 # 创建配置对象
 config = Config()
@@ -120,6 +121,8 @@ async def health_check(logger=Depends(get_logger)):
 
 # 集成MySQL路由
 app.include_router(mysql_router)
+# 集成Agent路由
+app.include_router(agent_router)
 
 # 信号处理函数
 def setup_signal_handlers():
