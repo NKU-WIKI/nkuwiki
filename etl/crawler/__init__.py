@@ -27,11 +27,6 @@ UNIVERSITY_OFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.university_offic
 SCHOOL_OFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.school_official_accounts", "")
 CLUB_OFFICIAL_ACCOUNTS = config.get("etl.crawler.accounts.club_official_accounts", "")
 COMPANY_ACCOUNTS = config.get("etl.crawler.accounts.company_accounts", "")
-os.environ["UNOFFICIAL_ACCOUNTS"] = UNOFFICIAL_ACCOUNTS
-os.environ["UNIVERSITY_OFFICIAL_ACCOUNTS"] = UNIVERSITY_OFFICIAL_ACCOUNTS
-os.environ["SCHOOL_OFFICIAL_ACCOUNTS"] = SCHOOL_OFFICIAL_ACCOUNTS
-os.environ["CLUB_OFFICIAL_ACCOUNTS"] = CLUB_OFFICIAL_ACCOUNTS
-os.environ["COMPANY_ACCOUNTS"] = COMPANY_ACCOUNTS
 
 # 浏览器配置
 DEFAULT_USER_AGENTS = [
@@ -83,9 +78,25 @@ def clean_filename(filename):
 
     return clean_name
 
+def parse_date(date_str):
+    """解析日期字符串为datetime对象
+    
+    Args:
+        date_str: 日期字符串('2025-01-01')或datetime对象
+        
+    Returns:
+        datetime对象或None（如果解析失败）
+    """
+    if isinstance(date_str, datetime):
+        return date_str
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d')
+    except:
+        return None
+
 __all__ = [
     'datetime', 'sys', 'Path', 'os', 're', 'pytz', 'json', 'time', 'requests', 'random', 'urlparse','tqdm',
-    'crawler_logger', 'Counter', 'tempfile', 'shutil', 'async_playwright', 'config', 'Dict', 'List', 'clean_filename',
+    'crawler_logger', 'Counter', 'tempfile', 'shutil', 'async_playwright', 'config', 'Dict', 'List', 'clean_filename','parse_date',
     'Optional', 'Any', 'hashlib', 'hmac', 'asyncio', 'PROXY_POOL', 'MARKET_TOKEN', 
     'UNOFFICIAL_ACCOUNTS', 'UNIVERSITY_OFFICIAL_ACCOUNTS', 'SCHOOL_OFFICIAL_ACCOUNTS', 
     'CLUB_OFFICIAL_ACCOUNTS', 'COMPANY_ACCOUNTS', 'timedelta', 'RAW_PATH', 'LOG_PATH',

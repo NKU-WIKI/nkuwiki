@@ -1,4 +1,4 @@
-from __init__ import *
+from etl.crawler import *
 from etl.crawler.base_crawler import BaseCrawler
 
 class Wechat(BaseCrawler):
@@ -10,18 +10,27 @@ class Wechat(BaseCrawler):
         headless: 是否使用无头浏览器模式
         use_proxy: 是否使用代理
     """
-    def __init__(self, authors: str = "university_official_accounts", tag: str = "nku", debug: bool = False, headless: bool = True, use_proxy: bool = False) -> None:
+    def __init__(self, authors: list[str], tag: str = "nku", debug: bool = False, headless: bool = True, use_proxy: bool = False) -> None:
+        """初始化微信公众号爬虫
+        
+        Args:
+            authors: 要爬取的公众号昵称列表
+            tag: 标签
+            debug: 调试模式开关
+            headless: 是否使用无头浏览器模式
+            use_proxy: 是否使用代理
+        """
         self.platform = "wechat"
         self.tag = tag
         self.content_type = "article"
         self.base_url = "https://mp.weixin.qq.com/"
         super().__init__(debug, headless, use_proxy)
-        # 获取公众号列表
-        accounts = os.environ.get(authors.upper(), "")
-        if not accounts:
-            self.logger.error(f"Config etl.crawler.accounts.{authors} is not set")
-            raise
-        self.authors = accounts.split(",")
+        
+        if not authors:
+            self.logger.error("公众号列表不能为空")
+            raise ValueError("公众号列表不能为空")
+            
+        self.authors = authors
         self.logger.info(f"start to scrape articles from authors: {self.authors}")
         self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
 
@@ -64,13 +73,15 @@ class Wechat(BaseCrawler):
             raise e
 
     async def scrape_articles_from_authors(self, scraped_original_urls: set, max_article_num: int, 
-                                     total_max_article_num: int) -> list[dict]:
+                                     total_max_article_num: int, time_range: tuple = None, recruitment_keywords: list[str] = None) -> list[dict]:
         """从指定公众号列表抓取文章元数据
         
         Args:
             scraped_original_urls: 已抓取链接集合（用于去重）
             max_article_num: 单个公众号最大抓取数量
             total_max_article_num: 总最大抓取数量
+            time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
+            recruitment_keywords: 可选的关键词列表，只抓取标题包含关键词的文章
             
         Returns:
             包含文章信息的字典列表，格式:
@@ -81,6 +92,12 @@ class Wechat(BaseCrawler):
                 'original_url': 文章链接
             }]
         """
+        # 处理时间范围
+        start_date = end_date = None
+        if time_range and len(time_range) == 2:
+            start_date = parse_date(time_range[0])
+            end_date = parse_date(time_range[1])
+            
         total_articles = []
         try:
             await self.random_sleep()
@@ -133,7 +150,7 @@ class Wechat(BaseCrawler):
             try:
                 account_selector = await self.page.wait_for_selector(
                     '//li[@class="inner_link_account_item"]/div[1]',
-                    timeout=3000
+                    timeout=6000
                 )
                 await account_selector.click()
 
@@ -165,6 +182,21 @@ class Wechat(BaseCrawler):
                         article_title = str(await article_titles_elements[i].inner_text())
                         article_publish_time = str(await article_publish_times_elements[i].inner_text())
                         article_original_url = str(await article_original_urls_elements[i].get_attribute('href'))
+                        
+                        # 检查时间范围
+                        if time_range:
+                            try:
+                                pub_date = datetime.strptime(article_publish_time, '%Y-%m-%d')
+                                if start_date and pub_date < start_date:
+                                    continue
+                                if end_date and pub_date > end_date:
+                                    continue
+                            except:
+                                self.logger.warning(f'无法解析文章发布时间: {article_publish_time}')
+                                
+                        if recruitment_keywords and not any(keyword in article_title for keyword in recruitment_keywords):
+                            continue
+                        
                         if(article_original_url not in scraped_original_urls):
                             articles.append({
                                 'author': author,
@@ -197,18 +229,20 @@ class Wechat(BaseCrawler):
         self.logger.info(f'save total {len(total_articles)} articles from {self.authors}')
         return total_articles
 
-    async def scrape(self, max_article_num: int = 5, total_max_article_num: int = 20) -> None:
+    async def scrape(self, max_article_num: int = 5, total_max_article_num: int = 20, time_range: tuple = None, recruitment_keywords: list[str] = None) -> None:
         """抓取微信公众号文章
 
         Args:
             max_article_num: 每个公众号最大抓取数量
             total_max_article_num: 总共最大抓取数量
+            time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
+            recruitment_keywords: 可选的招聘关键词列表，只抓取标题包含关键词的文章
         """
         try:
             # 先获取已经抓取的链接
             scraped_original_urls = self.get_scraped_original_urls()
             # 检查cookies是否存在，不存在则登录获取
-            cookie_ts, cookies = self.read_cookies(timeout=2.5*24*3600)  
+            cookie_ts, cookies = self.read_cookies(timeout=10*24*3600)  
             if cookies is None:
                 cookies = await self.login_for_cookies()  
                 self.save_cookies(cookies)  
@@ -217,17 +251,13 @@ class Wechat(BaseCrawler):
             start_time = time.time()
             if self.debug == False:
                 lock_path = self.base_dir / self.lock_file
-                # if lock_path.exists():
-                #     last_run_ts = lock_path.read_text()
-                #     self.logger.error(f'last run not end, last_run_ts: {last_run_ts}')  # 记录错误日志
-                #     return
                 lock_path.write_text(str(int(start_time)))  # 写入锁文件
                 scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
-                articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num)
+                articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords)
                 self.update_scraped_articles([article['original_url'] for article in articles], articles)
                 lock_path.unlink()  # 删除锁文件
             else:
-                articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num)
+                articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords)
                 self.update_scraped_articles([article['original_url'] for article in articles], articles)
         
             self.save_counter(start_time)  
@@ -236,11 +266,12 @@ class Wechat(BaseCrawler):
         except Exception as e:
             self.logger.error(f"抓取出错: {e}")
 
-    async def download_article(self, article: dict, save_dir: Path = None) -> None:
+    async def download_article(self, article: dict, save_dir: Path = None, bot_tag: str = 'abstract') -> None:
         """下载单篇文章内容
         Args:
             article: 文章信息字典（需包含original_url）
             save_dir: 文章保存目录，如果为None则使用默认目录
+            bot_tag: 机器人标签，默认为'abstract'
         """
         if not save_dir:
             save_dir = self.data_dir
@@ -309,7 +340,7 @@ class Wechat(BaseCrawler):
                     # 使用异步版本的摘要生成
                     from etl.transform.abstract import generate_abstract_async
                     try:
-                        abstract = await generate_abstract_async(md_file)
+                        abstract = await generate_abstract_async(md_file, bot_tag=bot_tag)
                     except Exception as e:
                         self.logger.error(f"生成摘要时发生错误: {e}")
                         abstract = None
@@ -336,8 +367,8 @@ class Wechat(BaseCrawler):
                     
                     # 清理文件
                     try:
-                        if md_file.exists():
-                            md_file.unlink()
+                        # if md_file.exists():
+                            # md_file.unlink()
                         if generated_dir.exists():
                             shutil.rmtree(generated_dir)
                     except Exception as e:
@@ -350,14 +381,22 @@ class Wechat(BaseCrawler):
         except Exception as e:
             self.logger.error(f"下载文章失败: {e}, URL: {article.get('original_url', '未知URL')}")
 
-    async def download(self):
-        """下载爬取到的文章"""
-        self.logger.info("开始下载文章...")
+    async def download(self, time_range: tuple = None, bot_tag: str = 'abstract'):
+        """下载爬取到的文章
+        
+        Args:
+            time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
+            bot_tag: 机器人标签，默认为'abstract'
+        """
+        # 处理时间范围
+        start_date = end_date = None
+        if time_range and len(time_range) == 2:
+            start_date = parse_date(time_range[0])
+            end_date = parse_date(time_range[1])
+            
+        self.logger.debug("开始下载文章...")
         data_dir = self.data_dir
         data_dir.mkdir(parents=True, exist_ok=True)
-        
-        # 导入tqdm进度条库
-        from tqdm import tqdm
         
         # 递归查找所有JSON文件
         json_files = list(data_dir.glob('**/*.json'))
@@ -412,11 +451,26 @@ class Wechat(BaseCrawler):
                     skipped += 1
                     pbar.update(1)
                     continue
+                    
+                # 检查时间范围
+                if time_range and 'publish_time' in article:
+                    try:
+                        pub_date = datetime.strptime(article['publish_time'], '%Y-%m-%d')
+                        if start_date and pub_date < start_date:
+                            skipped += 1
+                            pbar.update(1)
+                            continue
+                        if end_date and pub_date > end_date:
+                            skipped += 1
+                            pbar.update(1)
+                            continue
+                    except:
+                        self.logger.warning(f"无法解析文章发布时间: {article.get('publish_time')}")
                 
                 # 使用文章所在目录作为保存目录
                 save_dir = json_file.parent
                 # 创建自定义任务，包含文件信息用于进度更新
-                tasks.append((self.download_article(article, save_dir), json_file))
+                tasks.append((self.download_article(article, save_dir, bot_tag), json_file))
             except Exception as e:
                 self.logger.error(f"处理JSON文件失败: {json_file}, 错误: {e}")
                 failed += 1
@@ -475,29 +529,20 @@ class Wechat(BaseCrawler):
 if __name__ == "__main__":
     async def main():
         """异步主函数"""
-        # for authors in ["university_official_accounts", "unofficial_accounts", "club_official_accounts", "school_official_accounts"]:
-        #     try:
-        #         # 创建爬虫实例
-        #         wechat = Wechat(authors=authors, debug=True, headless=True, use_proxy=False)
-        #         # 异步初始化playwright
-        #         await wechat.async_init()
-        #         # 执行爬取
-        #         await wechat.scrape(max_article_num=500, total_max_article_num=1e10)
-                
-        #     except Exception as e:
-        #         print(f"处理 {authors} 时出错: {e}")
-        #         import traceback
-        #         traceback.print_exc()
+        university_accounts = UNIVERSITY_OFFICIAL_ACCOUNTS
+        wechat = Wechat(authors=university_accounts, debug=True, headless=True, use_proxy=True)
+        await wechat.async_init()  # 确保在调用download前初始化
         
-        # 下载处理（在单独的实例中）
         try:
-            wechat = Wechat(debug=True, headless=True, use_proxy=True)
-            await wechat.async_init()  # 确保在调用download前初始化
-            await wechat.download()
-        except Exception as e:
-            print(f"下载处理时出错: {e}")
-            import traceback
-            traceback.print_exc()
+            await wechat.scrape(max_article_num=10, total_max_article_num=1e10, time_range=("2025-01-01", "2025-03-12"))
+        finally:
+            # 清理cookies并关闭当前页面
+            await wechat.context.clear_cookies()
+            await wechat.page.close()
+            # 开新页面
+            wechat.page = await wechat.context.new_page()
+        
+        await wechat.download(time_range=("2025-01-01", "2025-03-12"))
 
     # 运行异步主函数
     asyncio.run(main())

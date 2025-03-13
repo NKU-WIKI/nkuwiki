@@ -1,4 +1,4 @@
-from __init__ import *
+from etl.transform import *
 from etl.transform import transform_logger
 from etl.crawler import clean_filename
 def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 'summarize', header_text: str = ''):
@@ -36,6 +36,8 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         if isinstance(end_time, datetime):
             end_time = end_time.strftime('%Y-%m-%d')
             
+        transform_logger.debug(f"时间范围过滤: {start_time} 到 {end_time}")
+        
         # 提取年月部分用于过滤顶级目录
         start_yyyymm = start_time.replace('-', '')[:6]
         end_yyyymm = end_time.replace('-', '')[:6]
@@ -70,37 +72,27 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         has_abstract = False
         if abstract_path.exists():
             try:
+                transform_logger.debug(f"开始处理目录: {dir_path}")
                 # 首先检查同目录下是否有对应的json文件
                 json_files = list(dir_path.glob('*.json'))
-                is_weixin = False
+                transform_logger.debug(f"找到 {len(json_files)} 个JSON文件")
                 
-                # 检查目录下的json文件是否为微信文章
-                for json_path in json_files:
-                    with open(json_path, 'r', encoding='utf-8') as jf:
-                        try:
-                            json_data = json.load(jf)
-                            original_url = json_data.get('original_url', '')
-                            if original_url.startswith('https://mp.weixin.qq.com/'):
-                                is_weixin = True
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                # 读取abstract内容
+                with open(abstract_path, 'r', encoding='utf-8') as af:
+                    abstract_content = af.read().strip()
+                    has_abstract = bool(abstract_content)
+                    transform_logger.debug(f"读取abstract内容: {len(abstract_content)} 字符")
                 
-                # 只有微信文章才读取abstract
-                if is_weixin:
-                    with open(abstract_path, 'r', encoding='utf-8') as af:
-                        abstract_content = af.read().strip()
-                        has_abstract = bool(abstract_content)
-                else:
-                    transform_logger.debug(f"跳过非微信公众号文章的abstract: {abstract_path}")
             except Exception as e:
                 transform_logger.error(f"读取abstract.md时出错: {e}, 路径: {abstract_path}")
         
-        # 直接处理目录下的 JSON 文件，无需再次检查 abstract.md
+        # 直接处理目录下的 JSON 文件
         for file_path in dir_path.glob('*.json'):
             with open(file_path, 'r', encoding='utf-8') as f:
                 try:
                     data = json.load(f)
+                    transform_logger.debug(f"处理文章: {file_path}")
+                    
                     # 跳过没有publish_time字段的文章
                     if 'publish_time' not in data:
                         transform_logger.warning(f"跳过没有发布时间的文章: {file_path}")
@@ -109,14 +101,17 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                     # 跳过非微信公众号的文章
                     original_url = data.get('original_url', '')
                     if not original_url.startswith('https://mp.weixin.qq.com/'):
-                        transform_logger.debug(f"跳过非微信公众号文章: {file_path}")
+                        transform_logger.warning(f"跳过非微信公众号文章: {file_path}, URL: {original_url}")
                         continue
+                    
+                    transform_logger.debug(f"文章通过筛选: {file_path}")
                     
                     # 标记这篇文章是否有abstract
                     data['has_abstract'] = has_abstract
                     
                     # 如果有abstract内容，添加到文章内容
                     if has_abstract:
+                        transform_logger.debug(f"添加abstract到文章: {file_path}")
                         # 如果原内容不为空，先添加分隔行
                         if data.get('content'):
                             data['content'] = abstract_content + "\n\n---\n\n" + data.get('content', '')
@@ -128,7 +123,10 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                         publish_date = data.get('publish_time', '')
                         # 只处理日期在范围内的文章
                         if start_time <= publish_date <= end_time:
+                            transform_logger.debug(f"文章日期 {publish_date} 在范围内")
                             articles.append(data)
+                        else:
+                            transform_logger.warning(f"跳过日期范围外的文章: {file_path}, 发布日期: {publish_date}")
                     else:
                         articles.append(data)
                 except json.JSONDecodeError:
