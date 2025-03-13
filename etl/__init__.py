@@ -29,6 +29,7 @@ INDEX_PATH = BASE_PATH / config.get("etl.data.index.path", "/index").lstrip("/")
 QDRANT_PATH = BASE_PATH / config.get("etl.data.qdrant.path", "/qdrant").lstrip("/")
 NLTK_PATH = BASE_PATH / config.get("etl.data.nltk.path", "/nltk").lstrip("/")
 LOG_PATH = Path(__file__).resolve().parent / "logs"
+
 # 创建必要的目录
 for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, NLTK_PATH, LOG_PATH]:
     path.mkdir(parents=True, exist_ok=True)
@@ -37,23 +38,24 @@ for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, NLTK_PATH
 HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
 HF_HOME = config.get("etl.data.base_path", "./etl/data") + config.get('etl.data.models.hf_home', '/models')
 SENTENCE_TRANSFORMERS_HOME = HF_HOME
-NLTK_DATA_PATH = str(NLTK_PATH.absolute())
 
 # 设置环境变量 - 必须在导入nltk前设置
 os.environ["HF_ENDPOINT"] = HF_ENDPOINT
 os.environ["HF_HOME"] = HF_HOME
 os.environ["SENTENCE_TRANSFORMERS_HOME"] = SENTENCE_TRANSFORMERS_HOME
-os.environ['NLTK_DATA'] = NLTK_DATA_PATH
+os.environ["NLTK_DATA"] = str(NLTK_PATH.absolute())
 
 # 设置日志目录
 LOG_PATH.mkdir(exist_ok=True, parents=True)
-
 logger.add(LOG_PATH / "etl.log", rotation="1 day", retention="3 months", level="INFO")
 
+# 导入nltk并设置下载路径
 import nltk
+nltk.data.path.append(str(NLTK_PATH.absolute()))
+
 # 检查并下载NLTK资源
 try:
-    resources = ['wordnet.zip', 'omw-1.4.zip', 'wordnet2022.zip']
+    resources = ['wordnet', 'omw-1.4', 'wordnet2022']  # 移除.zip后缀
     for resource in resources:
         try:
             nltk.data.find(f'corpora/{resource}')
@@ -61,14 +63,14 @@ try:
         except LookupError:
             logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
             try:
-                nltk.download(resource, download_dir=NLTK_DATA_PATH, quiet=False)
+                nltk.download(resource, download_dir=str(NLTK_PATH.absolute()), quiet=False)
                 logger.debug(f"NLTK资源 {resource} 下载成功")
             except Exception as e:
                 logger.error(f"NLTK资源 {resource} 下载失败: {e}")
-                logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {NLTK_DATA_PATH}")
+                logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
 except Exception as e:
     logger.error(f"NLTK资源检查失败: {e}")
-    logger.warning(f"请确保已手动下载所需NLTK资源到: {NLTK_DATA_PATH}")
+    logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
 
 # 数据库配置
 DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')

@@ -17,6 +17,7 @@ class BaseCrawler():
         self.logger = crawler_logger.bind(platform=self.platform)
         self.proxy_pool = self.load_proxies()
         self.current_proxy = None
+        self.max_retries = 3
         # 设置基本目录
         self.base_dir = RAW_PATH / Path(self.platform) 
         self.data_dir = self.base_dir / Path(self.tag)

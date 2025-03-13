@@ -120,43 +120,52 @@ class Wechat(BaseCrawler):
         for author in self.authors:
             await self.random_sleep()
             try:
-                button = await self.page.get_by_text('选择其他账号')
+                button = self.page.get_by_text('选择其他账号')
                 await button.click()
             except Exception as e:
                 self.logger.error(f'Failed to find account button: {e}')
                 continue
             await self.random_sleep()
-            try:
-                search_account_field = await self.page.wait_for_selector(
-                    'input[placeholder="输入文章来源的账号名称或微信号，回车进行搜索"]',
-                    timeout=3000
-                )
-                await search_account_field.fill(author)
-            except Exception as e:
-                self.logger.error(f'Failed to find search field,{str(e)}')
-                break
-            await self.random_sleep()
-            try:
-                search_button = await self.page.wait_for_selector(
-                    'button[class="weui-desktop-icon-btn weui-desktop-search__btn"]',
-                    timeout=3000
-                )
-                await search_button.click()
-            except Exception as e:
-                self.logger.error(f'Failed to find search button: {e}')
-                break
-            await self.random_sleep()
-            # 等待账号选择器出现
-            try:
-                account_selector = await self.page.wait_for_selector(
-                    '//li[@class="inner_link_account_item"]/div[1]',
-                    timeout=6000
-                )
-                await account_selector.click()
-
-            except Exception as e:
-                self.logger.error(f'failed to click account, {author} seems does not exist')
-                continue
+            retry_count = 0
+            
+            while retry_count < self.max_retries:
+                try:
+                    # 清空搜索框重新输入
+                    search_account_field = await self.page.wait_for_selector(
+                        'input[placeholder="输入文章来源的账号名称或微信号，回车进行搜索"]',
+                        timeout=3000
+                    )
+                    await search_account_field.fill("")  # 先清空
+                    await search_account_field.fill(author)
+                    
+                    await self.random_sleep()
+                    search_button = await self.page.wait_for_selector(
+                        'button[class="weui-desktop-icon-btn weui-desktop-search__btn"]',
+                        timeout=3000
+                    )
+                    await search_button.click()
+                    
+                    await self.random_sleep()
+                    # 等待账号选择器出现
+                    account_selector = await self.page.wait_for_selector(
+                        '//li[@class="inner_link_account_item"]/div[1]',
+                        timeout=6000
+                    )
+                    await account_selector.click()
+                    # 如果成功找到并点击了账号，跳出重试循环
+                    break
+                    
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= self.max_retries:
+                        self.logger.error(f'Failed to search and select account after {self.max_retries} retries: {author}, error: {e}')
+                        break
+                    self.logger.warning(f'Retry {retry_count}/{self.max_retries} for account: {author}, error: {e}')
+                    await self.random_sleep(2)  # 失败后多等待一会
+            
+            if retry_count >= self.max_retries:
+                continue  # 重试次数用完，跳过当前作者
+                
             await self.random_sleep()
             # 获取页码信息
             try:
@@ -188,8 +197,12 @@ class Wechat(BaseCrawler):
                             try:
                                 pub_date = datetime.strptime(article_publish_time, '%Y-%m-%d')
                                 if start_date and pub_date < start_date:
-                                    continue
+                                    # 如果文章时间早于开始时间，直接跳到下一个作者
+                                    self.logger.debug(f'Article date {pub_date} is earlier than start_date {start_date}, skip to next author')
+                                    page = max_page_num + 1  # 强制退出当前作者的循环
+                                    break
                                 if end_date and pub_date > end_date:
+                                    # 如果文章时间晚于结束时间，跳过当前文章继续检查
                                     continue
                             except:
                                 self.logger.warning(f'无法解析文章发布时间: {article_publish_time}')
@@ -221,10 +234,13 @@ class Wechat(BaseCrawler):
                     break  # 如果处理页面出错，跳出当前账号的处理
 
             self.update_scraped_articles(scraped_original_urls, articles)
-            self.logger.info(f'save {len(articles)} articles from {author}')
-            total_articles.extend(articles)
-            if len(total_articles) >= total_max_article_num:
-                break
+            if(len(articles) > 0):
+                self.logger.info(f'save {len(articles)} articles from {author}')
+                total_articles.extend(articles)
+                if len(total_articles) >= total_max_article_num:
+                    break
+            else:
+                self.logger.debug(f'no articles from {author}')
 
         self.logger.info(f'save total {len(total_articles)} articles from {self.authors}')
         return total_articles
@@ -287,11 +303,11 @@ class Wechat(BaseCrawler):
             clean_title = clean_filename(title)
             original_url = article['original_url']
             
-            self.logger.info(f"开始处理文章: {title}, URL: {original_url}")
+            self.logger.debug(f"开始处理文章: {title}, URL: {original_url}")
             
             # 检查文章是否已经有内容
             if article.get('content') and len(article.get('content', '').strip()) > 0:
-                self.logger.info(f"文章已有内容，跳过处理: {title}")
+                self.logger.debug(f"文章已有内容，跳过处理: {title}")
                 return
             
             # 直接使用异步版本
@@ -400,7 +416,7 @@ class Wechat(BaseCrawler):
         
         # 递归查找所有JSON文件
         json_files = list(data_dir.glob('**/*.json'))
-        self.logger.info(f"找到 {len(json_files)} 个JSON文件")
+        self.logger.debug(f"找到 {len(json_files)} 个JSON文件")
         
         if not json_files:
             self.logger.error("没有找到需要处理的文章，任务结束")
