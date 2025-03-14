@@ -258,7 +258,7 @@ class Wechat(BaseCrawler):
             # 先获取已经抓取的链接
             scraped_original_urls = self.get_scraped_original_urls()
             # 检查cookies是否存在，不存在则登录获取
-            cookie_ts, cookies = self.read_cookies(timeout=10*24*3600)  
+            cookie_ts, cookies = self.read_cookies(timeout=3*24*3600)  
             if cookies is None:
                 cookies = await self.login_for_cookies()  
                 self.save_cookies(cookies)  
