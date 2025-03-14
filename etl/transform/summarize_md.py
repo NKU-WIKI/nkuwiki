@@ -3,8 +3,8 @@ from etl.transform import transform_logger
 from etl.crawler import clean_filename
 def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 'summarize', header_text: str = '', requerment_keywords: list = None):
     """
-    加载指定目录下的JSON文件并生成markdown格式的总结，按块分割
-    每块小于2000行，同一作者不会被分成两块
+    加载指定目录下的JSON文件并生一作者成markdown格式的总结，按块分割
+    每块小于2000行，同不会被分成两块
     输出为job1.md, job2.md等多个文件
     
     Args:
@@ -135,7 +135,20 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                     # 如果有abstract内容且包含关键词，只使用abstract内容
                     if has_abstract and (not requerment_keywords or any(keyword.lower() in abstract_content.lower() for keyword in requerment_keywords)):
                         transform_logger.debug(f"使用abstract内容: {file_path}")
-                        data['content'] = abstract_content
+                        # 过滤掉非微信公众号的链接
+                        lines = abstract_content.split('\n')
+                        filtered_lines = []
+                        for line in lines:
+                            # 如果是链接行，检查是否是微信公众号链接
+                            if '链接：' in line:
+                                url = line.split('链接：')[-1].strip()
+                                if url.startswith('https://mp.weixin.qq.com/'):
+                                    filtered_lines.append(line)
+                                else:
+                                    filtered_lines.append('链接：点击原文查看')
+                            else:
+                                filtered_lines.append(line)
+                        data['content'] = '\n'.join(filtered_lines)
                     else:
                         data['content'] = ""  # 不使用原始内容
                         
