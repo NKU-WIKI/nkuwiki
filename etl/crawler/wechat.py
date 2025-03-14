@@ -1,5 +1,6 @@
 from etl.crawler import *
 from etl.crawler.base_crawler import BaseCrawler
+from tqdm import tqdm
 
 class Wechat(BaseCrawler):
     """微信公众号爬虫
@@ -73,7 +74,7 @@ class Wechat(BaseCrawler):
             raise e
 
     async def scrape_articles_from_authors(self, scraped_original_urls: set, max_article_num: int, 
-                                     total_max_article_num: int, time_range: tuple = None, recruitment_keywords: list[str] = None) -> list[dict]:
+                                     total_max_article_num: int, time_range: tuple = None, recruitment_keywords: list[str] = None, pbar: Any = None) -> list[dict]:
         """从指定公众号列表抓取文章元数据
         
         Args:
@@ -82,6 +83,7 @@ class Wechat(BaseCrawler):
             total_max_article_num: 总最大抓取数量
             time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
             recruitment_keywords: 可选的关键词列表，只抓取标题包含关键词的文章
+            pbar: 进度条对象
             
         Returns:
             包含文章信息的字典列表，格式:
@@ -164,6 +166,8 @@ class Wechat(BaseCrawler):
                     await self.random_sleep(2)  # 失败后多等待一会
             
             if retry_count >= self.max_retries:
+                if pbar:
+                    pbar.update(1)
                 continue  # 重试次数用完，跳过当前作者
                 
             await self.random_sleep()
@@ -238,9 +242,13 @@ class Wechat(BaseCrawler):
                 self.logger.info(f'save {len(articles)} articles from {author}')
                 total_articles.extend(articles)
                 if len(total_articles) >= total_max_article_num:
+                    if pbar:
+                        pbar.update(1)
                     break
             else:
                 self.logger.debug(f'no articles from {author}')
+            if pbar:
+                pbar.update(1)
 
         self.logger.info(f'save total {len(total_articles)} articles from {self.authors}')
         return total_articles
@@ -270,11 +278,13 @@ class Wechat(BaseCrawler):
                 lock_path = self.base_dir / self.lock_file
                 lock_path.write_text(str(int(start_time)))  # 写入锁文件
                 scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
-                articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords)
+                with tqdm(total=len(self.authors), desc="抓取公众号", unit="个") as pbar:
+                    articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords, pbar)
                 self.update_scraped_articles([article['original_url'] for article in articles], articles)
                 lock_path.unlink()  # 删除锁文件
             else:
-                articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords)
+                with tqdm(total=len(self.authors), desc="抓取公众号", unit="个") as pbar:
+                    articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords, pbar)
                 self.update_scraped_articles([article['original_url'] for article in articles], articles)
         
             self.save_counter(start_time)  

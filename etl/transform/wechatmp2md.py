@@ -31,14 +31,32 @@ def find_executable():
     for path in possible_paths:
         matches = list(path.glob(pattern))
         if matches:
-            return str(matches[0])  # 返回找到的第一个匹配文件
+            exe_path = matches[0]
+            # 在非Windows系统上检查并添加可执行权限
+            if system != "windows":
+                try:
+                    # 获取当前权限
+                    current_mode = exe_path.stat().st_mode
+                    # 添加可执行权限 (用户、组和其他用户)
+                    exe_path.chmod(current_mode | 0o111)
+                except Exception as e:
+                    print(f"警告: 无法设置可执行权限: {e}")
+            return str(exe_path)
             
     # 在系统PATH中查找
     if os.getenv('PATH'):
         for path in os.getenv('PATH').split(os.pathsep):
             matches = list(Path(path).glob(pattern))
             if matches:
-                return str(matches[0])
+                exe_path = matches[0]
+                # 在非Windows系统上检查并添加可执行权限
+                if system != "windows":
+                    try:
+                        current_mode = exe_path.stat().st_mode
+                        exe_path.chmod(current_mode | 0o111)
+                    except Exception as e:
+                        print(f"警告: 无法设置可执行权限: {e}")
+                return str(exe_path)
     
     return None
 

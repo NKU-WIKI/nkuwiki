@@ -1,7 +1,7 @@
 from etl.transform import *
 from etl.transform import transform_logger
 from etl.crawler import clean_filename
-def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 'summarize', header_text: str = ''):
+def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 'summarize', header_text: str = '', requerment_keywords: list = None):
     """
     加载指定目录下的JSON文件并生成markdown格式的总结，按块分割
     每块小于2000行，同一作者不会被分成两块
@@ -13,6 +13,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         time_range: 可选的时间范围元组 (start_date, end_date)，例如 ('2025-01-01', '2025-03-01') 或 (datetime对象, datetime对象)
         title: 生成文件的标题基础名
         header_text: 在每个生成的文件顶部添加的文本
+        requerment_keywords: 可选的关键词列表，只包含含有这些关键词的文章
     """
     # 处理标题中的路径分隔符，避免被当做目录路径
     file_name = clean_filename(title)
@@ -65,11 +66,15 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
     
     # 遍历所有符合条件的目录
     transform_logger.debug("正在加载文章数据...")
+    processed_urls = set()  # 用于去重的URL集合
+    
     for dir_path in tqdm(valid_dirs, desc="处理数据目录"):
         # 读取并处理abstract.md文件
         abstract_path = dir_path / "abstract.md"
         abstract_content = ""
         has_abstract = False
+        should_skip_dir = False  # 用于标记是否跳过整个目录
+        
         if abstract_path.exists():
             try:
                 transform_logger.debug(f"开始处理目录: {dir_path}")
@@ -82,10 +87,24 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                     abstract_content = af.read().strip()
                     has_abstract = bool(abstract_content)
                     transform_logger.debug(f"读取abstract内容: {len(abstract_content)} 字符")
+                    
+                    # 检查关键词
+                    if requerment_keywords and has_abstract:
+                        has_keywords = any(keyword.lower() in abstract_content.lower() for keyword in requerment_keywords)
+                        if not has_keywords:
+                            transform_logger.debug(f"跳过不包含关键词的文章: {abstract_path}")
+                            should_skip_dir = True  # 标记跳过整个目录
+                            continue
+                        else:
+                            transform_logger.debug(f"文章包含关键词: {abstract_path}")
                 
             except Exception as e:
                 transform_logger.error(f"读取abstract.md时出错: {e}, 路径: {abstract_path}")
+                continue  # 如果读取abstract出错，跳过整个目录
         
+        if should_skip_dir:
+            continue
+            
         # 直接处理目录下的 JSON 文件
         for file_path in dir_path.glob('*.json'):
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -103,21 +122,25 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                     if not original_url.startswith('https://mp.weixin.qq.com/'):
                         transform_logger.warning(f"跳过非微信公众号文章: {file_path}, URL: {original_url}")
                         continue
-                    
-                    transform_logger.debug(f"文章通过筛选: {file_path}")
+                        
+                    # 检查URL是否重复
+                    if original_url in processed_urls:
+                        transform_logger.debug(f"跳过重复文章: {original_url}")
+                        continue
+                    processed_urls.add(original_url)
                     
                     # 标记这篇文章是否有abstract
                     data['has_abstract'] = has_abstract
                     
-                    # 如果有abstract内容，添加到文章内容
-                    if has_abstract:
-                        transform_logger.debug(f"添加abstract到文章: {file_path}")
-                        # 如果原内容不为空，先添加分隔行
-                        if data.get('content'):
-                            data['content'] = abstract_content + "\n\n---\n\n" + data.get('content', '')
-                        else:
-                            data['content'] = abstract_content
+                    # 如果有abstract内容且包含关键词，只使用abstract内容
+                    if has_abstract and (not requerment_keywords or any(keyword.lower() in abstract_content.lower() for keyword in requerment_keywords)):
+                        transform_logger.debug(f"使用abstract内容: {file_path}")
+                        data['content'] = abstract_content
+                    else:
+                        data['content'] = ""  # 不使用原始内容
                         
+                    transform_logger.debug(f"文章通过筛选: {file_path}")
+                    
                     # 如果指定了时间范围，进一步按文章日期过滤
                     if time_range:
                         publish_date = data.get('publish_time', '')
