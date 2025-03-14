@@ -14,27 +14,31 @@ def find_executable():
     # 检测操作系统类型
     system = platform.system().lower()
     
+    # 设置可执行文件匹配模式
     if system == "windows":
-        executable_name = "wechatmp2markdown-v1.1.10_win64.exe"
-    elif system == "linux":
-        executable_name = "wechatmp2markdown-v1.1.10_linux_amd64"
+        pattern = "wechatmp2markdown*.exe"
     else:
-        # 默认使用Windows版本，如果需要支持更多平台可以添加
-        executable_name = "wechatmp2markdown-v1.1.10_win64.exe"
-        print(f"警告: 未针对 {system} 系统优化，尝试使用默认可执行文件")
+        pattern = "wechatmp2markdown*"
     
     possible_paths = [
         # 同目录下
-        Path(__file__).parent / executable_name,
+        Path(__file__).parent,
         # 项目根目录下
-        Path(__file__).parent.parent.parent / executable_name,
-        # 系统PATH中
-        executable_name
+        Path(__file__).parent.parent.parent,
     ]
     
+    # 在可能的路径中查找匹配的可执行文件
     for path in possible_paths:
-        if isinstance(path, str) or path.exists():
-            return str(path)
+        matches = list(path.glob(pattern))
+        if matches:
+            return str(matches[0])  # 返回找到的第一个匹配文件
+            
+    # 在系统PATH中查找
+    if os.getenv('PATH'):
+        for path in os.getenv('PATH').split(os.pathsep):
+            matches = list(Path(path).glob(pattern))
+            if matches:
+                return str(matches[0])
     
     return None
 
@@ -54,26 +58,13 @@ async def wechatmp2md_async(original_url, data_path, image_option='url'):
         bool: 转换是否成功
     """
     async with conversion_semaphore:
-        # 确保输出目录存在
-        output_dir = Path(data_path)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
         # 查找可执行文件
         exe_path = find_executable()
         if not exe_path:
-            system = platform.system().lower()
-            if system == "windows":
-                executable_name = "wechatmp2markdown-v1.1.10_win64.exe"
-            elif system == "linux":
-                executable_name = "wechatmp2markdown-v1.1.10_linux_amd64"
-            else:
-                executable_name = "wechatmp2markdown可执行文件"
-            print(f"未找到{executable_name}程序")
+            print(f"未找到wechatmp2markdown可执行文件")
             return False
-        
         # 构建命令
-        cmd = [exe_path, original_url, str(output_dir), f"--image={image_option}"]
-        
+        cmd = [exe_path, original_url, str(data_path), f"--image={image_option}"]
         try:
             # 使用线程池执行外部命令，避免阻塞事件循环
             print(f"执行命令: {' '.join(cmd)}")

@@ -55,7 +55,7 @@ nltk.data.path.append(str(NLTK_PATH.absolute()))
 
 # 检查并下载NLTK资源
 try:
-    resources = ['wordnet', 'omw-1.4', 'wordnet2022']  # 移除.zip后缀
+    resources = ['wordnet.zip', 'omw-1.4.zip', 'wordnet2022.zip']  # 移除.zip后缀
     for resource in resources:
         try:
             nltk.data.find(f'corpora/{resource}')

@@ -253,14 +253,12 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                 # 添加目录
                 f.write(f'### 目录\n\n')
                 for author in authors_in_block:
-                    author_anchor = author.replace(' ', '-')
-                    f.write(f'- [{author}](#{author_anchor})\n')
+                    f.write(f'- {author}\n')
                     posts = author_groups[author]
                     # 添加每位作者下的文章作为二级目录项
                     for post in posts:
                         title = post['title']
-                        title_anchor = title.replace(' ', '-').replace('[', '').replace(']', '').replace('(', '').replace(')', '')
-                        f.write(f'  - [{title}](#{title_anchor})\n')
+                        f.write(f'  - {title}\n')
                 f.write('\n')
                 
                 for author in authors_in_block:

@@ -289,113 +289,58 @@ class Wechat(BaseCrawler):
             save_dir: 文章保存目录，如果为None则使用默认目录
             bot_tag: 机器人标签，默认为'abstract'
         """
-        if not save_dir:
-            save_dir = self.data_dir
-            save_dir.mkdir(parents=True, exist_ok=True)
-            
         try:
-            # 确保original_url字段存在
-            if 'original_url' not in article:
-                self.logger.error(f"文章缺少original_url字段: {article.get('title', '未知标题')}")
-                return
-                
             title = article.get('title', '未知标题')
             clean_title = clean_filename(title)
             original_url = article['original_url']
             
             self.logger.debug(f"开始处理文章: {title}, URL: {original_url}")
             
-            # 检查文章是否已经有内容
-            if article.get('content') and len(article.get('content', '').strip()) > 0:
-                self.logger.debug(f"文章已有内容，跳过处理: {title}")
-                return
-            
-            # 直接使用异步版本
+            md_file = save_dir / f"{clean_title}.md"
             from etl.transform.wechatmp2md import wechatmp2md_async
-            # 使用异步版本的wechatmp2md函数
             try:
-                success = await wechatmp2md_async(original_url, str(save_dir))
+                success = await wechatmp2md_async(original_url, md_file, 'url')
             except Exception as e:
-                self.logger.error(f"wechatmp2md_async执行失败: {e}, URL: {original_url}")
-                return
-                
+                self.logger.exception(e)
             if success:
+                with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
+                content = re.sub(r'\n\s*\n', '\n', content).strip()
+                if content:
+                    with open(md_file, 'w', encoding='utf-8') as f:
+                        f.write(content.strip())
+                else:
+                    self.logger.error(f"转换失败，MD文件内容为空: {md_file}")
+                    return
+                from etl.transform.abstract import generate_abstract_async
                 try:
-                    generated_dirs = [d for d in save_dir.iterdir() if d.is_dir() and d.name != 'imgs']
-                    if not generated_dirs:
-                        self.logger.error(f"转换失败，未生成新的文件夹: {clean_title}")
-                        return
-                        
-                    generated_dir = generated_dirs[0]
-                    generated_md_files = list(generated_dir.glob("*.md"))
-                    
-                    if not generated_md_files:
-                        self.logger.error(f"转换失败，未生成MD文件: {clean_title}")
-                        return
-                        
-                    md_file = save_dir / f"{clean_title}.md"
-                    try:
-                        shutil.copy2(generated_md_files[0], md_file)
-                    except Exception as e:
-                        self.logger.error(f"复制MD文件失败: {e}")
-                        return
-
-                    try:
-                        with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
-                            content = f.read()
-                        content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
-                        content = re.sub(r'\n\s*\n', '\n', content)
-                        with open(md_file, 'w', encoding='utf-8') as f:
-                            f.write(content.strip())
-                    except Exception as e:
-                        self.logger.error(f"处理MD文件内容失败: {e}")
-                        if md_file.exists():
-                            md_file.unlink()
-                        return
-                            
-                    # 使用异步版本的摘要生成
-                    from etl.transform.abstract import generate_abstract_async
-                    try:
-                        abstract = await generate_abstract_async(md_file, bot_tag=bot_tag)
-                    except Exception as e:
-                        self.logger.error(f"生成摘要时发生错误: {e}")
-                        abstract = None
-                        
-                    if abstract:
-                        try:
-                            article['content'] = abstract
-                            with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
-                                json.dump(article, f, ensure_ascii=False)
-                            self.logger.debug(f"生成摘要成功: {clean_title}")
-                            preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
-                            self.logger.debug(f"原始URL: {original_url}\n摘要内容预览: {preview_abstract}")
-                        except Exception as e:
-                            self.logger.error(f"保存摘要失败: {e}")
-                    else:
-                        try:
-                            self.logger.error(f"生成摘要失败: {clean_title}")
-                            article['content'] = ""
-                            with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
-                                json.dump(article, f, ensure_ascii=False, indent=4)
-                            self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
-                        except Exception as e:
-                            self.logger.error(f"保存空摘要失败: {e}")
-                    
-                    # 清理文件
-                    try:
-                        # if md_file.exists():
-                            # md_file.unlink()
-                        if generated_dir.exists():
-                            shutil.rmtree(generated_dir)
-                    except Exception as e:
-                        self.logger.warning(f"清理临时文件失败: {e}")
-                        
+                    abstract = await generate_abstract_async(md_file, bot_tag=bot_tag)
                 except Exception as e:
-                    self.logger.error(f"处理生成的文件失败: {e}")
-            else:
-                self.logger.error(f"转换失败: {clean_title}")
+                    self.logger.error(f"生成摘要时发生错误: {e}")
+                    abstract = None
+                if abstract:
+                    try:
+                        article['content'] = abstract
+                        with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                            json.dump(article, f, ensure_ascii=False,indent=4)
+                        with open(save_dir / 'abstract.md', 'w', encoding='utf-8') as f:
+                            f.write(abstract)
+                        self.logger.debug(f"生成摘要成功: {clean_title}")
+                        preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
+                        self.logger.debug(f"原始URL: {original_url}\n摘要内容预览: {preview_abstract}")
+                    except Exception as e:
+                        self.logger.exception(e)
+                else:
+                    try:
+                        article['content'] = ""
+                        with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                            json.dump(article, f, ensure_ascii=False, indent=4)
+                        self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
+                    except Exception as e:
+                        self.logger.exception(e)
         except Exception as e:
-            self.logger.error(f"下载文章失败: {e}, URL: {article.get('original_url', '未知URL')}")
+            self.logger.exception(e)
 
     async def download(self, time_range: tuple = None, bot_tag: str = 'abstract'):
         """下载爬取到的文章
@@ -413,6 +358,15 @@ class Wechat(BaseCrawler):
         self.logger.debug("开始下载文章...")
         data_dir = self.data_dir
         data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 获取可用的bot_id数量
+        from etl.transform.abstract import get_bot_ids_by_tag
+        bot_ids = get_bot_ids_by_tag(bot_tag)
+        max_concurrency = len(bot_ids)
+        if max_concurrency == 0:
+            self.logger.error(f"没有找到可用的bot_id(标签:{bot_tag})")
+            return
+        self.logger.info(f"找到 {max_concurrency} 个可用的bot_id")
         
         # 递归查找所有JSON文件
         json_files = list(data_dir.glob('**/*.json'))
@@ -494,9 +448,6 @@ class Wechat(BaseCrawler):
         
         # 并行执行所有下载任务，但限制并发数
         if tasks:
-            # 增加并发数，系统有足够CPU余量
-            max_concurrency = 40  # 提高到更高的并发数
-            
             self.logger.info(f"开始并行处理 {len(tasks)} 篇文章，并发数限制为{max_concurrency}")
             # 创建信号量以限制并发数
             semaphore = asyncio.Semaphore(max_concurrency)

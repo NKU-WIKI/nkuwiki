@@ -53,7 +53,7 @@ class BotIdPool:
         # 初始化每个bot_id的使用频率统计
         self.usage_count = {bid: 0 for bid in bot_ids}
         # 允许的最大等待时间(秒)
-        self.max_wait_time = 10
+        self.max_wait_time = 30
 
     async def get_bot_id(self):
         """获取一个可用的bot_id"""
