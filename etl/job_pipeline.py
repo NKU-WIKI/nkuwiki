@@ -35,17 +35,17 @@ recruitment_keywords = [
 async def main():
     """异步主函数"""
     current_date = datetime.now().strftime('%Y-%m-%d')
-    current_date = datetime.strptime('2025-03-13', '%Y-%m-%d')
-    # job_crawler = Wechat(authors=COMPANY_ACCOUNTS, tag = "job", debug=True, headless=True, use_proxy=True)
-    # try:
-        # await job_crawler.async_init()
-        # await job_crawler.scrape(max_article_num=10, total_max_article_num=1e10, time_range=(current_date, current_date), recruitment_keywords=recruitment_keywords)
-        # await job_crawler.page.close()
-        # await job_crawler.context.clear_cookies()
-    # finally:
-        # await job_crawler.context.new_page()
-        # await job_crawler.download(time_range=(current_date, current_date), bot_tag="job")
-        # await job_crawler.close()
+    # current_date = datetime.strptime('2025-03-13', '%Y-%m-%d')
+    job_crawler = Wechat(authors=COMPANY_ACCOUNTS, tag = "job", debug=True, headless=True, use_proxy=True)
+    try:
+        await job_crawler.async_init()
+        await job_crawler.scrape(max_article_num=10, total_max_article_num=1e10, time_range=(current_date, current_date), recruitment_keywords=recruitment_keywords)
+        await job_crawler.page.close()
+        await job_crawler.context.clear_cookies()
+    finally:
+        await job_crawler.context.new_page()
+        await job_crawler.download(time_range=(current_date, current_date), bot_tag="job")
+        await job_crawler.close()
     input_dir = RAW_PATH / 'wechat' / 'job'  # 指定JSON文件所在目录
     output_dir = RAW_PATH / 'summary' 
     # 使用不会产生空格问题的标题

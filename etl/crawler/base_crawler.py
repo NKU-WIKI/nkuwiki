@@ -209,9 +209,9 @@ class BaseCrawler():
             });
             """)
 
-    async def init_cookies(self, cookies: Dict[str, str], go_base_url: bool = True) -> None:
+    async def init_cookies(self, cookies: Dict[str, str], go_base_url: bool = False) -> None:
         """
-        初始化cookies，go_base_url为是否打开基础URL，默认False，即打开cookie_init_url
+        初始化cookies
         """
         try:
             await self.inject_anti_detection_script()
@@ -231,10 +231,8 @@ class BaseCrawler():
             if cookie_list:
                 await self.context.add_cookies(cookie_list)
                 await self.random_sleep()
-            if go_base_url:
+            if(go_base_url):
                 await self.page.goto(self.base_url)
-                self.counter['visit'] += 1
-                await self.random_sleep()
         except Exception as e:
             self.counter['error'] += 1  # 错误计数器加1
             self.logger.error(e)  # 记录错误日志

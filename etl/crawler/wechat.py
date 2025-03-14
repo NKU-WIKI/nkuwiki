@@ -263,7 +263,8 @@ class Wechat(BaseCrawler):
                 cookies = await self.login_for_cookies()  
                 self.save_cookies(cookies)  
             else:
-                await self.init_cookies(cookies, go_base_url=True)  
+                await self.init_cookies(cookies, go_base_url=True)
+
             start_time = time.time()
             if self.debug == False:
                 lock_path = self.base_dir / self.lock_file
