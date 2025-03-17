@@ -1,24 +1,17 @@
 """
 工具模块，提供各种辅助功能
 """
-import os
 import sys
-import json
-import re
-import time
-import random
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Tuple
-from loguru import logger
-from datetime import datetime
-import torch
-import numpy as np
+sys.path.append(str(Path(__file__).parent.parent.parent))
+from etl import *
 
-from config import Config
+import random
+import base64
 
-# 导入配置
-config = Config()
-config.load_config()
+api_key = config.get("core.agent.coze.api_key")
+base_url = config.get("core.agent.coze.base_url")
+nkucs_dataset_id = config.get("core.agent.coze.nkucs_dataset_id")
 
 # 常用工具函数
 def safe_json_loads(json_str, default=None):
@@ -62,3 +55,10 @@ def random_sleep(min_seconds=1, max_seconds=3):
     sleep_time = random.uniform(min_seconds, max_seconds)
     time.sleep(sleep_time)
     return sleep_time
+
+__all__ = [
+    'requests','random','time','os','json','datetime','logger','sys','Path','base64',
+
+    'safe_json_loads', 'safe_file_write', 'safe_file_read', 'get_timestamp', 'get_datetime_str', 'random_sleep', 'api_key', 'base_url', 'nkucs_dataset_id'
+
+]
