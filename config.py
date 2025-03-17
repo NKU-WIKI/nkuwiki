@@ -117,6 +117,16 @@ available_setting = {
         "text_to_voice": "openai",  # 文本转语音服务
         "text_to_voice_model": "tts-1",  # 文本转语音模型
         "tts_voice_id": "alloy",  # TTS语音ID
+        # 终端服务配置
+        "terminal": {
+            "stream_output": True,  # 默认启用流式输出
+            "min_response_interval": 0.1,  # 最小响应间隔(秒)
+            "show_welcome": True,  # 显示欢迎信息
+            "welcome_message": "欢迎使用 NKU Wiki 智能助手!",  # 欢迎信息
+            "conversation_max_tokens": 100000000,  # 会话最大token数
+            "expires_in_seconds": 3600,  # 会话过期时间(秒)
+            "single_chat_prefix": [""]  # 单聊前缀
+        },
         # 微信公众号服务配置
         "wechatmp_service": {
             "token": "",  # 验证令牌

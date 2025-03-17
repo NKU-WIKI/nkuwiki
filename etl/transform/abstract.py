@@ -3,7 +3,7 @@ from pathlib import Path
 import asyncio
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl.transform import *
-from core.agent.coze.coze_agent_new import CozeAgentNew
+from core.agent.coze.coze_agent_sdk import CozeAgentSDK
 
 def get_bot_ids_by_tag(bot_tag="abstract"):
     """
@@ -150,7 +150,7 @@ async def generate_abstract_async(file_path, max_length: int = 300, bot_tag: str
     
     try:
         content = file_path.read_text(encoding='utf-8')
-        coze_agent = CozeAgentNew(bot_id)
+        coze_agent = CozeAgentSDK(bot_id=bot_id, use_cn_api=True)
         
         # 在线程池中执行同步reply方法
         reply = await asyncio.to_thread(coze_agent.reply, content)

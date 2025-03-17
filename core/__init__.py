@@ -25,8 +25,9 @@ LOG_PATH = Path(__file__).resolve().parent / "logs"
 for path in [LOG_PATH]:
     path.mkdir(parents=True, exist_ok=True)
 
+# 设置日志目录
+LOG_PATH.mkdir(exist_ok=True, parents=True)
 logger.add(LOG_PATH / "core.log", rotation="1 day", retention="3 months", level="INFO")
-
 # 版本信息
 __version__ = "1.0.0"
 

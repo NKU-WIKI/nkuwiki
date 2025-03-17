@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
+import mysql.connector  # 添加mysql.connector导入
 from etl.load import get_conn, load_logger
 
 """
@@ -278,12 +279,12 @@ def export_wechat_to_mysql(n: int):
 
         load_logger.info("数据导入完成")
 
-def query_table(table_name: str, limit: int = 1000) -> list:
+def query_table(table_name: str, limit: int = None) -> list:
     """查询指定表内容
     
     Args:
         table_name: 要查询的表名
-        limit: 返回结果最大条数，默认1000
+        limit: 返回结果最大条数，默认None表示不限制
         
     Returns:
         list: 查询结果列表，元素为字典形式的记录
@@ -291,7 +292,10 @@ def query_table(table_name: str, limit: int = 1000) -> list:
     try:
         with get_conn() as conn:
             with conn.cursor(dictionary=True) as cursor:
-                cursor.execute(f"SELECT * FROM {table_name} LIMIT %s", (limit,))
+                if limit:
+                    cursor.execute(f"SELECT * FROM {table_name} LIMIT %s", (limit,))
+                else:
+                    cursor.execute(f"SELECT * FROM {table_name}")
                 result = cursor.fetchall()
                 load_logger.info(f"查询表 {table_name} 成功，获取 {len(result)} 条记录")
                 return result
@@ -393,7 +397,7 @@ def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool
                 cursor.execute(query, [*values, record_id])
                 conn.commit()
                 affected_rows = cursor.rowcount
-                load_logger.debug(f"更新表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
+                # load_logger.debug(f"更新表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
                 return affected_rows > 0
     except mysql.connector.Error as e:
         load_logger.error(f"更新记录失败: {str(e)}")
@@ -951,6 +955,39 @@ def import_json_dir_to_table(dir_path: str = None, table_name: str = None, platf
     return result
 
 if __name__ == "__main__":
-    delete_table("wechat_nku")  # 注释掉删除表的操作
+    # delete_table("wechat_nku")  # 注释掉删除表的操作
     init_database()  # 初始化数据库
-    import_json_dir_to_table(platform="wechat", tag="nku")  # 导入数据
+    # import_json_dir_to_table(platform="wechat", tag="nku")  # 导入数据
+    
+    # 查询website_nku表内容
+    results = query_table("website_nku")
+    total_records = len(results)
+    print(f"\n开始处理 website_nku 表，共 {total_records} 条记录")
+    
+    # 更新publish_time格式
+    updated_count = 0
+    bar_width = 50
+    for record in results:
+        if record['publish_time']:
+            new_date = record['publish_time'].strftime('%Y-%m-%d')
+            if update_record("website_nku", record['id'], {"publish_time": new_date}):
+                updated_count += 1
+                # 计算进度条
+                progress = updated_count / total_records
+                filled = int(bar_width * progress)
+                bar = '=' * filled + ' ' * (bar_width - filled)
+                print(f'\r进度: [{bar}] {progress*100:.1f}%', end='', flush=True)
+    
+    print(f"\n\n更新完成: 成功更新 {updated_count}/{total_records} 条记录")
+    
+    # 显示更新后的前5条记录
+    print("\n更新后的前5条记录示例:")
+    results = query_table("website_nku")
+    for i, record in enumerate(results[:5], 1):
+        print(f"\n记录 {i}:")
+        for key, value in record.items():
+            if key == 'content':  # 内容可能很长，只显示前100个字符
+                print(f"{key}: {value[:100]}...")
+            else:
+                print(f"{key}: {value}")
+    

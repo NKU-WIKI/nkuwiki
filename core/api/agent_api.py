@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional, Union, Callable
 from loguru import logger
 
-from core.agent.coze.coze_agent_new import CozeAgentNew
+# 移除CozeAgent顶层导入，防止循环导入
+# from core.agent.coze.coze_agent_sdk import CozeAgent
 from core import config
 
 # 创建专用API路由
@@ -76,18 +77,26 @@ async def chat_with_agent(
     api_logger=Depends(get_api_logger)
 ):
     """与Agent进行对话"""
+    # 延迟导入CozeAgent，避免循环导入
+    from core.agent.coze.coze_agent_sdk import CozeAgent
+    from core.bridge.context import Context, ContextType
+    
     # 创建CozeAgent实例
-    wx_bot_id = config.get("core.agent.coze.wx_bot_id")
-    agent = CozeAgentNew(wx_bot_id)
+    agent = CozeAgent()
+    
+    # 创建上下文对象
+    context = Context()
+    context.type = ContextType.TEXT
+    context["session_id"] = "api_session_" + str(hash(request.query))
     
     # 发送请求并获取回复
-    response = agent.reply(request.query)
+    reply = agent.reply(request.query, context)
     
-    if response is None:
+    if reply is None or reply.type != 0:  # 0是TEXT类型
         raise HTTPException(status_code=500, detail="Agent响应失败")
         
     return {
-        "response": response,
+        "response": reply.content,
         "sources": []  # 目前CozeAgent不提供知识来源
     }
 

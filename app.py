@@ -13,6 +13,7 @@ import uvicorn
 from config import Config
 from etl.api.mysql_api import mysql_router
 from core.api.agent_api import agent_router
+from core.utils.common.singleton import singleton
 
 # 创建配置对象
 config = Config()
@@ -22,14 +23,34 @@ config.load_config()
 log_dir = Path('./infra/deploy/log')
 log_dir.mkdir(exist_ok=True, parents=True)
 
-# 配置日志
-log_day_str = '{time:%Y-%m-%d}'
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"},
-        {"sink": f"{log_dir}/app_{log_day_str}.log", "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
+# 移除默认的控制台日志处理器
+logger.remove()
+
+# 添加文件日志处理器
+logger.add("logs/app.log", 
+    rotation="1 day",  # 每天轮换一次日志文件
+    retention="7 days",  # 保留7天的日志
+    level="DEBUG",
+    encoding="utf-8"
 )
+
+# 定义全局App单例类
+@singleton
+class App:
+    """
+    应用程序单例，提供全局访问点
+    """
+    def __init__(self):
+        self.config = config
+        self.logger = logger
+        
+    def get_config(self):
+        """获取配置对象"""
+        return self.config
+        
+    def get_logger(self):
+        """获取日志对象"""
+        return self.logger
 
 # 创建应用上下文
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
@@ -146,20 +167,24 @@ def run_app():
     # 设置信号处理
     setup_signal_handlers()
     
-    # 配置API网关
-    api_host = config.get("api.host", "0.0.0.0")
-    api_port = config.get("api.port", 80)
+    # 获取渠道类型
+    channel_type = config.get("services.channel_type", "terminal")
+    logger.info(f"Starting service with channel type: {channel_type}")
     
-    # 输出启动信息
-    logger.info(f"正在启动API服务，地址: http://{api_host}:{api_port}")
-    
-    # 启动服务
-    uvicorn.run(
-        app,
-        host=api_host,
-        port=api_port,
-        log_level="info"
-    )
+    try:
+        # 导入渠道工厂
+        from services.channel_factory import create_channel
+        
+        # 使用渠道工厂创建渠道
+        channel = create_channel(channel_type)
+        if channel:
+            channel.startup()
+        else:
+            logger.error(f"Failed to create channel: {channel_type}")
+            sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error starting channel {channel_type}: {str(e)}")
+        sys.exit(1)
 
 # 单独运行FastAPI服务
 if __name__ == "__main__":
