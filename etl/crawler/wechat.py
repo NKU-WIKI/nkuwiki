@@ -332,7 +332,7 @@ class Wechat(BaseCrawler):
                     abstract = None
                 if abstract:
                     try:
-                        article['content'] = abstract
+                        # article['content'] = abstract
                         with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
                             json.dump(article, f, ensure_ascii=False,indent=4)
                         with open(save_dir / 'abstract.md', 'w', encoding='utf-8') as f:
