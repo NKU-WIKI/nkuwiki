@@ -1,0 +1,3 @@
+[submodule "services/app"]
+	path = services/app
+	url = git@github.com:ghost233lism/Nkuwiki.git
