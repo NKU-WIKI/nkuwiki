@@ -79,6 +79,7 @@ nkuwiki校园知识共享平台
     - wechatmp_channel.py  # 微信公众号渠道
   - terminal  # 终端服务，调试用
   - website  # 网站服务
+  - app # 微信小程序服务
   - channel_factory.py  # 渠道工厂
 - requirements.txt  # 项目依赖文件
 - app.py  # 应用程序入口
