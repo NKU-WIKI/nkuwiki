@@ -125,7 +125,7 @@ class ChatChannel(Channel):
         # if current_model.startswith("coze"):
         #     context["bot_type"] = "coze"
         #     context["coze_api_key"] = Config().get("coze_api_key")
-        #     context["coze_a_id"] = Config().get("coze_app_id")
+        #     context["coze_a_id"] = Config(w).get("coze_app_id")
 
         # 消息内容匹配过程，并处理content
         if ctype == ContextType.TEXT:
