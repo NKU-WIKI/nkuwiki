@@ -186,7 +186,7 @@ def run_qa_service():
         sys.exit(1)
 
 # 启动API服务
-def run_api_service(host="0.0.0.0", port=8000):
+def run_api_service(host="0.0.0.0", port=80):
     """启动API服务"""
     # 设置信号处理
     setup_signal_handlers()
@@ -205,7 +205,7 @@ if __name__ == "__main__":
     parser.add_argument("--qa", action="store_true", help="启动问答服务")
     parser.add_argument("--api", action="store_true", help="启动API服务")
     parser.add_argument("--host", default="0.0.0.0", help="API服务主机地址")
-    parser.add_argument("--port", type=int, default=8000, help="API服务端口")
+    parser.add_argument("--port", type=int, default=80, help="API服务端口")
     
     args = parser.parse_args()
     
