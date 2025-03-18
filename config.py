@@ -147,6 +147,13 @@ available_setting = {
             "ssl_key_path": "/etc/ssl/private.key",          # SSL私钥文件路径
             "ssl_cert_path": "/etc/ssl/certificate.pem"      # SSL证书文件路径
         },
+        # 微信小程序配置 - 小程序服务相关参数
+        "app": {
+            "base_url": "http://127.0.0.1",            # 小程序服务基础URL
+            "port": 80,                                      # 服务监听端口
+            "conversation_max_tokens": 100000000,            # 会话最大token数量
+            "expires_in_seconds": 3600                       # 会话过期时间(秒)
+        },
         # 企业微信个人号配置 - 企业微信相关参数
         "wework": {
             "smart": True,                                   # 是否启用智能模式
