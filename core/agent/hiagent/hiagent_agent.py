@@ -12,11 +12,12 @@ from collections import defaultdict
 class HiAgentAgent(Agent):
     def __init__(self):
         super().__init__()
-        self.sessions = SessionManager(HiAgentSession, model=Config().get("model") or "hiagent-pro")
-        self.api_key = Config().get("hiagent_api_key")
-        self.app_id = Config().get("hiagent_app_id")
-        self.api_base = Config().get("hiagent_api_base")
-        self.user_id = Config().get("hiagent_user_id", "default_user")
+        self.config = Config()
+        self.sessions = SessionManager(HiAgentSession, model=self.config.get("core.agent.hiagent.model") or "hiagent-pro")
+        self.api_key = self.config.get("core.agent.hiagent.api_key")
+        self.app_id = self.config.get("core.agent.hiagent.app_id")
+        self.api_base = self.config.get("core.agent.hiagent.base_url")
+        self.user_id = self.config.get("core.agent.hiagent.user_id", "default_user")
         self.max_retries = 3  
 
     def _create_conversation(self, session_id):
@@ -106,8 +107,8 @@ class HiAgentAgent(Agent):
                         elif event_data.get("event") == "knowledge_retrieve_end":
                             output_list = event_data.get("docs", {}).get("outputList", [])
                             total_docs = len(output_list)
-                            max_count = Config().get("max_knowledge_display", 3)
-                            max_length = Config().get("max_knowledge_length", 100)
+                            max_count = self.config.get("max_knowledge_display", 3)
+                            max_length = self.config.get("max_knowledge_length", 100)
                             # 处理知识引用
                             if output_list:
                                 knowledge_content = f"\n\n📃找到 {total_docs} 个回答来源，显示{min(total_docs,max_count)}个：\n"
@@ -225,7 +226,7 @@ class HiAgentAgent(Agent):
                     conversation_id = session.conversation_id
                     App().logger.debug(f"[HIAGENT] 使用现有会话ID: {conversation_id}")
 
-                if(Config().get("response_mode") == "streaming"):
+                if(self.config.get("response_mode") == "streaming"):
                     full_content = self._stream_chat_query(session, conversation_id)
                 else:
                     full_content = self._blocking_chat_query(session, conversation_id)

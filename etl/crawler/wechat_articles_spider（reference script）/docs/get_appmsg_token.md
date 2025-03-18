@@ -5,8 +5,11 @@
 这里主要是介绍了抓取微信PC端数据，移动端操作基本一样，可以获取相同的参数
 
 1. 打开fiddler开始监控
+
 2. 登陆微信PC端，浏览该公众号的任意一篇推文
+
 3. 可以观察到这里的内容显示会有阅读量、点赞量、评论等
+
 4. 观察fiddler的监控数据，如下图显示
 
 ![fillder_1](https://raw.githubusercontent.com/wnma3mz/wechat_articles_spider/master/imgs/fillder_1.png)

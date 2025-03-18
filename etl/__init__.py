@@ -18,7 +18,6 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 from config import Config
 # 导入配置
 config = Config()
-config.load_config()
 
 # ---------- 全局共享配置项 ----------
 # 基础路径配置

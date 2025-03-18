@@ -6,5 +6,4 @@
 
 3. 刷新网页，在开发者工具里面，选择**Network**。如下图位置分别找到Cookie和token, 复制到代码中即可
 
-
 ![description_one](https://raw.githubusercontent.com/wnma3mz/wechat_articles_spider/master/imgs/description_one.png)

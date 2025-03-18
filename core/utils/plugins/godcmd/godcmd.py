@@ -1,9 +1,9 @@
 # encoding:utf-8
 
-import json
+import json  # noqa: F401
 import os
-import random
-import string
+import random  # noqa: F401
+import string  # noqa: F401
 import logging
 from typing import Tuple
 
@@ -214,7 +214,7 @@ class Godcmd(Plugin):
         App().logger.info(f"[Godcmd] 事件处理器已注册: {self.handlers}")
 
     def on_handle_context(self, e_context: EventContext):
-        content = e_context["context"].content
+        content = e_context["context"].content  # noqa: F841
         App().logger.debug(f"[Godcmd] 收到消息: {content}")  # 新增
         
         if content.startswith(trigger_prefix):
@@ -222,7 +222,7 @@ class Godcmd(Plugin):
             if len(content) == 1:
                 reply = Reply()
                 reply.type = ReplyType.ERROR
-                reply.content = f"空指令，输入{trigger_prefix}help查看指令列表\n"
+                reply.content = f"空指令，输入{trigger_prefix}help查看指令列表\n"  # noqa: F841
                 e_context["reply"] = reply
                 e_context.action = EventAction.BREAK_PASS
                 return
@@ -340,7 +340,7 @@ class Godcmd(Plugin):
                             self.isrunning = True
                             ok, result = True, "服务已恢复"
                         elif cmd == "reconf":
-                            Config().load_config()
+                            config = Config()
                             ok, result = True, "配置已重载"
                         elif cmd == "resetall":
                             if bottype in [const.OPEN_AI, const.CHATGPT, const.CHATGPTONAZURE, const.LINKAI,
@@ -428,7 +428,7 @@ class Godcmd(Plugin):
 
             reply = Reply()
             reply.type = ReplyType.INFO
-            reply.content = result
+            reply.content = result  # noqa: F841
             e_context["reply"] = reply
 
             App().logger.debug(f"[Godcmd] 最终回复内容: {result}")

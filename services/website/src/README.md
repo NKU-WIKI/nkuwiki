@@ -17,6 +17,7 @@ actions:
     link: ./communicate/
 
 highlights:
+
 - header: 愿景和目标
   description: 我们致力于构建南开知识共同体，践行 开源·共治·普惠 三位一体价值体系  （🔓 技术开源透明 + 🤝 社区协同共治 + 🆓 服务永久普惠），实现：
   image: /assets/image/layout.svg
@@ -73,7 +74,6 @@ highlights:
     icon: clipboard-list
     details: 我们收集的成吨信息出处列表。
     link: ./docx/data_source.md
-
 
 copyright: false
 footer: 使用 <a href="https://theme-hope.vuejs.press/zh/" target="_blank">VuePress Theme Hope</a> 主题强力驱动

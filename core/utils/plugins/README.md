@@ -1,9 +1,13 @@
 **Table of Content**
 
 - [插件化初衷](#插件化初衷)
+
 - [插件安装方法](#插件安装方法)
+
 - [插件化实现](#插件化实现)
+
 - [插件编写示例](#插件编写示例)
+
 - [插件设计建议](#插件设计建议)
 
 ## 插件化初衷
@@ -15,8 +19,11 @@
 **插件化**: 在保证主体功能是ChatGPT的前提下，我们推荐将主体功能外的功能利用插件的方式实现。
 
 - [x] 可根据功能需要，下载不同插件。
+
 - [x] 插件开发成本低，仅需了解插件触发事件，并按照插件定义接口编写插件。
+
 - [x] 插件化能够自由开关和调整优先级。
+
 - [x] 每个插件可在插件文件夹内维护独立的配置文件，方便代码的测试和调试，可以在独立的仓库开发插件。
 
 ## 插件安装方法
@@ -46,9 +53,12 @@
 在了解插件触发事件前，首先需要了解程序收到消息到发送回复的整个过程。
 
 插件化版本中，消息处理过程可以分为4个步骤：
-```
+
+```text
+
     1.收到消息 ---> 2.产生回复 ---> 3.包装回复 ---> 4.发送回复
-```
+
+```text
 
 以下是它们的默认处理逻辑(太长不看，可跳到[插件编写示例](#插件编写示例))：
 
@@ -70,7 +80,8 @@
             self.kwargs = kwargs
         def __getitem__(self, key):
             return self.kwargs[key]
-```
+
+```text
 
 `Context`中除了存放消息类型和内容外,还存放了一些与会话相关的参数。
 
@@ -78,11 +89,15 @@
 
 ```python
     context.kwargs = {'isgroup': False, 'msg': msg, 'receiver': other_user_id, 'session_id': other_user_id}
-```
+
+```text
 
 - `isgroup`: `Context`是否是群聊消息。
+
 - `msg`: `itchat`中原始的消息对象。
+
 - `receiver`: 需要回复消息的对象ID。
+
 - `session_id`: 会话ID(一般是发送触发bot消息的用户ID，如果在群聊中并且`conf`里设置了`group_chat_in_one_session`，那么此处便是群聊ID)
 
 #### 2. 产生回复
@@ -104,7 +119,8 @@
             if reply.type == ReplyType.TEXT:
                 if conf().get('voice_reply_voice'):
                     reply = super().build_text_to_voice(reply.content)
-```
+
+```text
 
 回复`Reply`的定义如下所示，它允许Bot可以回复多类不同的消息。同时也加入了`INFO`和`ERROR`消息类型区分系统提示和系统错误。
 
@@ -121,7 +137,8 @@
         def __init__(self, type : ReplyType = None , content = None):
             self.type = type
             self.content = content
-```
+
+```text
 
 #### 3. 装饰回复
 
@@ -147,7 +164,8 @@
         reply.content = reply_text
     elif reply.type == ReplyType.ERROR or reply.type == ReplyType.INFO:
         reply.content = str(reply.type)+":\n" + reply.content
-```
+
+```text
 
 #### 4. 发送回复
 
@@ -158,7 +176,9 @@
 主程序目前会在各个消息步骤间触发事件，监听相应事件的插件会按照优先级，顺序调用事件处理函数。
 
 目前支持三类触发事件：
-```
+
+```text
+
 1.收到消息
 ---> `ON_HANDLE_CONTEXT`
 2.产生回复
@@ -166,7 +186,8 @@
 3.装饰回复
 ---> `ON_SEND_REPLY`
 4.发送回复
-```
+
+```text
 
 触发事件会产生事件的上下文`EventContext`，它包含了以下信息:
 
@@ -182,17 +203,22 @@
 
 在`plugins`目录下创建一个插件文件夹`hello`。然后，在该文件夹中创建``__init__.py``文件，在``__init__.py``中将其他编写的模块文件导入。在程序启动时，插件管理器会读取``__init__.py``的所有内容。
 
-```
+```text
+
 plugins/
 └── hello
     ├── __init__.py
     └── hello.py
-```
+
+```text
 
 ``__init__.py``的内容：
-```
+
+```text
+
 from .hello import *
-```
+
+```text
 
 ### 2. 编写插件类
 
@@ -213,7 +239,8 @@ class Hello(Plugin):
         super().__init__()
         self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
         logger.info("[Hello] inited")
-```
+
+```text
 
 ### 3. 编写事件处理函数
 
@@ -230,7 +257,9 @@ class Hello(Plugin):
 在处理函数结束时，还需要设置`e_context`对象的`action`属性，它决定如何继续处理事件。目前有以下三种处理方式：
 
 - `EventAction.CONTINUE`: 事件未结束，继续交给下个插件处理，如果没有下个插件，则交付给默认的事件处理逻辑。
+
 - `EventAction.BREAK`: 事件结束，不再给下个插件处理，交付给默认的处理逻辑。
+
 - `EventAction.BREAK_PASS`: 事件结束，不再给下个插件处理，跳过默认的处理逻辑。
 
 #### 示例处理函数
@@ -238,6 +267,7 @@ class Hello(Plugin):
 `Hello`插件处理`Context`类型为`TEXT`的消息：
 
 - 如果内容是`Hello`，就将回复设置为`Hello+用户昵称`，并跳过之后的插件和默认逻辑。
+
 - 如果内容是`End`，就将`Context`的类型更改为`IMAGE_CREATE`，并让事件继续，如果最终交付到默认逻辑，会调用默认的画图Bot来画画。
 
 ```python
@@ -260,14 +290,17 @@ class Hello(Plugin):
             e_context['context'].type = ContextType.IMAGE_CREATE
             content = "The World"
             e_context.action = EventAction.CONTINUE  # 事件继续，交付给下个插件或默认逻辑
-```
+
+```text
 
 ## 插件设计建议
 
 - 尽情将你想要的个性化功能设计为插件。
+
 - 一个插件目录建议只注册一个插件类。建议使用单独的仓库维护插件，便于更新。
 
   在测试调试好后提交`PR`，把自己的仓库加入到[仓库源](https://github.com/zhayujie/chatgpt-on-wechat/blob/master/plugins/source.json)中。
 
 - 插件的config文件、使用说明`README.md`、`requirement.txt`等放置在插件目录中。
+
 - 默认优先级不要超过管理员插件`Godcmd`的优先级(999)，`Godcmd`插件提供了配置管理、插件管理等功能。

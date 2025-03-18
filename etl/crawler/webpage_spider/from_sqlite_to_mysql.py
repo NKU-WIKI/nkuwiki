@@ -7,19 +7,18 @@
 import datetime
 import os
 import sqlite3
-import sys
-from pathlib import Path
+import sys  # noqa: F401
+from pathlib import Path  # noqa: F401
 
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 import mysql.connector
-import json
+import json  # noqa: F401
 from db_config import Config
 from mysql.connector.constants import ClientFlag
 from dotenv import load_dotenv,set_key
 
 load_dotenv()
-Config().load_config()
 
 
 def get_conn(use_database=True) -> mysql.connector.MySQLConnection:

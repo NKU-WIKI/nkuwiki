@@ -4,18 +4,10 @@
 """
 使用官方 coze-py SDK 的 CozeAgent 实现
 """
-
+from core.agent import *
 import sys
 import os
-import time
-import json
 import requests
-import random
-import string
-import hashlib
-import argparse
-import traceback
-from typing import Dict, List, Any
 from loguru import logger
 
 # 确保项目根目录在 sys.path 中
@@ -115,7 +107,7 @@ class CozeAgent(Agent):
 
     def _calc_tokens(self, messages, answer):
         """计算token数量"""
-        completion_tokens = len(answer)
+        completion_tokens = len(answer)  # noqa: F841
         prompt_tokens = 0
         for message in messages:
             prompt_tokens += len(message["content"])
@@ -430,7 +422,7 @@ class CozeAgentSDK(object):
                                     try:
                                         json_data = json.loads(data)
                                         if 'data' in json_data and isinstance(json_data['data'], dict):
-                                            content = json_data['data'].get('content', '')
+                                            content = json_data['data'].get('content', '')  # noqa: F841
                                             if content:
                                                 yield content
                                     except json.JSONDecodeError:
@@ -453,7 +445,7 @@ class CozeAgentSDK(object):
                                 try:
                                     json_data = json.loads(data)
                                     if 'data' in json_data and isinstance(json_data['data'], dict):
-                                        content = json_data['data'].get('content', '')
+                                        content = json_data['data'].get('content', '')  # noqa: F841
                                         if content:
                                             yield content
                                 except json.JSONDecodeError:

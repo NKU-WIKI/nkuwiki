@@ -7,8 +7,9 @@ class Session(object):
     def __init__(self, session_id, system_prompt=None):
         self.session_id = session_id
         self.messages = []
+        self.config = Config()
         if system_prompt is None:
-            self.system_prompt = Config().get("character_desc", "")
+            self.system_prompt = self.config.get("services.character_desc", "")
         else:
             self.system_prompt = system_prompt
 
@@ -38,8 +39,9 @@ class Session(object):
 
 class SessionManager(object):
     def __init__(self, sessioncls, **session_args):
-        if Config().get("expires_in_seconds"):
-            sessions = ExpiredDict(Config().get("expires_in_seconds"))
+        self.config = Config()
+        if self.config.get("services.expires_in_seconds"):
+            sessions = ExpiredDict(self.config.get("services.expires_in_seconds"))
         else:
             sessions = dict()
         self.sessions = sessions
@@ -65,7 +67,7 @@ class SessionManager(object):
         session = self.build_session(session_id)
         session.add_query(query)
         try:
-            max_tokens = Config().get("conversation_max_tokens", 1000)
+            max_tokens = self.config.get("services.conversation_max_tokens", 1000)
             total_tokens = session.discard_exceeding(max_tokens, None)
             App().logger.debug("prompt tokens used={}".format(total_tokens))
         except Exception as e:
@@ -76,7 +78,7 @@ class SessionManager(object):
         session = self.build_session(session_id)
         session.add_reply(reply)
         try:
-            max_tokens = Config().get("conversation_max_tokens", 1000)
+            max_tokens = self.config.get("services.conversation_max_tokens", 1000)
             tokens_cnt = session.discard_exceeding(max_tokens, total_tokens)
             App().logger.debug("raw total_tokens={}, savesession tokens={}".format(total_tokens, tokens_cnt))
         except Exception as e:

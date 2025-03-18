@@ -1,22 +1,39 @@
 ---
+
 # 这是文章的标题
+
 title: 南开常用文件
+
 # 这是页面的图标
+
 icon: majesticons:file
+
 # 这是侧边栏的顺序
+
 order: 2
+
 # 设置作者
+
 author: Because
+
 # 设置写作时间
+
 date: 2025-03-08
 
 # 此页面会在文章列表置顶
+
 sticky: true
+
 # 此页面会出现在星标文章中
+
 star: true
+
 # 你可以自定义页脚
+
 footer: 南开常用文件
+
 # 你可以自定义版权信息
+
 ---
 
 # 南开常用文件
@@ -99,14 +116,15 @@ footer: 南开常用文件
 
 [国标参考文献著录规则.pdf](https://nankai.feishu.cn/file/MmVlbU1r6o1d5YxSZ2ycdVkwnFh)
 
-
 ### 研究生答辩海报模版
 
 #### 周政
+
 [博士答辩海报-多人.ppt](/otherfiles/博士答辩海报-多人.ppt)
 [博士答辩海报-1人.ppt](/otherfiles/博士答辩海报-1人.ppt)
 
 ### 博士生会议资助办法
 
 #### 周政
+
 [南开大学周恩来政府管理学院博士生会议资助办法.docx](/otherfiles/南开大学周恩来政府管理学院博士生会议资助办法.docx)

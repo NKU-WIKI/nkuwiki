@@ -17,7 +17,6 @@ from core.utils.common.singleton import singleton
 
 # 创建配置对象
 config = Config()
-config.load_config()
 
 # 创建日志目录
 log_dir = Path('./infra/deploy/log')
@@ -161,15 +160,15 @@ def handle_signal(signum, frame):
     logger.info(f"Signal {signum} received, exiting...")
     sys.exit(0)
 
-# 启动应用
-def run_app():
-    """启动API服务"""
+# 启动问答服务
+def run_qa_service():
+    """启动问答服务"""
     # 设置信号处理
     setup_signal_handlers()
     
     # 获取渠道类型
     channel_type = config.get("services.channel_type", "terminal")
-    logger.info(f"Starting service with channel type: {channel_type}")
+    logger.info(f"Starting QA service with channel type: {channel_type}")
     
     try:
         # 导入渠道工厂
@@ -186,6 +185,46 @@ def run_app():
         logger.error(f"Error starting channel {channel_type}: {str(e)}")
         sys.exit(1)
 
-# 单独运行FastAPI服务
+# 启动API服务
+def run_api_service(host="0.0.0.0", port=8000):
+    """启动API服务"""
+    # 设置信号处理
+    setup_signal_handlers()
+    
+    logger.info(f"Starting API service on {host}:{port}")
+    
+    # 启动FastAPI服务
+    uvicorn.run(app, host=host, port=port)
+
+# 主函数
 if __name__ == "__main__":
-    run_app()
+    import argparse
+    
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description="NKUWIKI服务启动工具")
+    parser.add_argument("--qa", action="store_true", help="启动问答服务")
+    parser.add_argument("--api", action="store_true", help="启动API服务")
+    parser.add_argument("--host", default="0.0.0.0", help="API服务主机地址")
+    parser.add_argument("--port", type=int, default=8000, help="API服务端口")
+    
+    args = parser.parse_args()
+    
+    # 如果没有指定任何服务，默认只启动问答服务
+    if not (args.qa or args.api):
+        args.qa = True
+        args.api = False
+    
+    # 启动指定的服务
+    if args.qa:
+        # 在单独线程中启动问答服务
+        qa_thread = threading.Thread(target=run_qa_service)
+        qa_thread.daemon = True
+        qa_thread.start()
+        logger.info("问答服务已在后台启动")
+    
+    if args.api:
+        # 主线程启动API服务
+        run_api_service(host=args.host, port=args.port)
+    elif args.qa:
+        # 如果只启动了问答服务，则等待问答服务线程结束
+        qa_thread.join()

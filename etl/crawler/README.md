@@ -7,12 +7,19 @@ crawler 模块负责从各种数据源抓取数据，是 ETL 流程中的"Extrac
 ## 文件结构
 
 - `__init__.py` - 模块入口，导入模块专用的配置依赖
+
 - `base_crawler.py` - 基础爬虫类，定义了通用的爬虫接口和功能
+
 - `module_example.py` - 示例爬虫
+
 - `wechat.py` - 微信公众号文章爬虫
+
 - `sina_finance.py` - 新浪财经数据爬虫
+
 - `market.py` - 校园集市数据爬虫
+
 - `init_script.js` - 浏览器反检测脚本
+
 - `webpage_spider/` - 通用网页爬虫工具
 
 ## 开发新爬虫
@@ -25,7 +32,8 @@ from  base_crawler import BaseCrawler
 class MyCrawler(BaseCrawler):
     # 实现必要的方法
     pass
-```
+
+```text
 
 1. **需要实现的方法**:
    - `__init__(self, **kwargs)`: 初始化爬虫配置
@@ -39,17 +47,24 @@ class MyCrawler(BaseCrawler):
 2. **使用示例**:
 
 ```python
+
 # 初始化爬虫
+
 wechat = Wechat(authors = "club_official_accounts", debug=False, headless=True, use_proxy=True)  # 抓取文章元信息
 wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量
+
 # 下载文章内容
+
 wechat.download(debug=True, headless=True, use_proxy=True)
-```
+
+```text
 
 ## 注意事项
 
 1. **速率限制**: 生产环境（大规模爬取）请设置`debug=false`，调试模式没有反爬机制很容易被封。
+
 2. **错误处理**: 妥善处理网络错误、解析错误等异常情况。
+
 3. **数据保存**: 爬取的原始数据应保存在 `data/raw/` 目录下，推荐以json格式存储，参考以下命名规范：
 
 ```json
@@ -66,7 +81,8 @@ wechat.download(debug=True, headless=True, use_proxy=True)
   "keywords": "[选填]实体词抽取结果",
   "{other_field}": "[选填]其他字段"
 }
-```
+
+```text
 
 ## 调试与测试
 
@@ -76,15 +92,17 @@ wechat.download(debug=True, headless=True, use_proxy=True)
 python wechat.py #直接运行
 python -m etl.crawler.your_crawler # 或者模块式运行
 
-```
+```text
 
 使用内置的日志记录功能记录关键信息:
 
 ```python
 self.logger.info("爬取进度: {}/{}".format(current, total))
-```
+
+```text
 
 ## 参考
 
 - 查看 `base_crawler.py` 作为开发参考
+
 - 参考现有爬虫实现 (如 `wechat.py`, `sina_finance.py`) 了解最佳实践
