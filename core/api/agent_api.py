@@ -13,6 +13,7 @@ import json
 # 移除CozeAgent顶层导入，防止循环导入
 # from core.agent.coze.coze_agent_sdk import CozeAgent
 from core import config
+from core.bridge.reply import ReplyType
 
 # 创建专用API路由
 agent_router = APIRouter(
