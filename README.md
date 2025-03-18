@@ -59,6 +59,8 @@
 ```bash
 # 克隆仓库
 git clone https://github.com/NKU-WIKI/nkuwiki.git
+# 克隆微信小程序子模块
+git submodule update --init --recursive
 cd nkuwiki
 ```
 
