@@ -3,7 +3,9 @@ from pathlib import Path
 import asyncio
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl.transform import *
-from core.agent.coze.coze_agent_sdk import CozeAgentSDK
+from core.agent.coze.coze_agent import CozeAgent
+from core.bridge.context import Context, ContextType
+from core.bridge.reply import ReplyType
 
 def get_bot_ids_by_tag(bot_tag="abstract"):
     """
@@ -150,16 +152,27 @@ async def generate_abstract_async(file_path, max_length: int = 300, bot_tag: str
     
     try:
         content = file_path.read_text(encoding='utf-8')
-        coze_agent = CozeAgentSDK(bot_id=bot_id, use_cn_api=True)
+        coze_agent = CozeAgent()
+        coze_agent.bot_id = bot_id  # 直接设置bot_id
+        
+        # 构造Context对象
+        context = Context(ContextType.TEXT)
+        context["session_id"] = "abstract_generation"
         
         # 在线程池中执行同步reply方法
-        reply = await asyncio.to_thread(coze_agent.reply, content)
+        reply = await asyncio.to_thread(lambda: coze_agent.reply(content, context))
         
-        if(reply is None):
+        if reply is None or reply.type != ReplyType.STREAM:
             transform_logger.error(f"生成摘要失败: {file_path}")
             return None
-        transform_logger.debug(f"生成摘要预览: {reply[:100]}")
-        return reply
+            
+        # 从流式回复中获取完整内容
+        full_reply = ""
+        for chunk in reply.content:
+            full_reply += chunk
+            
+        transform_logger.debug(f"生成摘要预览: {full_reply[:100]}")
+        return full_reply
     except Exception as e:
         transform_logger.error(f"生成摘要时发生错误: {e}")
         return None

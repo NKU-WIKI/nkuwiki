@@ -9,6 +9,17 @@ from core.bridge.reply import Reply, ReplyType
 from services.chat_channel import ChatChannel, check_prefix
 from services.chat_message import ChatMessage
 from config import Config
+from core.agent.agent_factory import create_agent
+from core.utils.common import const
+
+# 导入Coze相关API
+try:
+    from cozepy import Coze, TokenAuth, COZE_CN_BASE_URL
+    from cozepy.bots import Bot, BotOnboardingInfo
+    COZE_SDK_AVAILABLE = True
+except ImportError:
+    COZE_SDK_AVAILABLE = False
+    logger.warning("cozepy未安装，将使用默认欢迎语")
 
 
 class TerminalMessage(ChatMessage):
@@ -36,6 +47,28 @@ class TerminalChannel(ChatChannel):
         super().__init__()
         self._last_response_time = 0
         self._min_response_interval = Config().get("services.terminal.min_response_interval", 0.1)
+        self.config = Config()
+        # 根据配置创建agent实例，默认使用coze
+        self.agent_type = self.config.get("core.agent.type", const.COZE)
+        self.agent = create_agent(self.agent_type)
+        # 创建coze客户端
+        self.coze_client = None
+        if COZE_SDK_AVAILABLE:
+            try:
+                api_key = self.config.get("core.agent.coze.api_key", "")
+                bot_id = self.config.get("core.agent.coze.bot_id", "")
+                base_url = self.config.get("core.agent.coze.base_url", COZE_CN_BASE_URL)
+                
+                if api_key and bot_id:
+                    self.coze_client = Coze(
+                        auth=TokenAuth(token=api_key),
+                        base_url=base_url
+                    )
+                    self.bot_id = bot_id
+                    logger.debug("Coze客户端初始化成功")
+            except Exception as e:
+                logger.error(f"Coze客户端初始化失败: {str(e)}")
+                self.coze_client = None
 
     def send(self, reply: Reply, context: Context):
         """发送回复到终端"""
@@ -55,8 +88,7 @@ class TerminalChannel(ChatChannel):
                 print("\n\033[36m南开小知>\033[0m ", end="", flush=True)
                 self._handle_image_url_reply(reply)
             elif reply.type == ReplyType.TEXT or reply.type == ReplyType.STREAM:
-                # 减少文本回复前的空行
-                print("\033[36m南开小知>\033[0m ", end="", flush=True)
+                # 修改: 前缀在_handle_text_reply方法中显示，这里不再显示
                 self._handle_text_reply(reply)
             else:
                 print(f"\033[36m南开小知>\033[0m [不支持的消息类型: {reply.type}]")
@@ -112,13 +144,39 @@ class TerminalChannel(ChatChannel):
             if hasattr(content, '__iter__') and hasattr(content, '__next__') and not isinstance(content, (str, list, tuple)):
                 # 处理生成器对象
                 logger.debug("[DEBUG] 处理生成器类型的内容")
+                
+                # 添加超时处理
+                start_time = time.time()
+                max_wait_time = 60  # 最大等待时间（秒）
+                received_any_data = False
+                printed_prefix = False  # 新增标志，用于跟踪是否已打印前缀
+                
                 for chunk in content:
+                    # 更新接收标志
+                    received_any_data = True
+                    
+                    # 在收到第一块数据时才显示前缀
+                    if not printed_prefix:
+                        print("\033[36m南开小知>\033[0m ", end="", flush=True)
+                        printed_prefix = True
+                    
+                    # 检查是否超时
+                    if time.time() - start_time > max_wait_time:
+                        print("\n[请求超时，已强制中断]", end="", flush=True)
+                        break
+                        
                     print(chunk, end="", flush=True)
+                
+                # 如果完全没有接收到数据，显示错误消息
+                if not received_any_data:
+                    print("\033[36m南开小知>\033[0m [未收到任何响应，请检查网络连接]", end="", flush=True)
+                    
                 # 确保流式输出完成后立即刷新
                 sys.stdout.flush()
             elif isinstance(content, (list, tuple)):
                 # 处理列表或元组类型的流式输出
                 logger.debug("[DEBUG] 处理列表/元组类型的内容")
+                print("\033[36m南开小知>\033[0m ", end="", flush=True)  # 增加前缀显示
                 for chunk in content:
                     print(chunk, end="", flush=True)
                 # 确保流式输出完成后立即刷新
@@ -126,6 +184,7 @@ class TerminalChannel(ChatChannel):
             elif isinstance(content, str):
                 # 处理字符串类型的内容，按行添加前缀
                 logger.debug("[DEBUG] 处理字符串类型的内容")
+                print("\033[36m南开小知>\033[0m ", end="", flush=True)  # 增加前缀显示
                 lines = content.split('\n')
                 for i, line in enumerate(lines):
                     if i > 0:  # 如果不是第一行，先换行
@@ -136,11 +195,71 @@ class TerminalChannel(ChatChannel):
             else:
                 # 未知类型的内容，尝试直接打印
                 logger.debug(f"[DEBUG] 处理未知类型的内容: {type(content)}")
+                print("\033[36m南开小知>\033[0m ", end="", flush=True)  # 增加前缀显示
                 print(str(content), end="", flush=True)
                 sys.stdout.flush()
         except Exception as e:
             logger.error(f"显示文本失败: {str(e)}")
-            print(f"\n[显示文本失败: {str(e)}]")
+            print(f"\n\033[36m南开小知>\033[0m [显示文本失败: {str(e)}]")
+
+    def _get_welcome_message(self):
+        """从coze直接获取欢迎信息和提问建议"""
+        try:
+            # 优先使用CozeAgent的sdk对象获取欢迎语和推荐问题
+            if self.agent_type == const.COZE and hasattr(self.agent, 'sdk'):
+                logger.debug("尝试通过CozeAgent.sdk获取欢迎信息")
+                # 获取格式化的欢迎信息
+                welcome_text = self.agent.sdk.get_formatted_welcome()
+                if welcome_text:
+                    logger.debug("成功通过CozeAgent.sdk获取Bot欢迎信息")
+                    return welcome_text
+                
+            # 其次尝试使用cozepy API获取机器人配置的onboarding信息
+            if COZE_SDK_AVAILABLE and self.coze_client and self.bot_id:
+                # 获取机器人信息
+                bot_info = self.coze_client.bots.retrieve(bot_id=self.bot_id)
+                
+                # 获取onboarding信息
+                onboarding_info = bot_info.onboarding_info
+                
+                if onboarding_info:
+                    prologue = onboarding_info.prologue
+                    suggested_questions = onboarding_info.suggested_questions
+                    
+                    # 构建欢迎语和提问建议
+                    welcome_text = prologue or "欢迎使用南开小知！"
+                    
+                    # 添加提问建议
+                    if suggested_questions and len(suggested_questions) > 0:
+                        welcome_text += "\n\n您可以尝试以下问题:"
+                        for i, question in enumerate(suggested_questions):
+                            welcome_text += f"\n{i+1}. {question}"
+                    
+                    return welcome_text
+            
+            # 如果无法获取直接配置的欢迎语，使用agent发送请求获取
+            context = Context()
+            context.type = ContextType.TEXT
+            context["session_id"] = "welcome_session"
+            context["isgroup"] = False
+            context["stream_output"] = False
+            
+            # 向agent发送获取欢迎信息的请求
+            welcome_reply = self.agent.reply("请以南开小知助手的身份给我一个简短的欢迎语和3个常见问题建议", context)
+            
+            if welcome_reply and welcome_reply.content:
+                # 如果是生成器类型的内容，转换为字符串
+                if hasattr(welcome_reply.content, '__iter__') and hasattr(welcome_reply.content, '__next__'):
+                    welcome_text = "".join([chunk for chunk in welcome_reply.content])
+                else:
+                    welcome_text = welcome_reply.content
+                    
+                return welcome_text
+            else:
+                return "你好！请问有什么可以帮你的吗？"
+        except Exception as e:
+            logger.error(f"获取欢迎信息失败: {str(e)}")
+            return "你好！请问有什么可以帮你的吗？"
 
     def startup(self):
         """启动终端交互"""
@@ -152,25 +271,41 @@ class TerminalChannel(ChatChannel):
             # 清屏
             os.system('cls' if os.name == 'nt' else 'clear')
             
-            # 模拟终端窗口顶部的红黄绿三个按钮
+            # 顶部按钮 - 修改为更接近macOS风格
             print("\033[31m●\033[33m●\033[32m●\033[0m")
             
-            # 线条风格的NKUWIKI ASCII艺术LOGO - 简化字母版本
-            logo = """
-  _   _ _  __ _   _ __        __ _  _   ___
- | \\ | | |/ /| | | / /       / /| |/ | |_ _|
- |  \\| | ' / | | |/ /  /\\  / / | ' |  | |
- | |\\  | . \\ | |< <  /  \\/  /  | . |  | |
- |_| \\_|_|\\_\\|_| \\_\\/    \\/   |_|\\_| |___|"""
-            # 使用绿色显示ASCII艺术
-            print("\033[32m" + logo + "\033[0m")
+            # 使用方块字符的LOGO - 更适合黑色终端背景
+            print("\033[32m  ███╗   ██╗██╗  ██╗██╗   ██╗██╗    ██╗██╗██╗  ██╗██╗\033[0m")
+            print("\033[32m  ████╗  ██║██║ ██╔╝██║   ██║██║    ██║██║██║ ██╔╝██║\033[0m")
+            print("\033[32m  ██╔██╗ ██║█████╔╝ ██║   ██║██║ █╗ ██║██║█████╔╝ ██║\033[0m")
+            print("\033[32m  ██║╚██╗██║██╔═██╗ ██║   ██║██║███╗██║██║██╔═██╗ ╚═╝\033[0m")
+            print("\033[32m  ██║ ╚████║██║  ██╗╚██████╔╝╚███╔███╔╝██║██║  ██╗██╗\033[0m")
+            print("\033[32m  ╚═╝  ╚═══╝╚═╝  ╚═╝ ╚═════╝  ╚══╝╚══╝ ╚═╝╚═╝  ╚═╝╚═╝\033[0m")
             
-            # 简洁的欢迎信息 - 不再添加额外空行
-            print("🎓 南开知识共同体 - 开源·共治·普惠")
-            print("输入 'exit' 退出 | 'help' 获取帮助 | 'clear' 清屏")
+            # 调整框架和内容对齐
+            print("\033[36m┌─────────────────────────────────────────────────┐\033[0m")
+            print("\033[36m│\033[0m 🎓 \033[1m南开知识共同体 - 开源·共治·普惠\033[0m              \033[36m│\033[0m")
+            print("\033[36m└─────────────────────────────────────────────────┘\033[0m")
+            
+            # 命令提示使用更明显的颜色
+            print("\033[31m• 输入 'exit' 退出\033[0m | \033[33m• 'help' 获取帮助\033[0m | \033[32m• 'clear' 清屏\033[0m")
         
-        # 减少初始问候语前的空行
-        print("\033[36m南开小知>\033[0m 你好！请问有什么可以帮你的吗？")
+        # 分隔线使用更明显的线条
+        print("\033[90m═══════════════════════════════════════════════\033[0m")
+        
+        # 从coze获取欢迎信息
+        print("\033[36m南开小知>\033[0m 正在加载欢迎信息...")
+        welcome_message = self._get_welcome_message()
+        # 清除"正在加载"提示
+        print("\r\033[K", end="")
+        # 显示欢迎信息，按行处理
+        lines = welcome_message.split('\n')
+        for i, line in enumerate(lines):
+            if i == 0:
+                print(f"\033[36m南开小知>\033[0m {line}")
+            else:
+                print(f"\033[36m       >\033[0m {line}")
+        
         print("\033[33mUser>\033[0m ", end="")
         sys.stdout.flush()
         logger.debug("[DEBUG] 初始用户提示符显示完成")  # 添加调试信息
@@ -207,7 +342,7 @@ class TerminalChannel(ChatChannel):
                 elif prompt.lower() == 'clear':
                     # 清屏命令
                     os.system('cls' if os.name == 'nt' else 'clear')
-                    # 显示简化的标志
+                    # 显示简化的标志和按钮
                     print("\033[31m●\033[33m●\033[32m●\033[0m")
                     print("\033[32m _   _ _  __ _   _ __        __ _  _   ___ \033[0m")
                     print("\033[33mUser>\033[0m ", end="")
@@ -217,6 +352,12 @@ class TerminalChannel(ChatChannel):
                     # 添加调试命令
                     print("\n[DEBUG MODE] 输出调试信息")
                     self._diagnostic_check()  # 调用诊断检查函数
+                    print("\033[33mUser>\033[0m ", end="")
+                    sys.stdout.flush()
+                    continue
+                elif prompt.lower() == 'retry':
+                    # 添加重试命令，用于网络问题时重新连接
+                    print("\n尝试重新连接...")
                     print("\033[33mUser>\033[0m ", end="")
                     sys.stdout.flush()
                     continue

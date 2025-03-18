@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 import logging
+import traceback
 
 # 添加项目根目录到系统路径
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent.parent))
@@ -16,8 +17,10 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent.parent))
 # 导入配置和日志模块
 from core import config, logger
 
-# 导入CozeAgentSDK
-from core.agent.coze.coze_agent_sdk import CozeAgentSDK
+# 导入CozeAgent
+from core.agent.coze.coze_agent import CozeAgent
+from core.bridge.context import Context, ContextType
+from core.bridge.reply import ReplyType
 
 # 配置日志输出
 logging.basicConfig(
@@ -45,8 +48,13 @@ def test_stream_chat(query):
             print("错误: 未配置bot_id，请在config.json中设置core.agent.coze.wx_bot_id")
             return
             
-        # 初始化SDK
-        sdk = CozeAgentSDK(bot_id=bot_id, use_cn_api=True)
+        # 初始化Agent
+        agent = CozeAgent()
+        agent.bot_id = bot_id
+        
+        # 创建上下文
+        context = Context(ContextType.TEXT)
+        context["session_id"] = "test_stream_chat"
         
         # 开始计时
         start_time = time.time()
@@ -55,8 +63,15 @@ def test_stream_chat(query):
         print("AI回复: ", end="", flush=True)
         full_response = ""
         
+        # 获取回复对象
+        reply = agent.reply(query, context)
+        
+        if reply.type != ReplyType.STREAM:
+            print("错误: 未获取到流式回复")
+            return
+            
         # 逐步输出回复内容
-        for chunk in sdk.stream_reply(query):
+        for chunk in reply.content:
             print(chunk, end="", flush=True)
             full_response += chunk
             
@@ -71,7 +86,7 @@ def test_stream_chat(query):
         
         # 尝试获取知识库结果
         print("获取知识库召回结果...")
-        knowledge_results = sdk.get_knowledge_results(query)
+        knowledge_results = agent.get_knowledge_results(query)
         
         if knowledge_results:
             print("\n知识库召回结果:")
@@ -107,20 +122,30 @@ def test_normal_chat(query):
             print("错误: 未配置bot_id，请在config.json中设置core.agent.coze.wx_bot_id")
             return
             
-        # 初始化SDK
-        sdk = CozeAgentSDK(bot_id=bot_id, use_cn_api=True)
+        # 初始化Agent
+        agent = CozeAgent()
+        agent.bot_id = bot_id
+        
+        # 创建上下文
+        context = Context(ContextType.TEXT)
+        context["session_id"] = "test_normal_chat"
         
         # 开始计时
         start_time = time.time()
         
         # 获取回复
         print("正在获取回复...")
-        response = sdk.reply(query)
+        reply = agent.reply(query, context)
         
         # 结束计时
         end_time = time.time()
         
-        if response:
+        if reply.type == ReplyType.STREAM:
+            # 从流中获取完整回复
+            response = ""
+            for chunk in reply.content:
+                response += chunk
+                
             print("\nAI回复:\n")
             print(response)
             
@@ -130,7 +155,7 @@ def test_normal_chat(query):
             print(f"回复总长度: {len(response)}字符")
             print("-"*50 + "\n")
         else:
-            print("未收到回复")
+            print("未收到有效回复")
             
     except Exception as e:
         print(f"\n发生错误: {e}")
@@ -138,86 +163,75 @@ def test_normal_chat(query):
 
 def test_http_vs_sdk(query):
     """
-    对比HTTP和SDK模式的性能
-    
-    Args:
-        query: 用户提问
+    测试HTTP和SDK模式的性能差异
     """
-    # 打印分隔线
-    print("\n" + "="*50)
-    print(f"开始对比HTTP和SDK模式，问题: {query}")
-    print("="*50 + "\n")
-    
     try:
-        # 从配置中获取bot_id
-        bot_id = config.get("core.agent.coze.wx_bot_id")
-        
+        bot_id = config.get("core.agent.coze.flash_bot_id", "")
         if not bot_id:
-            print("错误: 未配置bot_id，请在config.json中设置core.agent.coze.wx_bot_id")
+            logger.error("未配置 flash_bot_id，请检查配置")
             return
             
-        # 测试SDK模式
-        print("\n[SDK模式]")
-        sdk_instance = CozeAgentSDK(bot_id=bot_id, use_cn_api=True, use_sdk=True)
+        # 创建上下文
+        context = Context(ContextType.TEXT)
+        context["session_id"] = "test_http_vs_sdk"
         
-        # 开始计时
-        sdk_start_time = time.time()
+        # 使用CozeAgent测试
+        logger.info("初始化 CozeAgent")
+        agent = CozeAgent()
+        agent.bot_id = bot_id
         
-        # 获取回复
-        print("正在获取回复...")
-        sdk_response = sdk_instance.reply(query)
+        # SDK模式测试
+        logger.info(f"SDK模式测试，查询: {query}")
+        sdk_start = time.time()
+        sdk_reply = agent.reply(query, context)
+        sdk_end = time.time()
         
-        # 结束计时
-        sdk_end_time = time.time()
-        sdk_time = sdk_end_time - sdk_start_time
-        
-        if sdk_response:
-            print(f"回复完成，用时: {sdk_time:.2f}秒")
-            print(f"回复总长度: {len(sdk_response)}字符")
-        else:
-            print("未收到回复")
-        
-        # 测试HTTP模式
-        print("\n[HTTP模式]")
-        http_instance = CozeAgentSDK(bot_id=bot_id, use_cn_api=True, use_sdk=False)
-        
-        # 开始计时
-        http_start_time = time.time()
-        
-        # 获取回复
-        print("正在获取回复...")
-        http_response = http_instance.reply(query)
-        
-        # 结束计时
-        http_end_time = time.time()
-        http_time = http_end_time - http_start_time
-        
-        if http_response:
-            print(f"回复完成，用时: {http_time:.2f}秒")
-            print(f"回复总长度: {len(http_response)}字符")
-        else:
-            print("未收到回复")
+        if sdk_reply.type != ReplyType.STREAM:
+            logger.error("SDK模式未获取到流式回复")
+            return
             
-        # 比较结果
-        print("\n[对比结果]")
-        if sdk_response and http_response:
-            print(f"SDK模式用时: {sdk_time:.2f}秒")
-            print(f"HTTP模式用时: {http_time:.2f}秒")
-            print(f"速度差异: {'SDK更快' if sdk_time < http_time else 'HTTP更快'}, 差值: {abs(sdk_time - http_time):.2f}秒")
+        # 获取完整响应
+        sdk_response = ""
+        sdk_chunks = 0
+        for chunk in sdk_reply.content:
+            sdk_chunks += 1
+            sdk_response += chunk
             
-            # 内容一致性
-            content_match = sdk_response == http_response
-            print(f"内容一致性: {'内容完全一致' if content_match else '内容不一致'}")
+        sdk_time = sdk_end - sdk_start
+        logger.info(f"SDK模式完成: 耗时 {sdk_time:.2f}秒，接收 {sdk_chunks} 个片段")
+        logger.info(f"SDK模式响应: {sdk_response[:200]}...")
+        
+        # HTTP模式测试
+        logger.info("\nHTTP模式测试...")
+        http_start = time.time()
+        http_reply = agent.reply(query, context, use_http=True)
+        http_end = time.time()
+        
+        if http_reply.type != ReplyType.STREAM:
+            logger.error("HTTP模式未获取到流式回复")
+            return
             
-            if not content_match:
-                # 计算响应的相似程度
-                common_len = len([i for i, j in zip(sdk_response, http_response) if i == j])
-                similarity = common_len / max(len(sdk_response), len(http_response)) * 100
-                print(f"内容相似度: {similarity:.2f}%")
+        # 获取完整响应
+        http_response = ""
+        http_chunks = 0
+        for chunk in http_reply.content:
+            http_chunks += 1
+            http_response += chunk
             
+        http_time = http_end - http_start
+        logger.info(f"HTTP模式完成: 耗时 {http_time:.2f}秒，接收 {http_chunks} 个片段")
+        logger.info(f"HTTP模式响应: {http_response[:200]}...")
+        
+        # 性能比较
+        logger.info("\n性能比较:")
+        logger.info(f"SDK模式: {sdk_time:.2f}秒, {sdk_chunks}个片段")
+        logger.info(f"HTTP模式: {http_time:.2f}秒, {http_chunks}个片段")
+        logger.info(f"时间差异: {abs(sdk_time - http_time):.2f}秒")
+        logger.info(f"片段差异: {abs(sdk_chunks - http_chunks)}个")
+        
     except Exception as e:
-        print(f"\n发生错误: {e}")
-        logger.exception("模式对比测试异常")
+        logger.error(f"测试失败: {str(e)}")
+        logger.error(traceback.format_exc())
 
 if __name__ == "__main__":
     # 测试问题

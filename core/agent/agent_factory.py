@@ -24,7 +24,7 @@ def create_agent(agent_type):
             from core.agent.hiagent.hiagent_agent import HiagentAgent
             return HiagentAgent()
         elif agent_type == const.COZE:
-            from core.agent.coze.coze_agent_sdk import CozeAgent
+            from core.agent.coze.coze_agent import CozeAgent
             return CozeAgent()
         elif agent_type == const.BAIDU:
             from core.agent.baidu.baidu_wenxin import BaiduWenxinAgent

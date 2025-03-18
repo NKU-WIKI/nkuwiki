@@ -1,0 +1,58 @@
+[tool.poetry]
+name = "cozepy"
+version = "0.13.0"
+description = "OpenAPI SDK for Coze(coze.com/coze.cn)"
+authors = ["chyroc <chyroc@bytedance.com>"]
+readme = "README.md"
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.7"
+pydantic = "^2.5.0"
+authlib = "^1.2.0"
+httpx = [
+    { version =  "^0.24.0", python = "<=3.7" },
+    { version =  "^0.27.0", python = "^3.8" },
+]
+typing-extensions = "^4.3.0"
+distro = "^1.9.0"
+websockets = [
+    { version = "^14.1.0", python = ">=3.9" },
+    { version = "^13.1.0", python = ">=3.8,<3.9" },
+    { version = "^11.0.3", python = ">=3.7,<3.8" },
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0.0"
+pytest-cov = "^4.0.0"
+pytest-asyncio = "^0.21.0"
+ruff = "^0.6.0"
+pre-commit = "^2.9.0"
+respx = "^0.21.1"
+mypy = "^1.0.0"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.mypy]
+exclude = [
+    "examples/",
+    "tests/"
+]
+
+[tool.coverage.report]
+precision = 1
+skip_covered = true
+exclude_lines = [
+    "abc.abstractmethod",
+    "if TYPE_CHECKING.*:",
+    "raise NotImplementedError",
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

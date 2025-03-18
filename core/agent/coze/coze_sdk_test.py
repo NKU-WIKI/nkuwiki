@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-测试 Coze SDK 功能
+测试 Coze Agent 功能
 """
 
 import sys
@@ -68,8 +68,10 @@ try:
 except ImportError:
     COZE_CN_BASE_URL = "https://api.coze.cn"
 
-# 测试CozeAgentSDK
-from coze_agent_sdk import CozeAgentSDK
+# 导入必要的类
+from core.agent.coze.coze_agent import CozeAgent
+from core.bridge.context import Context, ContextType
+from core.bridge.reply import ReplyType
 
 def test_stream_response():
     """测试流式响应"""
@@ -79,11 +81,16 @@ def test_stream_response():
             file_logger.error("未配置 flash_bot_id，请检查配置")
             return
             
-        file_logger.info("初始化 CozeAgentSDK")
-        agent = CozeAgentSDK(bot_id=bot_id, use_cn_api=True)
+        file_logger.info("初始化 CozeAgent")
+        agent = CozeAgent()
+        agent.bot_id = bot_id
         
         query = "以南开大学为例，介绍一下中国的高等教育体系"
         file_logger.info(f"测试流式响应，查询: {query}")
+        
+        # 创建上下文
+        context = Context(ContextType.TEXT)
+        context["session_id"] = "test_stream_response"
         
         # 测试流式响应
         total_chunks = 0
@@ -91,7 +98,13 @@ def test_stream_response():
         full_response = ""
         
         file_logger.info("开始接收流式响应...")
-        for chunk in agent.stream_reply(query):
+        reply = agent.reply(query, context)
+        
+        if reply.type != ReplyType.STREAM:
+            file_logger.error("未获取到流式回复")
+            return
+            
+        for chunk in reply.content:
             total_chunks += 1
             total_chars += len(chunk)
             full_response += chunk
@@ -114,19 +127,29 @@ def test_normal_response():
             file_logger.error("未配置 flash_bot_id，请检查配置")
             return
             
-        file_logger.info("初始化 CozeAgentSDK")
-        agent = CozeAgentSDK(bot_id=bot_id, use_cn_api=True)
+        file_logger.info("初始化 CozeAgent")
+        agent = CozeAgent()
+        agent.bot_id = bot_id
         
         query = "介绍一下南开大学的历史"
         file_logger.info(f"测试普通响应，查询: {query}")
         
+        # 创建上下文
+        context = Context(ContextType.TEXT)
+        context["session_id"] = "test_normal_response"
+        
         # 测试普通响应
         file_logger.info("开始请求普通响应...")
         start_time = time.time()
-        response = agent.reply(query)
+        reply = agent.reply(query, context)
         end_time = time.time()
         
-        if response:
+        if reply.type == ReplyType.STREAM:
+            # 从流中获取完整回复
+            response = ""
+            for chunk in reply.content:
+                response += chunk
+                
             file_logger.info(f"普通响应成功，耗时: {end_time - start_time:.2f}秒")
             # 如果响应太长，只显示前500个字符
             if len(response) > 500:
@@ -149,8 +172,9 @@ def test_knowledge_results():
             file_logger.error("未配置 flash_bot_id，请检查配置")
             return
             
-        file_logger.info("初始化 CozeAgentSDK")
-        agent = CozeAgentSDK(bot_id=bot_id, use_cn_api=True)
+        file_logger.info("初始化 CozeAgent")
+        agent = CozeAgent()
+        agent.bot_id = bot_id
         
         query = "南开大学有哪些专业"
         file_logger.info(f"测试知识库召回，查询: {query}")

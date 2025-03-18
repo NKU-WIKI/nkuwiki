@@ -78,7 +78,7 @@ async def chat_with_agent(
 ):
     """与Agent进行对话"""
     # 延迟导入CozeAgent，避免循环导入
-    from core.agent.coze.coze_agent_sdk import CozeAgent
+    from core.agent.coze.coze_agent import CozeAgent
     from core.bridge.context import Context, ContextType
     
     # 创建CozeAgent实例
