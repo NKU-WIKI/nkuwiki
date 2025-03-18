@@ -13,30 +13,50 @@ import uvicorn
 from config import Config
 from etl.api.mysql_api import mysql_router
 from core.api.agent_api import agent_router
+from core.utils.common.singleton import singleton
 
 # 创建配置对象
 config = Config()
-config.load_config()
 
 # 创建日志目录
 log_dir = Path('./infra/deploy/log')
 log_dir.mkdir(exist_ok=True, parents=True)
 
-# 配置日志
-log_day_str = '{time:%Y-%m-%d}'
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"},
-        {"sink": f"{log_dir}/app_{log_day_str}.log", "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
+# 移除默认的控制台日志处理器
+logger.remove()
+
+# 添加文件日志处理器
+logger.add("logs/app.log", 
+    rotation="1 day",  # 每天轮换一次日志文件
+    retention="7 days",  # 保留7天的日志
+    level="DEBUG",
+    encoding="utf-8"
 )
+
+# 定义全局App单例类
+@singleton
+class App:
+    """
+    应用程序单例，提供全局访问点
+    """
+    def __init__(self):
+        self.config = config
+        self.logger = logger
+        
+    def get_config(self):
+        """获取配置对象"""
+        return self.config
+        
+    def get_logger(self):
+        """获取日志对象"""
+        return self.logger
 
 # 创建应用上下文
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="NKUWIKI API",
+    title="nkuwiki API",
     description="南开百科知识平台API服务",
     version="1.0.0",
 )
@@ -90,7 +110,7 @@ def get_config():
 async def root():
     """API根路径，返回API服务基本信息"""
     return {
-        "name": "NKUWIKI API",
+        "name": "nkuwiki API",
         "version": "1.0.0",
         "description": "南开百科知识平台API服务",
         "status": "running"
@@ -140,27 +160,71 @@ def handle_signal(signum, frame):
     logger.info(f"Signal {signum} received, exiting...")
     sys.exit(0)
 
-# 启动应用
-def run_app():
+# 启动问答服务
+def run_qa_service():
+    """启动问答服务"""
+    # 设置信号处理
+    setup_signal_handlers()
+    
+    # 获取渠道类型
+    channel_type = config.get("services.channel_type", "terminal")
+    logger.info(f"Starting QA service with channel type: {channel_type}")
+    
+    try:
+        # 导入渠道工厂
+        from services.channel_factory import create_channel
+        
+        # 使用渠道工厂创建渠道
+        channel = create_channel(channel_type)
+        if channel:
+            channel.startup()
+        else:
+            logger.error(f"Failed to create channel: {channel_type}")
+            sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error starting channel {channel_type}: {str(e)}")
+        sys.exit(1)
+
+# 启动API服务
+def run_api_service(host="0.0.0.0", port=80):
     """启动API服务"""
     # 设置信号处理
     setup_signal_handlers()
     
-    # 配置API网关
-    api_host = config.get("api.host", "0.0.0.0")
-    api_port = config.get("api.port", 80)
+    logger.info(f"Starting API service on {host}:{port}")
     
-    # 输出启动信息
-    logger.info(f"正在启动API服务，地址: http://{api_host}:{api_port}")
-    
-    # 启动服务
-    uvicorn.run(
-        app,
-        host=api_host,
-        port=api_port,
-        log_level="info"
-    )
+    # 启动FastAPI服务
+    uvicorn.run(app, host=host, port=port)
 
-# 单独运行FastAPI服务
+# 主函数
 if __name__ == "__main__":
-    run_app()
+    import argparse
+    
+    # 创建命令行参数解析器
+    parser = argparse.ArgumentParser(description="nkuwiki服务启动工具")
+    parser.add_argument("--qa", action="store_true", help="启动问答服务")
+    parser.add_argument("--api", action="store_true", help="启动API服务")
+    parser.add_argument("--host", default="0.0.0.0", help="API服务主机地址")
+    parser.add_argument("--port", type=int, default=80, help="API服务端口")
+    
+    args = parser.parse_args()
+    
+    # 如果没有指定任何服务，默认只启动问答服务
+    if not (args.qa or args.api):
+        args.qa = True
+        args.api = False
+    
+    # 启动指定的服务
+    if args.qa:
+        # 在单独线程中启动问答服务
+        qa_thread = threading.Thread(target=run_qa_service)
+        qa_thread.daemon = True
+        qa_thread.start()
+        logger.info("问答服务已在后台启动")
+    
+    if args.api:
+        # 主线程启动API服务
+        run_api_service(host=args.host, port=args.port)
+    elif args.qa:
+        # 如果只启动了问答服务，则等待问答服务线程结束
+        qa_thread.join()

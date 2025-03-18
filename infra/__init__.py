@@ -1,0 +1,36 @@
+"""
+Infra模块，负责提供基础设施功能
+
+此模块提供部署、监控和性能评测等基础功能，为整个项目提供底层支持服务。
+
+子模块:
+- deploy: 项目部署工具
+- monitoring: 系统监控工具
+- benchmark: 性能评测工具
+"""
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+from config import Config
+from loguru import logger
+
+# 导入配置
+config = Config()
+
+# 创建日志目录
+LOG_PATH = Path(__file__).resolve().parent / "logs"
+LOG_PATH.mkdir(exist_ok=True, parents=True)
+logger.add(LOG_PATH / "infra.log", rotation="1 day", retention="3 months", level="DEBUG")
+
+# 版本信息
+__version__ = "1.0.0"
+
+# 定义导出的符号列表
+__all__ = [
+    'config', 'logger', 'LOG_PATH'
+]
+
+# Infra模块主要功能：
+# 1. 提供部署工具，支持Docker和Kubernetes部署
+# 2. 提供监控工具，支持系统状态监控和告警
+# 3. 提供性能评测工具，支持压力测试和性能分析

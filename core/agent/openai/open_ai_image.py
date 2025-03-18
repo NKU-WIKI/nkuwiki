@@ -9,22 +9,23 @@ from core.utils.common.token_bucket import TokenBucket
 # OPENAI提供的画图接口
 class OpenAIImage(object):
     def __init__(self):
+        self.config = Config()
         self.client = OpenAI(
-            api_key=Config().get("voice_openai_api_key", Config().get("open_ai_api_key")),
-            base_url=Config().get("voice_openai_api_base", Config().get("open_ai_api_base"))
+            api_key=self.config.get("core.agent.openai.voice.api_key", self.config.get("core.agent.openai.api_key")),
+            base_url=self.config.get("core.agent.openai.voice.base_url", self.config.get("core.agent.openai.base_url"))
         )
-        if Config().get("rate_limit_dalle"):
-            self.tb4dalle = TokenBucket(Config().get("rate_limit_dalle", 50))
+        if self.config.get("core.agent.openai.dalle_rate_limit"):
+            self.tb4dalle = TokenBucket(self.config.get("core.agent.openai.dalle_rate_limit", 50))
 
     def create_img(self, query, retry_count=0, api_key=None):
         try:
-            if Config().get("rate_limit_dalle") and not self.tb4dalle.get_token():
+            if self.config.get("core.agent.openai.dalle_rate_limit") and not self.tb4dalle.get_token():
                 return False, "请求太快了，请休息一下再问我吧"
             App().logger.info("[OPEN_AI] image_query={}".format(query))
             response = self.client.images.generate(
                 prompt=query,
                 n=1,
-                size=Config().get("image_create_size", "256x256"),
+                size=self.config.get("core.agent.openai.image_size", "256x256"),
             )
             image_url = response.data[0].url
             App().logger.info("[OPEN_AI] image_url={}".format(image_url))

@@ -19,22 +19,26 @@
 ### 导入模块 logger
 
 ```python
+
 # 在模块文件中导入
+
 from etl.crawler import crawler_logger
 
 def my_function():
     crawler_logger.info("这是一条信息日志")
     crawler_logger.error("这是一条错误日志")
-```
+
+```text
 
 ### 自定义上下文信息
 
 ```python
 # 添加上下文信息创建特定实例
+
 class MyCrawler:
     def __init__(self, name):
         self.logger = crawler_logger.bind(crawler=name)
-        
+
     def process(self):
         self.logger.info("处理中...")  # 日志会包含crawler=name的上下文
 ```
@@ -44,26 +48,37 @@ class MyCrawler:
 支持的日志级别（从低到高）：
 
 - `DEBUG`: 调试信息，用于开发阶段
+
 - `INFO`: 一般信息，记录程序正常运行状态
+
 - `SUCCESS`: 成功信息，表示任务成功完成
+
 - `WARNING`: 警告信息，不影响程序运行但需要注意
+
 - `ERROR`: 错误信息，表示发生了错误但不会导致程序崩溃
+
 - `CRITICAL`: 严重错误，可能导致程序崩溃
 
 ## 日志格式
 
 所有日志采用统一格式：
 
-```
+```text
+
 {time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}
-```
+
+```text
 
 ## 最佳实践
 
 1. **始终使用模块级别的日志实例**，不要创建新的 logger 实例
+
 2. **适当使用日志级别**，避免过多的 DEBUG 日志进入生产环境
+
 3. **使用 bind() 添加上下文**，便于日志分析和问题排查
+
 4. **添加有意义的日志信息**，包括操作对象、关键参数等
+
 5. **异常处理中记录详细信息**，包括异常类型、错误消息和关键变量
 
 ## 示例
@@ -82,7 +97,8 @@ try:
     retrieval_logger.success(f"检索成功: 找到 {len(result)} 条记录")
 except Exception as e:
     retrieval_logger.error(f"检索失败: {str(e)}")
-```
+
+```text
 
 ### 在类中使用
 
@@ -93,9 +109,9 @@ class DataLoader:
     def __init__(self, source):
         self.source = source
         self.logger = load_logger.bind(source=source)
-    
+
     def load(self):
         self.logger.info(f"开始加载数据")
         # ...处理逻辑
         self.logger.success("数据加载完成")
-``` 
+```

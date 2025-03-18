@@ -4,12 +4,16 @@ Agent查询API接口
 """
 import re
 from fastapi import APIRouter, HTTPException, Path as PathParam, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional, Union, Callable
 from loguru import logger
+import json
 
-from core.agent.coze.coze_agent_new import CozeAgentNew
+# 移除CozeAgent顶层导入，防止循环导入
+# from core.agent.coze.coze_agent_sdk import CozeAgent
 from core import config
+from core.bridge.reply import ReplyType
 
 # 创建专用API路由
 agent_router = APIRouter(
@@ -22,6 +26,7 @@ agent_router = APIRouter(
 class ChatRequest(BaseModel):
     query: str = Field(..., description="用户输入的问题")
     history: Optional[List[Dict[str, str]]] = Field(default=[], description="对话历史")
+    stream: bool = Field(default=False, description="是否使用流式响应")
     
     @validator('query')
     def validate_query(cls, v):
@@ -68,26 +73,59 @@ def handle_agent_error(func: Callable) -> Callable:
     
     return wrapper
 
+async def stream_response(generator):
+    """生成流式响应"""
+    try:
+        for chunk in generator:
+            yield f"data: {json.dumps({'content': chunk})}\n\n"
+    except Exception as e:
+        logger.error(f"Stream response error: {str(e)}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
 # API端点
-@agent_router.post("/chat", response_model=ChatResponse)
+@agent_router.post("/chat")
 @handle_agent_error
 async def chat_with_agent(
     request: ChatRequest,
     api_logger=Depends(get_api_logger)
 ):
     """与Agent进行对话"""
+    # 延迟导入CozeAgent，避免循环导入
+    from core.agent.coze.coze_agent import CozeAgent
+    from core.bridge.context import Context, ContextType
+    
     # 创建CozeAgent实例
-    wx_bot_id = config.get("core.agent.coze.wx_bot_id")
-    agent = CozeAgentNew(wx_bot_id)
+    agent = CozeAgent()
+    
+    # 创建上下文对象
+    context = Context()
+    context.type = ContextType.TEXT
+    context["session_id"] = "api_session_" + str(hash(request.query))
     
     # 发送请求并获取回复
-    response = agent.reply(request.query)
+    reply = agent.reply(request.query, context)
     
-    if response is None:
+    if reply is None:
         raise HTTPException(status_code=500, detail="Agent响应失败")
+    
+    # 如果是流式响应
+    if request.stream and reply.type == ReplyType.STREAM:
+        return StreamingResponse(
+            stream_response(reply.content),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    
+    # 非流式响应
+    if reply.type != ReplyType.TEXT:
+        raise HTTPException(status_code=500, detail="Agent响应类型错误")
         
     return {
-        "response": response,
+        "response": reply.content,
         "sources": []  # 目前CozeAgent不提供知识来源
     }
 

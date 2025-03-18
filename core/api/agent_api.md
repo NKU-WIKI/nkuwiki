@@ -1,4 +1,4 @@
-# NKUWIKI API 文档
+# nkuwiki API 文档
 
 ## Agent API
 
@@ -9,6 +9,7 @@ Agent API提供了与AI助手对话和知识库搜索的功能。所有接口都
 与AI助手进行对话。
 
 - **接口**: POST `/agent/chat`
+
 - **Content-Type**: application/json
 
 #### 请求参数
@@ -23,7 +24,8 @@ Agent API提供了与AI助手对话和知识库搜索的功能。所有接口都
         }
     ]
 }
-```
+
+```text
 
 #### 响应格式
 
@@ -38,35 +40,42 @@ Agent API提供了与AI助手对话和知识库搜索的功能。所有接口都
         }
     ]
 }
-```
+
+```text
 
 #### 错误码
 
 - 400: 输入验证错误（例如：问题为空）
+
 - 500: 服务器内部错误（例如：Agent响应失败）
 
 #### 示例
 
 请求：
+
 ```bash
 curl -X POST "http://localhost/agent/chat" \
      -H "Content-Type: application/json" \
      -d '{"query": "南开大学的校训是什么？"}'
-```
+
+```text
 
 响应：
+
 ```json
 {
     "response": "南开大学的校训是"允公允能，日新月异"。",
     "sources": []
 }
-```
+
+```text
 
 ### 2. 知识搜索接口
 
 搜索知识库中的内容。
 
 - **接口**: POST `/agent/search`
+
 - **Content-Type**: application/json
 
 #### 请求参数
@@ -76,7 +85,8 @@ curl -X POST "http://localhost/agent/chat" \
     "keyword": "string",  // 必填，搜索关键词
     "limit": 10          // 可选，返回结果数量上限，默认10，范围1-50
 }
-```
+
+```text
 
 #### 响应格式
 
@@ -88,11 +98,13 @@ curl -X POST "http://localhost/agent/chat" \
         "score": 0.95          // 相关度得分
     }
 ]
-```
+
+```text
 
 #### 错误码
 
 - 400: 输入验证错误（例如：关键词为空）
+
 - 500: 服务器内部错误
 
 ### 3. 状态检查接口
@@ -109,20 +121,27 @@ curl -X POST "http://localhost/agent/chat" \
     "version": "1.0.0",                  // 版本号
     "capabilities": ["chat", "search"]    // 支持的功能列表
 }
-```
+
+```text
 
 ## 开发说明
 
 1. 所有接口都需要进行错误处理，使用统一的错误响应格式
+
 2. 接口遵循RESTful设计规范
+
 3. 所有请求和响应都使用JSON格式
+
 4. 接口支持异步处理，使用FastAPI框架实现
 
 ## 环境要求
 
 - Python 3.8+
+
 - FastAPI
+
 - Pydantic
+
 - Loguru
 
 ## 配置说明
@@ -135,12 +154,15 @@ curl -X POST "http://localhost/agent/chat" \
     "core.agent.coze.api_key": "your_api_key",      # Coze API密钥
     "core.agent.coze.base_url": "api_base_url"      # Coze API基础URL
 }
-```
+
+```text
 
 ## 更新历史
 
 ### v1.0.0 (2024-03-12)
 
 - 实现基础的对话功能
+
 - 添加知识搜索接口框架
-- 添加服务状态检查接口 
+
+- 添加服务状态检查接口

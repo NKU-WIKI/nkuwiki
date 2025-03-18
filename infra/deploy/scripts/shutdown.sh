@@ -1,4 +1,4 @@
-#!/bin/bash
+python#!/bin/bash
 # 查找占用80和8000端口的进程并杀死
 pid=$(lsof -ti:80,8000)
 if [ -n "$pid" ]; then
