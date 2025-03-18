@@ -1,14 +1,10 @@
-**Table of Content**
+# 插件系统
+
+## 目录
 
 - [插件化初衷](#插件化初衷)
-
 - [插件安装方法](#插件安装方法)
-
 - [插件化实现](#插件化实现)
-
-- [插件编写示例](#插件编写示例)
-
-- [插件设计建议](#插件设计建议)
 
 ## 插件化初衷
 
@@ -16,15 +12,14 @@
 
 此时插件化应声而出。
 
-**插件化**: 在保证主体功能是ChatGPT的前提下，我们推荐将主体功能外的功能利用插件的方式实现。
+## 插件化
 
-- [x] 可根据功能需要，下载不同插件。
+在保证主体功能是ChatGPT的前提下，我们推荐将主体功能外的功能利用插件的方式实现。
 
-- [x] 插件开发成本低，仅需了解插件触发事件，并按照插件定义接口编写插件。
-
-- [x] 插件化能够自由开关和调整优先级。
-
-- [x] 每个插件可在插件文件夹内维护独立的配置文件，方便代码的测试和调试，可以在独立的仓库开发插件。
+- 可根据功能需要，下载不同插件。
+- 插件开发成本低，仅需了解插件触发事件，并按照插件定义接口编写插件。
+- 插件化能够自由开关和调整优先级。
+- 每个插件可在插件文件夹内维护独立的配置文件，方便代码的测试和调试，可以在独立的仓库开发插件。
 
 ## 插件安装方法
 
@@ -34,13 +29,12 @@
 
 - 第二种方法是`Godcmd`插件，它是预置的管理员插件，能够让程序在运行时就能安装插件，它能够自动安装依赖。
 
-    安装插件的命令是"#installp [仓库源](https://github.com/zhayujie/chatgpt-on-wechat/blob/master/plugins/source.json)记录的插件名/仓库地址"。这是管理员命令，认证方法在[这里](https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/godcmd)。
+  安装插件的命令是"#installp [仓库源](https://github.com/zhayujie/chatgpt-on-wechat/blob/master/plugins/source.json)记录的插件名/仓库地址"。这是管理员命令，认证方法在[这里](https://github.com/zhayujie/chatgpt-on-wechat/tree/master/plugins/godcmd)。
 
-    - 安装[仓库源](https://github.com/zhayujie/chatgpt-on-wechat/blob/master/plugins/source.json)记录的插件：#installp sdwebui
+  - 安装[仓库源](https://github.com/zhayujie/chatgpt-on-wechat/blob/master/plugins/source.json)记录的插件：#installp sdwebui
+  - 安装指定仓库的插件：#installp `https://github.com/lanvent/plugin_sdwebui.git`
 
-    - 安装指定仓库的插件：#installp https://github.com/lanvent/plugin_sdwebui.git
-
-    在安装之后，需要执行"#scanp"命令来扫描加载新安装的插件（或者重新启动程序）。
+  在安装之后，需要执行"#scanp"命令来扫描加载新安装的插件（或者重新启动程序）。
 
 安装插件后需要注意有些插件有自己的配置模板，一般要去掉".template"新建一个配置文件。
 

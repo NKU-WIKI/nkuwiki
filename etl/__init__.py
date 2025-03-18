@@ -1,5 +1,18 @@
 """
 ETL模块，负责数据抽取、转换和加载
+
+此模块实现了爬虫数据采集、数据转换处理、索引建立和检索功能。
+提供了数据采集、处理、存储和检索的完整流程。
+
+子模块:
+- api: 提供数据访问API接口
+- crawler: 实现各类数据源的爬虫
+- transform: 负责数据格式转换和清洗
+- load: 将数据导入到数据库和索引
+- embedding: 文档处理和嵌入向量生成
+- retrieval: 实现文档检索和重排功能
+- utils: 通用工具函数和类
+- data: 数据存储目录
 """
 import os
 import re
@@ -46,7 +59,7 @@ os.environ["NLTK_DATA"] = str(NLTK_PATH.absolute())
 
 # 设置日志目录
 LOG_PATH.mkdir(exist_ok=True, parents=True)
-logger.add(LOG_PATH / "etl.log", rotation="1 day", retention="3 months", level="INFO")
+logger.add(LOG_PATH / "etl.log", rotation="1 day", retention="3 months", level="DEBUG")
 
 # 导入nltk并设置下载路径
 import nltk
@@ -105,7 +118,10 @@ __all__ = [
     'QDRANT_URL', 'QDRANT_TIMEOUT', 'COLLECTION_NAME', 'VECTOR_SIZE'
 ]
 
-# etl模块的公用配置和包
-# 该模块负责数据抽取、转换和加载，提供了全局共享的配置项和工具函数。
-# 包含子模块：crawler, load, transform, retrieval, embedding, api, data, utils
-# 提供的全局配置包括路径配置、环境变量配置和数据库配置。
+# ETL模块主要功能：
+# 1. 数据抽取：通过crawler子模块实现各类数据源的爬取
+# 2. 数据转换：通过transform子模块实现数据清洗和格式转换
+# 3. 数据加载：通过load子模块实现数据的存储和索引
+# 4. 数据检索：通过retrieval子模块实现文档的检索与排序
+# 5. 嵌入计算：通过embedding子模块实现文档的向量化
+# 6. API服务：通过api子模块提供数据访问接口

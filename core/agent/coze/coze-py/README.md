@@ -56,8 +56,8 @@ pip install cozepy
 
 ### Initialize the Coze client
 
-Firstly, you need to access https://www.coze.com/open/oauth/pats (for the cn environment,
-visit https://www.coze.cn/open/oauth/pats).
+Firstly, you need to access `https://www.coze.com/open/oauth/pats` (for the cn environment,
+visit `https://www.coze.cn/open/oauth/pats`).
 
 Click to add a new token. After setting the
 appropriate name, expiration time, and permissions, click OK to generate your personal
@@ -397,13 +397,13 @@ paged_documents = coze.knowledge.documents.list(
 
 #### Web OAuth App
 
-Firstly, users need to access https://www.coze.com/open/oauth/apps. For the cn environment,
-users need to access https://www.coze.cn/open/oauth/apps to create an OAuth App of the type
+Firstly, users need to access `https://www.coze.com/open/oauth/apps`. For the cn environment,
+users need to access `https://www.coze.cn/open/oauth/apps` to create an OAuth App of the type
 of Web application.
 
 The specific creation process can be referred to in the document:
-https://www.coze.com/docs/developer_guides/oauth_code. For the cn environment, it can be
-accessed at https://www.coze.cn/docs/developer_guides/oauth_code.
+`https://www.coze.com/docs/developer_guides/oauth_code`. For the cn environment, it can be
+accessed at `https://www.coze.cn/docs/developer_guides/oauth_code`.
 
 After the creation is completed, three parameters, namely the client ID, client secret,
 and redirect link, can be obtained. For the client secret, users need to keep it securely
@@ -460,13 +460,13 @@ oauth_token = web_oauth_app.refresh_access_token(oauth_token.refresh_token)
 
 #### JWT OAuth App
 
-Firstly, users need to access https://www.coze.com/open/oauth/apps. For the cn environment,
-users need to access https://www.coze.cn/open/oauth/apps to create an OAuth App of the type
+Firstly, users need to access `https://www.coze.com/open/oauth/apps`. For the cn environment,
+users need to access `https://www.coze.cn/open/oauth/apps` to create an OAuth App of the type
 of Service application.
 
 The specific creation process can be referred to in the document:
-https://www.coze.com/docs/developer_guides/oauth_jwt. For the cn environment, it can be
-accessed at https://www.coze.cn/docs/developer_guides/oauth_jwt.
+`https://www.coze.com/docs/developer_guides/oauth_jwt`. For the cn environment, it can be
+accessed at `https://www.coze.cn/docs/developer_guides/oauth_jwt`.
 
 After the creation is completed, three parameters, namely the client ID, private key,
 and public key id, can be obtained. For the client secret and public key id, users need to
@@ -513,13 +513,13 @@ PKCE stands for Proof Key for Code Exchange, and it's an extension to the OAuth 
 code flow designed to enhance security for public clients, such as mobile and single-page
 applications.
 
-Firstly, users need to access https://www.coze.com/open/oauth/apps. For the cn environment,
-users need to access https://www.coze.cn/open/oauth/apps to create an OAuth App of the type
+Firstly, users need to access `https://www.coze.com/open/oauth/apps`. For the cn environment,
+users need to access `https://www.coze.cn/open/oauth/apps` to create an OAuth App of the type
 of Mobile/PC/Single-page application.
 
 The specific creation process can be referred to in the document:
-https://www.coze.com/docs/developer_guides/oauth_pkce. For the cn environment, it can be
-accessed at https://www.coze.cn/docs/developer_guides/oauth_pkce.
+`https://www.coze.com/docs/developer_guides/oauth_pkce`. For the cn environment, it can be
+accessed at `https://www.coze.cn/docs/developer_guides/oauth_pkce`.
 
 After the creation is completed, three parameters, namely the client ID can be obtained.
 
@@ -583,13 +583,13 @@ The OAuth 2.0 device flow, also known as the device authorization grant, is an e
 e OAuth 2.0 protocol designed for devices that have limited input capabilities or lack a suitable
 browser.
 
-Firstly, users need to access https://www.coze.com/open/oauth/apps. For the cn environment,
-users need to access https://www.coze.cn/open/oauth/apps to create an OAuth App of the type
+Firstly, users need to access `https://www.coze.com/open/oauth/apps`. For the cn environment,
+users need to access `https://www.coze.cn/open/oauth/apps` to create an OAuth App of the type
 of TVs/Limited Input devices/Command line programs.
 
 The specific creation process can be referred to in the document:
-https://www.coze.com/docs/developer_guides/oauth_device_code. For the cn environment, it can be
-accessed at https://www.coze.cn/docs/developer_guides/oauth_device_code.
+`https://www.coze.com/docs/developer_guides/oauth_device_code`. For the cn environment, it can be
+accessed at `https://www.coze.cn/docs/developer_guides/oauth_device_code`.
 
 After the creation is completed, three parameters, namely the client ID can be obtained.
 
@@ -682,7 +682,6 @@ print(workspaces.response.logid) # support for paged
 messages = coze.chat.messages.list(conversation_id='conversation id', chat_id='chat id')
 print(messages.response.logid) # support for list(simple list, not paged)
 ```
-
 
 ### Async usage
 
