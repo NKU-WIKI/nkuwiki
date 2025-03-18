@@ -191,6 +191,9 @@ def run_api_service(host="0.0.0.0", port=80):
     # 设置信号处理
     setup_signal_handlers()
     
+    if port is None:
+        port = config.get("services.app.port", 80)
+    
     logger.info(f"Starting API service on {host}:{port}")
     
     # 启动FastAPI服务

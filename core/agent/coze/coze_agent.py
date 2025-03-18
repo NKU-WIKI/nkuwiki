@@ -140,23 +140,53 @@ class CozeAgent(Agent):
             session = self.sessions.session_query(query, session_id)
             logger.debug("[COZE] session query={}".format(session.messages))
             
-            # 使用流式输出
-            logger.info("[COZE] 使用流式输出")
-            logger.info("开始流式请求: {}...".format(query))
+            # 检查是否需要 Markdown 格式
+            format_type = context.get("format", "text")
+            meta_data = {"format": format_type} if format_type != "text" else None
+            logger.debug(f"[COZE] 输出格式: {format_type}")
             
-            def stream_wrapper():
+            # 检查是否需要流式输出
+            if context.get("stream", False):
+                logger.info("[COZE] 使用流式输出")
+                logger.info("开始流式请求: {}...".format(query))
+                
+                def stream_wrapper():
+                    try:
+                        for chunk in self.stream_reply(query, format_type):
+                            yield chunk
+                    except Exception as e:
+                        logger.error(f"[COZE] 流式回复出错: {str(e)}")
+                        yield f"\n[错误: {str(e)}]"
+                
+                # 处理完成后更新会话
+                completion_tokens, total_tokens = self._calc_tokens(session.messages, "流式回复")
+                self.sessions.session_reply("流式回复", session_id, total_tokens)
+                
+                return Reply(ReplyType.STREAM, stream_wrapper())
+            else:
+                # 非流式输出
+                logger.info("[COZE] 使用非流式输出")
                 try:
-                    for chunk in self.stream_reply(query):
-                        yield chunk
+                    response = self.client.chat.create_and_poll(
+                        bot_id=self.bot_id,
+                        user_id="default_user",
+                        additional_messages=[
+                            Message.build_user_question_text(query, meta_data=meta_data)
+                        ]
+                    )
+                    
+                    # 提取回复内容
+                    for message in response.messages:
+                        if message.role == "assistant" and message.type == "answer":
+                            # 处理完成后更新会话
+                            completion_tokens, total_tokens = self._calc_tokens(session.messages, message.content)
+                            self.sessions.session_reply(message.content, session_id, total_tokens)
+                            return Reply(ReplyType.TEXT, message.content)
+                    
+                    return Reply(ReplyType.TEXT, "未获取到有效回复")
                 except Exception as e:
-                    logger.error(f"[COZE] 流式回复出错: {str(e)}")
-                    yield f"\n[错误: {str(e)}]"
-            
-            # 处理完成后更新会话
-            completion_tokens, total_tokens = self._calc_tokens(session.messages, "流式回复")
-            self.sessions.session_reply("流式回复", session_id, total_tokens)
-            
-            return Reply(ReplyType.STREAM, stream_wrapper())
+                    logger.error(f"[COZE] 非流式回复出错: {str(e)}")
+                    return Reply(ReplyType.TEXT, f"请求失败: {str(e)}")
             
         elif context.type == ContextType.IMAGE_CREATE:
             return Reply(ReplyType.TEXT, "暂不支持图片生成")
@@ -171,32 +201,36 @@ class CozeAgent(Agent):
             prompt_tokens += len(message["content"])
         return completion_tokens, prompt_tokens + completion_tokens
 
-    def stream_reply(self, query):
+    def stream_reply(self, query, format_type="text"):
         """
         流式返回对话响应
         
         Args:
             query: 用户输入
+            format_type: 输出格式类型，如 'text', 'markdown' 等
             
         Returns:
             生成器，每次迭代返回一个响应片段
         """
         if self.use_sdk:
-            return self._sdk_stream_reply(query)
+            return self._sdk_stream_reply(query, format_type)
         else:
-            return self._http_stream_reply(query)
+            return self._http_stream_reply(query, format_type)
             
-    def _sdk_stream_reply(self, query):
+    def _sdk_stream_reply(self, query, format_type="text"):
         """使用SDK进行流式对话请求"""
         try:
             logger.debug(f"开始流式请求(SDK): {query[:30]}...")
+            
+            # 设置元数据
+            meta_data = {"format": format_type} if format_type != "text" else None
             
             # 使用SDK的流式接口
             stream = self.client.chat.stream(
                 bot_id=self.bot_id,
                 user_id="default_user",
                 additional_messages=[
-                    Message.build_user_question_text(query)
+                    Message.build_user_question_text(query, meta_data=meta_data)
                 ]
             )
             
@@ -210,10 +244,10 @@ class CozeAgent(Agent):
             logger.exception(f"SDK流式请求失败: {e}")
             # 尝试切换到HTTP模式
             logger.info("尝试切换到HTTP模式...")
-            for chunk in self._http_stream_reply(query):
+            for chunk in self._http_stream_reply(query, format_type):
                 yield chunk
 
-    def _http_stream_reply(self, query):
+    def _http_stream_reply(self, query, format_type="text"):
         """使用HTTP请求进行流式对话请求"""
         try:
             logger.info(f"开始流式请求(HTTP): {query[:30]}...")
@@ -221,7 +255,7 @@ class CozeAgent(Agent):
             # 构建请求URL
             url = f"{self.http_base_url}/v3/chat"
             
-            # 构建请求体
+            # 构建请求体，添加格式信息
             payload = {
                 "bot_id": self.bot_id,
                 "user_id": "default_user",
@@ -231,7 +265,8 @@ class CozeAgent(Agent):
                         "content": query,
                         "content_type": "text",
                         "role": "user",
-                        "type": "question"
+                        "type": "question",
+                        "meta_data": {"format": format_type} if format_type != "text" else None
                     }
                 ]
             }
