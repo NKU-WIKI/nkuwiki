@@ -1,5 +1,5 @@
 from __init__ import *
-from base_crawler import BaseCrawler
+
 class SinaFinance(BaseCrawler):
     """新浪财经国内新闻爬虫
     
@@ -8,13 +8,14 @@ class SinaFinance(BaseCrawler):
         headless: 是否使用无头浏览器模式
     """
     def __init__(self, debug: bool = False, headless: bool = False, use_proxy: bool = False) -> None:
-        self.platform = "website"
+        self.platform = "sina_finance"
         self.content_type = "news"
-        self.tag = "sina_finance"
         self.base_url = "https://finance.sina.com.cn/china"
         super().__init__(platform=self.platform, debug=debug, headless=headless, use_proxy=use_proxy)
+        self.page = self.context.new_page()
+        self.inject_anti_detection_script()
 
-    async def scrape_news(self, scraped_original_urls: list, max_news_num: int = 50) -> list[dict]:
+    def scrape_news(self, scraped_original_urls: list, max_news_num: int = 50) -> list[dict]:
         """抓取国内新闻列表
         
         Args:
@@ -28,8 +29,8 @@ class SinaFinance(BaseCrawler):
                 'original_url': 新闻链接,
             }]
         """
-        await self.page.goto(self.base_url)
-        await self.random_sleep()
+        self.page.goto(self.base_url)
+        self.random_sleep()
         # time.sleep(5)
         # homepage = self.page.get_by_text('财经首页')
         # homepage.click()
@@ -65,7 +66,7 @@ class SinaFinance(BaseCrawler):
                         'original_url': original_url,
                     })
             try:
-                await next_page.click()
+                next_page.click()
             except Exception as e:
                 self.logger.exception(f"{e}")
                 break
@@ -78,7 +79,7 @@ class SinaFinance(BaseCrawler):
                 news = []
          
 
-    async def download_article(self, article: dict) -> dict:
+    def download_article(self, article: dict) -> dict:
         """下载单篇新闻内容
         
         Args:
@@ -88,7 +89,7 @@ class SinaFinance(BaseCrawler):
             包含完整内容的新闻字典
         """
         try:
-            await self.page.goto(article['original_url'])
+            self.page.goto(article['original_url'])
             
             # 提取所有段落内容（包含子元素文本）
             article_div = self.page.query_selector('div[class="article"]')
@@ -128,7 +129,7 @@ class SinaFinance(BaseCrawler):
             self.logger.error(f"下载新闻内容失败: {article['original_url']} - {str(e)}")
             return article
 
-    async def scrape(self, max_news_num: int = 50) -> None:
+    def scrape(self, max_news_num: int = 50) -> None:
         """执行完整爬取流程
         
         Args:
@@ -136,17 +137,19 @@ class SinaFinance(BaseCrawler):
         """
         try:
             scraped_original_urls = self.get_scraped_original_urls()
-            await self.scrape_news(scraped_original_urls, max_news_num)
+            self.scrape_news(scraped_original_urls, max_news_num)
         except Exception as e:
             self.logger.error(f"爬取流程异常: {str(e)}")
         finally:
-            await self.context.close()
+            self.context.close()
     
 
-    async def download(self):
+    def download(self):
         """下载并补充文章内容及发布时间"""
+        import json
+        from pathlib import Path
         
-        data_dir = Path(self.data_dir)
+        data_dir = Path(self.base_dir)
         processed_count = 0
         
         # 递归查找所有JSON文件
@@ -164,7 +167,7 @@ class SinaFinance(BaseCrawler):
                     continue
                     
                 # 调用下载方法
-                updated_article = await self.download_article(article_data)
+                updated_article = self.download_article(article_data)
                 
                 # 更新数据
                 article_data.update({
@@ -192,12 +195,6 @@ class SinaFinance(BaseCrawler):
         self.logger.info(f"下载完成，共处理 {processed_count} 篇文章")
 
 if __name__ == "__main__":
-
-    async def main():
-        """异步主函数"""
-        SinaFinance = SinaFinance(debug=True, headless=True)
-        await SinaFinance.async_init()
-        await SinaFinance.scrape(max_news_num=1e10)
-        await SinaFinance.download()
-        
-    asyncio.run(main())
+    crawler = SinaFinance(debug=True, headless=True)
+    # crawler.scrape(max_news_num=1e11)
+    crawler.download()

@@ -1,110 +1,44 @@
-# ========================================
-# 基础环境 (Base Environment)
-# ========================================
 # python==3.10.12
 
-# ========================================
-# 版本锁定依赖 (Version Locked Dependencies)
-# ========================================
+## core dependencies version locked
 llama-index-core==0.12.22
-llama-index-vector-stores-qdrant==0.4.3
 pydantic==2.8.0
 --extra-index-url https://download.pytorch.org/whl/cpu 
-torch==2.3.0+cpu  # cuda-free environment
+torch==2.3.0+cpu # cuda-free environment
 transformers>=4.49.0
 sentence-transformers==3.4.1
 numpy==1.26.4
+llama-index-vector-stores-qdrant==0.4.3
 nltk==3.9b1
+## other dependencies without version control
 
-# ========================================
-# 数据处理 (Data Processing)
-# ========================================
-# 数据操作与分析
+### utils
+loguru
+python-dotenv
+singleton_decorator
+openpyxl
+
+### ml&nlp&rag
+accelerate
 pandas
-openpyxl              # Excel文件处理
-
-# 文本处理
 tiktoken
-jieba                 # 中文分词
+openai
+jieba
+llama-index-embeddings-huggingface
 bm25s
 rank_bm25
-llmlingua             # 文本压缩
-llama-index-embeddings-huggingface
+llmlingua
 
-# ========================================
-# 数据存储 (Data Storage)
-# ========================================
-# 关系型数据库
-mysql-connector-python  # 9.2+
-# 本地开发容器部署: docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 -v D:\Code\nkuwiki\etl\data\mysql:/var/lib/mysql mysql:latest
+### web
+playwright # 使用内置浏览器时，需要先执行playwright install chromium
+fastapi
+uvicorn
+beautifulsoup4
 
-# 向量数据库
-qdrant-client          # 1.3.2+
-# 本地开发容器部署: docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v d:\code\nkuwiki\etl\data\qdrant:/qdrant/storage qdrant/qdrant:latest 
-
-# ========================================
-# Web与接口 (Web & API)
-# ========================================
-# Web框架
-fastapi               # API框架
-uvicorn               # ASGI服务器
-
-# 网页处理
-beautifulsoup4        # HTML解析
-playwright            # 浏览器自动化，使用前需执行: playwright install chromium
-
-# 企业微信 (仅Windows)
-# ntwork; platform_system=="Windows"  # pip源不可用，本地安装: pip install ./servercies/wework/ntwork_backup_bin/ntwork<your_version>.whl
-
-# ========================================
-# AI服务集成 (AI Service Integration)
-# ========================================
-openai                # OpenAI API
-anthropic             # Claude API
-google-generativeai   # Google Gemini
-cozepy                # Coze平台
-zhipuai                # 智谱AI
-dashscope             # 阿里云通义千问
-websocket-client    # 讯飞星火依赖
-dingtalk_stream       # 钉钉
-broadscope_bailian    # 阿里云百炼
-
-# ========================================
-# 多模态处理 (Multimodal Processing)
-# ========================================
-# 语音处理
-pydub                 # 音频处理
-SpeechRecognition     # 语音识别
-gTTS                  # Google文本转语音
-pyttsx3               # 本地文本转语音
-baidu_aip               # 百度语音
-azure-cognitiveservices-speech  # Azure语音
-edge-tts              # Edge TTS
-elevenlabs            # ElevenLabs TTS
-langid                # 语言检测
-# Windows平台特定语音工具
-pysilk-mod            # SILK编码支持 (Windows)
-pilk                  # 语音文件处理库 (Windows)
-comtypes              # COM组件支持 (Windows语音接口)
-
-# ========================================
-# 工具与扩展 (Utilities & Extensions)
-# ========================================
-# 系统工具
-loguru                # 日志记录
-python-dotenv         # 环境变量管理
-singleton_decorator   # 单例模式装饰器
-accelerate            # 模型加速
-pywin32               # Windows系统API (Windows)
-
-# 时间与日期
-arrow                 # 日期时间处理
-croniter              # 定时任务表达式
-ephem                 # 天文计算（农历）
-LunarCalendar         # 农历日期处理
-
-# 图像与媒体
-PyQRCode              # 二维码生成
-pypng                 # PNG图像处理
+### database
+mysql-connector-python #9.2+
+# 本地开发容器部署docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 -v D:\Code\nkuwiki\etl\data\mysql:/var/lib/mysql mysql:latest
+qdrant-client # 1.3.2+
+#本地开发部署 docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v d:\code\nkuwiki\etl\data\qdrant:/qdrant/storage qdrant/qdrant:latest 
 
 

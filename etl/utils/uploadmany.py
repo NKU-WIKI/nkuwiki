@@ -1,7 +1,10 @@
 import sys
-import os  # 新增导入
+import os
 from pathlib import Path
+import base64
+import requests
 
+# 添加项目根目录到系统路径
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from etl.utils import *
 
@@ -43,14 +46,27 @@ def upload_document(file_path, dataset_id):
     return response.json()
 
 
-if __name__ == "__main__":
-    # 修改部分：遍历目录下的所有 .md 文件
-    dataset_id = 7482712868396908556
-    md_dir = "C:/Users/hpkjy/NKUCS.ICU/experiences/others"  # 指定你的 .md 文件目录
+def main():
+    dataset_id = 7482712868396908556  # 替换为coze的 dataset_id
+    md_dir = "C:/Users/hpkjy/NKUCS.ICU/experiences/others"  # 指定 .md 文件目录
 
-    # 遍历目录中的所有 .md 文件
-    for filename in os.listdir(md_dir):
-        if filename.endswith(".md"):
+    # 获取目录中的所有 .md 文件
+    md_files = [f for f in os.listdir(md_dir) if f.endswith(".md")]
+
+    if len(md_files) == 1:
+        # 执行单个文件上传
+        file_path = os.path.join(md_dir, md_files[0])
+        result = upload_document(file_path, dataset_id)
+        print(f"文件 {md_files[0]} 上传结果:", result)
+    elif len(md_files) > 1:
+        # 执行批量上传
+        for filename in md_files:
             file_path = os.path.join(md_dir, filename)
             result = upload_document(file_path, dataset_id)
             print(f"文件 {filename} 上传结果:", result)
+    else:
+        print("目录中没有 .md 文件，请检查路径是否正确。")
+
+
+if __name__ == "__main__":
+    main()
