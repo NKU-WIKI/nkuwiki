@@ -9,6 +9,10 @@ import sys
 import os
 import requests
 from loguru import logger
+import json
+import time
+from typing import List, Dict, AsyncGenerator, Generator
+import aiohttp
 
 # 确保项目根目录在 sys.path 中
 current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -741,6 +745,92 @@ class CozeAgent(Agent):
                 return error_generator()
             else:
                 return f"请求失败: {str(e)}"
+
+    async def stream_chat(self, query: str, history: List[Dict] = None) -> AsyncGenerator[str, None]:
+        """流式对话接口"""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/chat/completions",
+                    headers=self.headers,
+                    json={
+                        "messages": history + [{"role": "user", "content": query}] if history else [{"role": "user", "content": query}],
+                        "stream": True
+                    }
+                ) as response:
+                    async for line in response.content:
+                        if line:
+                            try:
+                                data = json.loads(line.decode('utf-8').replace('data: ', ''))
+                                if data.get('choices') and data['choices'][0].get('delta', {}).get('content'):
+                                    yield data['choices'][0]['delta']['content']
+                            except json.JSONDecodeError:
+                                logger.error(f"Failed to parse JSON: {line}")
+                                continue
+        except Exception as e:
+            logger.error(f"Stream chat error: {str(e)}")
+            yield f"Error: {str(e)}"
+
+    def stream_chat_sync(self, query: str, history: List[Dict] = None) -> Generator[str, None, None]:
+        """同步流式对话接口"""
+        try:
+            url = f"{self.http_base_url}/v3/chat"
+            headers = self._get_headers()
+            headers.update({
+                'Accept': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive',
+                'X-Accel-Buffering': 'no'
+            })
+            
+            payload = {
+                "bot_id": self.bot_id,
+                "user_id": "default_user",
+                "stream": True,
+                "additional_messages": [
+                    {
+                        "content": query,
+                        "content_type": "text",
+                        "role": "user",
+                        "type": "question"
+                    }
+                ]
+            }
+            
+            with self.session.post(url, headers=headers, json=payload, stream=True) as response:
+                response.raise_for_status()
+                buffer = b""
+                
+                for chunk in response.iter_content(chunk_size=1024):
+                    if not chunk:
+                        continue
+                        
+                    buffer += chunk
+                    
+                    while b'\n' in buffer:
+                        line, buffer = buffer.split(b'\n', 1)
+                        if not line:
+                            continue
+                            
+                        try:
+                            line = line.decode('utf-8')
+                            if line.startswith('data: '):
+                                data = line[6:]
+                                if data == '[DONE]':
+                                    continue
+                                    
+                                json_data = json.loads(data)
+                                if 'data' in json_data and isinstance(json_data['data'], dict):
+                                    content = json_data['data'].get('content', '')
+                                    if content:
+                                        yield content
+                        except Exception as e:
+                            logger.error(f"Parse chunk error: {str(e)}")
+                            continue
+                            
+        except Exception as e:
+            logger.error(f"Stream chat error: {str(e)}")
+            yield f"Error: {str(e)}"
 
 def remove_markdown(text):
     """移除Markdown格式"""
