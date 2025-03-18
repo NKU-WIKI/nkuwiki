@@ -1,4 +1,4 @@
-# NKUWIKI API 文档
+# nkuwiki API 文档
 
 ## Agent API
 

@@ -56,7 +56,7 @@ request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
 # 创建FastAPI应用
 app = FastAPI(
-    title="NKUWIKI API",
+    title="nkuwiki API",
     description="南开百科知识平台API服务",
     version="1.0.0",
 )
@@ -110,7 +110,7 @@ def get_config():
 async def root():
     """API根路径，返回API服务基本信息"""
     return {
-        "name": "NKUWIKI API",
+        "name": "nkuwiki API",
         "version": "1.0.0",
         "description": "南开百科知识平台API服务",
         "status": "running"
@@ -201,7 +201,7 @@ if __name__ == "__main__":
     import argparse
     
     # 创建命令行参数解析器
-    parser = argparse.ArgumentParser(description="NKUWIKI服务启动工具")
+    parser = argparse.ArgumentParser(description="nkuwiki服务启动工具")
     parser.add_argument("--qa", action="store_true", help="启动问答服务")
     parser.add_argument("--api", action="store_true", help="启动API服务")
     parser.add_argument("--host", default="0.0.0.0", help="API服务主机地址")
