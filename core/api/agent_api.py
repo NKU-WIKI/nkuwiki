@@ -4,9 +4,11 @@ Agent查询API接口
 """
 import re
 from fastapi import APIRouter, HTTPException, Path as PathParam, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional, Union, Callable
 from loguru import logger
+import json
 
 # 移除CozeAgent顶层导入，防止循环导入
 # from core.agent.coze.coze_agent_sdk import CozeAgent
@@ -23,6 +25,7 @@ agent_router = APIRouter(
 class ChatRequest(BaseModel):
     query: str = Field(..., description="用户输入的问题")
     history: Optional[List[Dict[str, str]]] = Field(default=[], description="对话历史")
+    stream: bool = Field(default=False, description="是否使用流式响应")
     
     @validator('query')
     def validate_query(cls, v):
@@ -69,8 +72,17 @@ def handle_agent_error(func: Callable) -> Callable:
     
     return wrapper
 
+async def stream_response(generator):
+    """生成流式响应"""
+    try:
+        for chunk in generator:
+            yield f"data: {json.dumps({'content': chunk})}\n\n"
+    except Exception as e:
+        logger.error(f"Stream response error: {str(e)}")
+        yield f"data: {json.dumps({'error': str(e)})}\n\n"
+
 # API端点
-@agent_router.post("/chat", response_model=ChatResponse)
+@agent_router.post("/chat")
 @handle_agent_error
 async def chat_with_agent(
     request: ChatRequest,
@@ -92,8 +104,24 @@ async def chat_with_agent(
     # 发送请求并获取回复
     reply = agent.reply(request.query, context)
     
-    if reply is None or reply.type != 0:  # 0是TEXT类型
+    if reply is None:
         raise HTTPException(status_code=500, detail="Agent响应失败")
+    
+    # 如果是流式响应
+    if request.stream and reply.type == ReplyType.STREAM:
+        return StreamingResponse(
+            stream_response(reply.content),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"
+            }
+        )
+    
+    # 非流式响应
+    if reply.type != ReplyType.TEXT:
+        raise HTTPException(status_code=500, detail="Agent响应类型错误")
         
     return {
         "response": reply.content,
