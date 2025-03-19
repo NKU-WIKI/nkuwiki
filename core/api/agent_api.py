@@ -28,6 +28,7 @@ class ChatRequest(BaseModel):
     history: Optional[List[Dict[str, str]]] = Field(default=[], description="对话历史")
     stream: bool = Field(default=False, description="是否使用流式响应")
     format: Optional[str] = Field(default="markdown", description="返回格式，支持 'markdown', 'text', 'html'")
+    user_id: Optional[str] = Field(default="default_user", description="用户唯一标识")
     
     @validator('query')
     def validate_query(cls, v):
@@ -41,6 +42,12 @@ class ChatRequest(BaseModel):
         if v.lower() not in valid_formats:
             raise ValueError(f"格式必须是以下之一: {', '.join(valid_formats)}")
         return v.lower()
+    
+    @validator('user_id')
+    def validate_user_id(cls, v):
+        if not v.strip():
+            return "default_user"
+        return v.strip()
 
 class ChatResponse(BaseModel):
     response: str = Field(..., description="Agent的回答")
@@ -157,6 +164,9 @@ async def chat_with_agent(
     context["session_id"] = "api_session_" + str(hash(request.query))
     context["stream"] = request.stream  # 添加stream参数
     context["format"] = request.format  # 添加format参数
+    context["user_id"] = request.user_id  # 添加user_id参数
+    
+    api_logger.debug(f"处理聊天请求：query={request.query}, user_id={request.user_id}")
     
     # 发送请求并获取回复
     reply = agent.reply(request.query, context)

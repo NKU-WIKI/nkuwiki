@@ -8,6 +8,7 @@ from loguru import logger
 from contextvars import ContextVar
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles  # 添加导入
 import uvicorn
 
 from config import Config
@@ -66,9 +67,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 允许所有来源的请求，生产环境应限制
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有HTTP方法
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # 明确指定允许的方法
     allow_headers=["*"],  # 允许所有HTTP头
+    expose_headers=["*"]  # 暴露所有响应头
 )
+
+# 集成MySQL路由
+app.include_router(mysql_router)
+# 集成Agent路由
+app.include_router(agent_router)
+
+# 挂载静态文件目录，用于微信校验文件等
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 请求日志中间件
 @app.middleware("http")
@@ -139,11 +149,6 @@ async def health_check(logger=Depends(get_logger)):
         "database": db_status
     }
 
-# 集成MySQL路由
-app.include_router(mysql_router)
-# 集成Agent路由
-app.include_router(agent_router)
-
 # 信号处理函数
 def setup_signal_handlers():
     """设置信号处理函数，用于优雅退出"""
@@ -186,18 +191,52 @@ def run_qa_service():
         sys.exit(1)
 
 # 启动API服务
-def run_api_service(host="0.0.0.0", port=80):
-    """启动API服务"""
+def run_api_service(port=80):
+    """启动API服务，同时支持HTTP和HTTPS"""
     # 设置信号处理
     setup_signal_handlers()
     
+    host = "0.0.0.0"  # 固定监听所有网络接口
+    
+    # 获取SSL证书配置
+    ssl_key_path = config.get("services.website.ssl_key_path", None)
+    ssl_cert_path = config.get("services.website.ssl_cert_path", None)
+    
+    # 检查SSL证书配置
+    has_ssl = ssl_key_path and ssl_cert_path and Path(ssl_key_path).exists() and Path(ssl_cert_path).exists()
+    
+    # 获取HTTP和HTTPS端口，默认HTTP为80，HTTPS为443
     if port is None:
-        port = config.get("services.app.port", 80)
+        http_port = config.get("services.app.port", 80)
+    else:
+        http_port = port
     
-    logger.info(f"Starting API service on {host}:{port}")
+    https_port = config.get("services.app.https_port", 443)
     
-    # 启动FastAPI服务
-    uvicorn.run(app, host=host, port=port)
+    logger.info(f"Starting API service on HTTP: {host}:{http_port}")
+    
+    # 启动HTTP服务
+    http_thread = threading.Thread(
+        target=lambda: uvicorn.run(app, host=host, port=http_port)
+    )
+    http_thread.daemon = True
+    http_thread.start()
+    
+    # 如果有SSL证书配置，启动HTTPS服务
+    if has_ssl:
+        logger.info(f"Starting API service on HTTPS: {host}:{https_port}")
+        # 使用SSL配置启动HTTPS服务
+        uvicorn.run(
+            app, 
+            host=host, 
+            port=https_port,
+            ssl_keyfile=ssl_key_path,
+            ssl_certfile=ssl_cert_path
+        )
+    else:
+        logger.warning("未找到SSL证书配置，仅启动HTTP服务")
+        # 等待HTTP线程结束（实际上不会结束，除非进程被终止）
+        http_thread.join()
 
 # 主函数
 if __name__ == "__main__":
@@ -207,7 +246,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="nkuwiki服务启动工具")
     parser.add_argument("--qa", action="store_true", help="启动问答服务")
     parser.add_argument("--api", action="store_true", help="启动API服务")
-    parser.add_argument("--host", default="0.0.0.0", help="API服务主机地址")
     parser.add_argument("--port", type=int, default=80, help="API服务端口")
     
     args = parser.parse_args()
@@ -215,7 +253,6 @@ if __name__ == "__main__":
     # 如果没有指定任何服务，默认只启动问答服务
     if not (args.qa or args.api):
         args.qa = True
-        args.api = False
     
     # 启动指定的服务
     if args.qa:
@@ -226,8 +263,8 @@ if __name__ == "__main__":
         logger.info("问答服务已在后台启动")
     
     if args.api:
-        # 主线程启动API服务
-        run_api_service(host=args.host, port=args.port)
+        # 主线程启动API服务（支持HTTP和HTTPS双模式）
+        run_api_service(port=args.port)
     elif args.qa:
         # 如果只启动了问答服务，则等待问答服务线程结束
         qa_thread.join()

@@ -135,7 +135,7 @@ class Market(BaseCrawler):
             "content": item.get("content"),
             "author": item.get("nickname"),
             "publish_time": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-            "original_url": f"{self.base_url}/thread/{item.get('thread_id')}",
+            "original_url": f"{self.base_url}/view/info/{item.get('thread_id')}?cid={self.university}",
             "scrape_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "content_type": self.content_type,
             "platform": self.platform
@@ -313,7 +313,7 @@ if __name__ == "__main__":
             latest_list = await market._get_latest_list_async(market._generate_td()-60*0)
             
             for item in latest_list:
-                print(item['title'])
+                print(item['original_url'])
                 
             # 可以取消注释以测试其他功能
             # headers = market._generate_headers()
