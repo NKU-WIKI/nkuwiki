@@ -8,6 +8,7 @@ from loguru import logger
 from contextvars import ContextVar
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles  # 添加导入
 import uvicorn
 
 from config import Config
@@ -66,9 +67,18 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # 允许所有来源的请求，生产环境应限制
     allow_credentials=True,
-    allow_methods=["*"],  # 允许所有HTTP方法
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # 明确指定允许的方法
     allow_headers=["*"],  # 允许所有HTTP头
+    expose_headers=["*"]  # 暴露所有响应头
 )
+
+# 集成MySQL路由
+app.include_router(mysql_router)
+# 集成Agent路由
+app.include_router(agent_router)
+
+# 挂载静态文件目录，用于微信校验文件等
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # 请求日志中间件
 @app.middleware("http")
@@ -138,11 +148,6 @@ async def health_check(logger=Depends(get_logger)):
         "timestamp": datetime.now().isoformat(),
         "database": db_status
     }
-
-# 集成MySQL路由
-app.include_router(mysql_router)
-# 集成Agent路由
-app.include_router(agent_router)
 
 # 信号处理函数
 def setup_signal_handlers():

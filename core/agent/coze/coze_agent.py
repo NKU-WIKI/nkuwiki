@@ -140,6 +140,10 @@ class CozeAgent(Agent):
             session = self.sessions.session_query(query, session_id)
             logger.debug("[COZE] session query={}".format(session.messages))
             
+            # 获取user_id，如果没有则使用默认值
+            user_id = context.get("user_id", "default_user")
+            logger.debug(f"[COZE] 使用用户ID: {user_id}")
+            
             # 检查是否需要 Markdown 格式
             format_type = context.get("format", "text")
             meta_data = {"format": format_type} if format_type != "text" else None
@@ -152,7 +156,7 @@ class CozeAgent(Agent):
                 
                 def stream_wrapper():
                     try:
-                        for chunk in self.stream_reply(query, format_type):
+                        for chunk in self.stream_reply(query, format_type, user_id):
                             yield chunk
                     except Exception as e:
                         logger.error(f"[COZE] 流式回复出错: {str(e)}")
@@ -169,7 +173,7 @@ class CozeAgent(Agent):
                 try:
                     response = self.client.chat.create_and_poll(
                         bot_id=self.bot_id,
-                        user_id="default_user",
+                        user_id=user_id,
                         additional_messages=[
                             Message.build_user_question_text(query, meta_data=meta_data)
                         ]
@@ -201,23 +205,24 @@ class CozeAgent(Agent):
             prompt_tokens += len(message["content"])
         return completion_tokens, prompt_tokens + completion_tokens
 
-    def stream_reply(self, query, format_type="text"):
+    def stream_reply(self, query, format_type="text", user_id="default_user"):
         """
         流式返回对话响应
         
         Args:
             query: 用户输入
             format_type: 输出格式类型，如 'text', 'markdown' 等
+            user_id: 用户ID
             
         Returns:
             生成器，每次迭代返回一个响应片段
         """
         if self.use_sdk:
-            return self._sdk_stream_reply(query, format_type)
+            return self._sdk_stream_reply(query, format_type, user_id)
         else:
-            return self._http_stream_reply(query, format_type)
+            return self._http_stream_reply(query, format_type, user_id)
             
-    def _sdk_stream_reply(self, query, format_type="text"):
+    def _sdk_stream_reply(self, query, format_type="text", user_id="default_user"):
         """使用SDK进行流式对话请求"""
         try:
             logger.debug(f"开始流式请求(SDK): {query[:30]}...")
@@ -228,7 +233,7 @@ class CozeAgent(Agent):
             # 使用SDK的流式接口
             stream = self.client.chat.stream(
                 bot_id=self.bot_id,
-                user_id="default_user",
+                user_id=user_id,
                 additional_messages=[
                     Message.build_user_question_text(query, meta_data=meta_data)
                 ]
@@ -244,10 +249,10 @@ class CozeAgent(Agent):
             logger.exception(f"SDK流式请求失败: {e}")
             # 尝试切换到HTTP模式
             logger.info("尝试切换到HTTP模式...")
-            for chunk in self._http_stream_reply(query, format_type):
+            for chunk in self._http_stream_reply(query, format_type, user_id):
                 yield chunk
 
-    def _http_stream_reply(self, query, format_type="text"):
+    def _http_stream_reply(self, query, format_type="text", user_id="default_user"):
         """使用HTTP请求进行流式对话请求"""
         try:
             logger.info(f"开始流式请求(HTTP): {query[:30]}...")
@@ -258,7 +263,7 @@ class CozeAgent(Agent):
             # 构建请求体，添加格式信息
             payload = {
                 "bot_id": self.bot_id,
-                "user_id": "default_user",
+                "user_id": user_id,
                 "stream": True,
                 "additional_messages": [
                     {
@@ -377,24 +382,25 @@ class CozeAgent(Agent):
             logger.exception(f"HTTP流式请求失败: {e}")
             yield f"请求失败: {e}"
 
-    def get_knowledge_results(self, query):
+    def get_knowledge_results(self, query, user_id="default_user"):
         """
         获取对话的知识库召回结果
         
         Args:
             query: 用户输入
+            user_id: 用户ID
             
         Returns:
             知识库召回结果列表
         """
         if self.use_sdk:
-            return self._sdk_get_knowledge_results(query)
+            return self._sdk_get_knowledge_results(query, user_id)
         else:
             # HTTP方式暂不支持获取知识库结果，使用SDK方式
             logger.warning("HTTP方式不支持获取知识库结果，切换到SDK方式")
-            return self._sdk_get_knowledge_results(query)
+            return self._sdk_get_knowledge_results(query, user_id)
     
-    def _sdk_get_knowledge_results(self, query):
+    def _sdk_get_knowledge_results(self, query, user_id="default_user"):
         """使用SDK获取知识库召回结果"""
         try:
             logger.info(f"开始获取知识库召回结果(SDK)，bot_id: {self.bot_id}, query: {query}")
@@ -402,7 +408,7 @@ class CozeAgent(Agent):
             # 创建对话
             chat = self.client.chat.create(
                 bot_id=self.bot_id,
-                user_id="default_user",
+                user_id=user_id,
                 additional_messages=[
                     Message.build_user_question_text(query)
                 ]
@@ -718,13 +724,14 @@ class CozeAgent(Agent):
             logger.error(f"获取对话消息失败: {str(e)}")
             return []
     
-    def chat_with_new_conversation(self, query, stream=True):
+    def chat_with_new_conversation(self, query, stream=True, user_id="default_user"):
         """
         创建新对话并发送消息
         
         Args:
             query: 用户输入
             stream: 是否使用流式输出
+            user_id: 用户ID
             
         Returns:
             如果stream为True，则返回生成器；否则返回回复内容
@@ -732,7 +739,7 @@ class CozeAgent(Agent):
         try:
             if not self.use_sdk or not COZE_SDK_AVAILABLE:
                 logger.warning("新对话聊天需要使用SDK模式，将使用HTTP方式")
-                return self.stream_reply(query) if stream else self.reply(query)
+                return self.stream_reply(query, user_id=user_id) if stream else self.reply(query)
                 
             from cozepy import Message, ChatEventType, MessageContentType
             
@@ -742,7 +749,7 @@ class CozeAgent(Agent):
                 logger.debug(f"创建新对话并发送消息(流式): {query[:30]}...")
                 events = self.client.chat.stream(
                     bot_id=self.bot_id,
-                    user_id="default_user",
+                    user_id=user_id,
                     additional_messages=[
                         Message.build_user_question_text(query)
                     ]
@@ -760,7 +767,7 @@ class CozeAgent(Agent):
                 logger.debug(f"创建新对话并发送消息(非流式): {query[:30]}...")
                 chat_poll = self.client.chat.create_and_poll(
                     bot_id=self.bot_id,
-                    user_id="default_user",
+                    user_id=user_id,
                     additional_messages=[
                         Message.build_user_question_text(query)
                     ]
@@ -781,7 +788,7 @@ class CozeAgent(Agent):
             else:
                 return f"请求失败: {str(e)}"
 
-    async def stream_chat(self, query: str, history: List[Dict] = None) -> AsyncGenerator[str, None]:
+    async def stream_chat(self, query: str, history: List[Dict] = None, user_id="default_user") -> AsyncGenerator[str, None]:
         """流式对话接口"""
         try:
             async with aiohttp.ClientSession() as session:
@@ -790,7 +797,8 @@ class CozeAgent(Agent):
                     headers=self.headers,
                     json={
                         "messages": history + [{"role": "user", "content": query}] if history else [{"role": "user", "content": query}],
-                        "stream": True
+                        "stream": True,
+                        "user_id": user_id
                     }
                 ) as response:
                     async for line in response.content:
@@ -806,7 +814,7 @@ class CozeAgent(Agent):
             logger.error(f"Stream chat error: {str(e)}")
             yield f"Error: {str(e)}"
 
-    def stream_chat_sync(self, query: str, history: List[Dict] = None) -> Generator[str, None, None]:
+    def stream_chat_sync(self, query: str, history: List[Dict] = None, user_id="default_user") -> Generator[str, None, None]:
         """同步流式对话接口"""
         try:
             url = f"{self.http_base_url}/v3/chat"
@@ -820,7 +828,7 @@ class CozeAgent(Agent):
             
             payload = {
                 "bot_id": self.bot_id,
-                "user_id": "default_user",
+                "user_id": user_id,
                 "stream": True,
                 "additional_messages": [
                     {
