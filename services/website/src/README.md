@@ -2,11 +2,11 @@
 home: true
 icon: home
 title: 主页
-heroImage: ./img/home.png
+heroImage: /img/home.png
 bgImageStyle:
   background-attachment: fixed
 heroText: NKUwiki · 南开WIKI
-tagline: NKU-WIKI（南开知识共同体社区）的子项目，为nkuwiki项目提供部分数据存储和下载支持。
+tagline: 由学生开发者与志愿者共建的开源知识社区，致力于消除信息鸿沟，构建普惠型知识生态。
 actions:
   - text: 探索
     icon: lightbulb
@@ -17,7 +17,6 @@ actions:
     link: ./communicate/
 
 highlights:
-
 - header: 愿景和目标
   description: 我们致力于构建南开知识共同体，践行 开源·共治·普惠 三位一体价值体系  （🔓 技术开源透明 + 🤝 社区协同共治 + 🆓 服务永久普惠），实现：
   image: /assets/image/layout.svg
@@ -74,6 +73,21 @@ highlights:
     icon: clipboard-list
     details: 我们收集的成吨信息出处列表。
     link: ./docx/data_source.md
+
+  - title: Github项目
+    icon: octicon:mark-github-16
+    details: 我们的开源项目地址
+    link: https://github.com/NKU-WIKI/nkuwiki
+
+  - title: Coze.nankai工作台
+    icon: star
+    details: 我们的智能体平台团队空间
+    link: https://coze.nankai.edu.cn/product/llm/workspace/cuh2cjombmfmr3qn3fs0/application
+
+  - title: 飞书Wiki
+    icon: meteor-icons:wikipedia
+    details: 我们的南开飞书百科
+    link: https://nankai.feishu.cn/wiki/CehSwH2mkioA93kuGM8cYMsCnCh
 
 copyright: false
 footer: 使用 <a href="https://theme-hope.vuejs.press/zh/" target="_blank">VuePress Theme Hope</a> 主题强力驱动

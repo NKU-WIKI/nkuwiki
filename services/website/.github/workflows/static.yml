@@ -1,0 +1,22 @@
+name: Deploy to GitHub Pages
+permissions:
+  contents: write
+on: [push]  # 触发事件
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      - name: corepack enable
+        run: corepack enable
+      - name: 安装依赖
+        run: npm install 
+      - name: 开始构建
+        run: npm run docs:build
+      - name: 部署到服务器
+        uses: JamesIves/github-pages-deploy-action@4.1.1
+        with:
+          branch: gh-pages  # 部署分支
+          folder: src/.vuepress/dist 
