@@ -10,11 +10,11 @@ tagline: 由学生开发者与志愿者共建的开源知识社区，致力于�
 actions:
   - text: 探索
     icon: lightbulb
-    link: ./docx/
+    link: https://www.coze.cn/store/agent/7473464038963036186?bid=6ffcvvj3k6g0j&bot_id=true
     type: primary
 
-  - text: 联系我们
-    link: ./communicate/
+  - text: 目录
+    link: ./docx/
 
 highlights:
 - header: 愿景和目标
