@@ -115,13 +115,14 @@ def get_config():
     return config
 
 # 根路由重定向
-@app.get("/")
-async def redirect_to_web():
-    return RedirectResponse(url="/nkuwiki_web")
+# 不需要重定向了，下面的app.mount('/')定义了静态网页地址
+# @app.get("/")
+# async def redirect_to_web():
+#     return RedirectResponse(url="/nkuwiki_web")
 
 # 网站路由
 website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
-app.mount("/nkuwiki_web", StaticFiles(directory=website_dir, html=True), name="website")
+app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
 
 # 额外的静态文件挂载点
 app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
