@@ -588,50 +588,49 @@ def batch_insert(table_name: str, records: List[Dict[str, Any]], batch_size: int
         load_logger.error(f"批量插入失败: {str(e)}")
         return 0
 
-def execute_custom_query(query: str, params: Tuple = None, fetch: bool = True) -> Union[List[Dict[str, Any]], int]:
+def execute_custom_query(query: str, params: Union[List[Any], Tuple[Any, ...], None] = None, fetch: bool = True) -> Union[List[Dict[str, Any]], None]:
     """执行自定义SQL查询
     
     Args:
-        query: SQL查询语句
-        params: 参数元组
+        query: SQL查询语句，支持 ? 和 %s 两种占位符
+        params: 查询参数，支持列表或元组
         fetch: 是否获取结果
         
     Returns:
-        Union[List[Dict], int]: 查询结果列表或影响的行数
+        查询结果列表，每个结果是一个字典
     """
-    try:
-        with get_conn() as conn:
-            cursor = conn.cursor(dictionary=True, prepared=True)
-            cursor.execute(query, params or ())
-            
-            if fetch:
-                # 获取结果
-                result = cursor.fetchall()
-                # 如果是SHOW COLUMNS查询，需要特殊处理
-                if query.strip().upper().startswith("SHOW"):
-                    processed_result = []
-                    for row in result:
-                        processed_row = {}
-                        for key, value in row.items():
-                            processed_row[key] = value
-                        processed_result.append(processed_row)
-                    result = processed_result
+    with get_conn() as conn:
+        with conn.cursor(dictionary=True) as cursor:
+            try:
+                # 增加超时时间到30秒
+                cursor.execute("SET SESSION MAX_EXECUTION_TIME=30000")
                 
-                load_logger.debug(f"自定义查询成功，返回 {len(result)} 条记录")
-                cursor.close()
-                return result
-            else:
-                # 返回影响的行数
-                affected_rows = cursor.rowcount
-                load_logger.debug(f"自定义查询成功，影响 {affected_rows} 行")
-                cursor.close()
-                return affected_rows
-    except mysql.connector.Error as e:
-        load_logger.error(f"自定义查询失败: {str(e)}")
-        if fetch:
-            return []
-        else:
-            return 0
+                # 设置更大的缓冲区
+                cursor.execute("SET SESSION group_concat_max_len = 1000000")
+                cursor.execute("SET SESSION sql_buffer_result = 1")
+                
+                # 检查并处理参数
+                if params is not None:
+                    # 计算SQL中的占位符数量
+                    placeholder_count = query.count('?') + query.count('%s')
+                    param_count = len(params) if isinstance(params, (list, tuple)) else 0
+                    
+                    # 检查参数数量是否匹配
+                    if placeholder_count != param_count:
+                        raise ValueError(f"参数数量不匹配：SQL需要{placeholder_count}个参数，但提供了{param_count}个")
+                    
+                    # 将 ? 替换为 %s
+                    if '?' in query:
+                        query = query.replace('?', '%s')
+                
+                # 执行查询，如果params是列表则转换为元组
+                cursor.execute(query, tuple(params) if isinstance(params, list) else params)
+                if fetch:
+                    return cursor.fetchall()
+                return None
+            except Exception as e:
+                load_logger.error(f"自定义查询执行失败: {str(e)}")
+                raise
 
 def upsert_record(table_name: str, data: Dict[str, Any], unique_fields: List[str]) -> bool:
     """插入或更新记录（ON DUPLICATE KEY UPDATE）

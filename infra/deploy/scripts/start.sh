@@ -1,11 +1,8 @@
 #!/bin/bash
 #配置nkuwiki自启动
 
-sudo tee /etc/systemd/system/nkuwiki.service <<EOF
-[Unit]
-Description=NKUWiki Main Service
-After=network.target
 
+sudo tee /etc/systemd/system/nkuwiki.service <<EOF
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
@@ -24,10 +21,12 @@ EOF
 sudo chmod 644 /etc/systemd/system/nkuwiki.service
 sudo touch /var/log/nkuwiki.log /var/log/nkuwiki-error.log
 sudo chmod 644 /var/log/nkuwiki.log /var/log/nkuwiki-error.log
+
+
 sudo systemctl enable nkuwiki.service
 sudo systemctl start nkuwiki.service
 
 sudo systemctl daemon-reload
 
 sleep 5
-systemctl status nkuwiki.service 
+sudo systemctl status nkuwiki.service 

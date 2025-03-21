@@ -144,8 +144,12 @@ available_setting = {
         },
         # 网站配置 - Web服务相关参数
         "website": {
+            "directory": "services/website",                 # 网站静态文件目录
             "ssl_key_path": "/etc/ssl/private.key",          # SSL私钥文件路径
-            "ssl_cert_path": "/etc/ssl/certificate.pem"      # SSL证书文件路径
+            "ssl_cert_path": "/etc/ssl/certificate.pem",     # SSL证书文件路径
+            "debug_port": 8443,                              # 调试端口，用于开发环境
+            "http_port": 8080,                               # HTTP端口，默认80
+            "https_port": 443                                # HTTPS端口，默认443
         },
         # 微信小程序配置 - 小程序服务相关参数
         "app": {

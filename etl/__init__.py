@@ -71,7 +71,6 @@ try:
     for resource in resources:
         try:
             nltk.data.find(f'corpora/{resource}')
-            logger.debug(f"NLTK资源 {resource} 已安装")
         except LookupError:
             logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
             try:
