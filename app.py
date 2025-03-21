@@ -116,15 +116,16 @@ def get_config():
     return config
 
 # 根路由
-@app.get("/")
-async def root():
-    """API根路径，返回API服务基本信息"""
-    return {
-        "name": "nkuwiki API",
-        "version": "1.0.0",
-        "description": "南开百科知识平台API服务",
-        "status": "running"
-    }
+app.mount("/", StaticFiles(directory="/home/nkuwiki/nkuwiki-shell/nkuwiki/services/website", html=True), name="static")
+# @app.get("/")
+# async def root():
+#     """API根路径，返回API服务基本信息"""
+#     return {
+#         "name": "nkuwiki API",
+#         "version": "1.0.0",
+#         "description": "南开百科知识平台API服务",
+#         "status": "running"
+#     }
 
 # 健康检查端点
 @app.get("/health")
