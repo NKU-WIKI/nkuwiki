@@ -1,37 +1,41 @@
-from __init__ import *
-from base_crawler import BaseCrawler
-
-Config().load_config()
+from etl.crawler import *
+from etl.crawler.base_crawler import BaseCrawler
+from tqdm import tqdm
 
 class Wechat(BaseCrawler):
-    """微信公众号文章爬虫
+    """微信公众号爬虫
     
     Attributes:
         authors: 配置名称，包含要爬取的公众号昵称列表
         debug: 调试模式开关
         headless: 是否使用无头浏览器模式
+        use_proxy: 是否使用代理
     """
-    def __init__(self, authors: str = "university_official_account", debug: bool = False, headless: bool = False) -> None:
-        # 确保在初始化时重新读取环境变量
-        self.platform = "wechat"
-        self.content_type = "article"
-        self.base_url = "https://mp.weixin.qq.com/"  # 基础URL
-        super().__init__(platform=self.platform, debug=debug, headless=headless)
-        self.page = self.context.new_page()
-        self.inject_anti_detection_script()
-        self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
-        # 从配置中获取昵称并过滤空值
-        self.authors = [
-            name.strip() 
-            for name in Config().get(authors, '').split(',') 
-            if name.strip()
-        ]
-        if not self.authors:
-            self.logger.error(f"Config {authors} is not set or is empty")
+    def __init__(self, authors: list[str], tag: str = "nku", debug: bool = False, headless: bool = True, use_proxy: bool = False) -> None:
+        """初始化微信公众号爬虫
         
-        self.logger.info(f"authors: {self.authors}")
+        Args:
+            authors: 要爬取的公众号昵称列表
+            tag: 标签
+            debug: 调试模式开关
+            headless: 是否使用无头浏览器模式
+            use_proxy: 是否使用代理
+        """
+        self.platform = "wechat"
+        self.tag = tag
+        self.content_type = "article"
+        self.base_url = "https://mp.weixin.qq.com/"
+        super().__init__(debug, headless, use_proxy)
+        
+        if not authors:
+            self.logger.error("公众号列表不能为空")
+            raise ValueError("公众号列表不能为空")
+            
+        self.authors = authors
+        self.logger.info(f"start to scrape articles from authors: {self.authors}")
+        self.cookie_init_url = "https://mp.weixin.qq.com/"  # 初始化cookies的URL
 
-    def login_for_cookies(self) -> dict[str, str]:
+    async def login_for_cookies(self) -> dict[str, str]:
         """登录微信公众号平台获取cookies
         
         Returns:
@@ -42,23 +46,23 @@ class Wechat(BaseCrawler):
             Exception: 其他登录异常
         """
         try:
-            self.page.goto(self.base_url)
-            self.random_sleep()
+            await self.page.goto(self.base_url)
+            await self.random_sleep()
             max_wait = 300  # 最大等待5分钟
             
             # 立即检查是否已登录（二维码元素不存在）
-            if not self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
+            if not await self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
                 self.logger.info('检测到已登录状态')
-                self.random_sleep()
-                return {cookie['name']: cookie['value'] for cookie in self.context.cookies()}
+                await self.random_sleep()
+                return {cookie['name']: cookie['value'] for cookie in await self.context.cookies()}
 
             while max_wait > 0:
                 self.logger.info('请扫描二维码登录...')
                 # 持续监测二维码元素是否存在
-                if not self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
+                if not await self.page.query_selector('img[class="login__type__container__scan__qrcode"]'):
                     time.sleep(5)  # 给登录后页面加载留出时间
                     self.logger.info('登录成功')
-                    return {cookie['name']: cookie['value'] for cookie in self.context.cookies()}
+                    return {cookie['name']: cookie['value'] for cookie in await self.context.cookies()}
                 time.sleep(5)
                 max_wait -= 5
                 
@@ -66,18 +70,20 @@ class Wechat(BaseCrawler):
                 raise TimeoutError("登录超时")
         except Exception as e:
             # 增加失败后清理
-            self.context.clear_cookies()
             self.context.clear_cache()
             raise e
 
-    def scrape_articles_from_authors(self, scraped_original_urls: set, max_article_num: int, 
-                                     total_max_article_num: int) -> list[dict]:
+    async def scrape_articles_from_authors(self, scraped_original_urls: set, max_article_num: int, 
+                                     total_max_article_num: int, time_range: tuple = None, recruitment_keywords: list[str] = None, pbar: Any = None) -> list[dict]:
         """从指定公众号列表抓取文章元数据
         
         Args:
             scraped_original_urls: 已抓取链接集合（用于去重）
             max_article_num: 单个公众号最大抓取数量
             total_max_article_num: 总最大抓取数量
+            time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
+            recruitment_keywords: 可选的关键词列表，只抓取标题包含关键词的文章
+            pbar: 进度条对象
             
         Returns:
             包含文章信息的字典列表，格式:
@@ -88,95 +94,90 @@ class Wechat(BaseCrawler):
                 'original_url': 文章链接
             }]
         """
+        # 处理时间范围
+        start_date = end_date = None
+        if time_range and len(time_range) == 2:
+            start_date = parse_date(time_range[0])
+            end_date = parse_date(time_range[1])
+            
         total_articles = []
-        
-        # 设置较短的默认超时时间
-        self.page.set_default_timeout(6000)  # 设置为6秒
-        
         try:
-            self.random_sleep()
-            new_content_button = self.page.wait_for_selector('div[class="new-creation__menu-item"]', 
+            await self.random_sleep()
+            new_content_button = await self.page.wait_for_selector('div[class="new-creation__menu-item"]', 
                 state='attached', 
                 timeout=3000
             )
+            await new_content_button.click()
+            await self.context.wait_for_event('page')
+            self.page = self.context.pages[-1]
+            await self.random_sleep()
+            element = await self.page.wait_for_selector('li[id="js_editor_insertlink"] > span')
+            await element.click()
         except Exception as e:
-            self.page.screenshot(path='viewport.png', full_page=True)
+            await self.page.screenshot(path='viewport.png', full_page=True)
             self.counter['error'] += 1
             self.logger.error(f'get articles from {self.authors} error, {type(e)}: {e}')
             return total_articles
 
-        # 增加操作重试机制
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                new_content_button.click()
-                break
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    self.logger.error(f"点击失败，已重试 {max_retries} 次，跳过")
-                    return total_articles
-                self.logger.warning(f"点击失败，重试 {attempt+1}/{max_retries}")
-                self.page.reload()
-        try:
-            self.context.wait_for_event('page')
-            new_page = self.context.pages[-1]
-            self.page = new_page
-            self.logger.info('go to new content page')
-            self.random_sleep()
-            self.page.wait_for_selector('li[id="js_editor_insertlink"] > span').click()
-        except Exception as e:
-            self.page.screenshot(path='viewport.png', full_page=True)
-            self.counter['error'] += 1
-            self.logger.error(f'get articles error, {type(e)}: {e}')
-            return total_articles
         for author in self.authors:
-            self.random_sleep()
+            await self.random_sleep()
             try:
-                self.page.wait_for_selector('p[class="inner_link_account_msg"] > div > button', 
-                    timeout=3000,
-                    state='visible'
-                ).click()
+                button = self.page.get_by_text('选择其他账号')
+                await button.click()
             except Exception as e:
                 self.logger.error(f'Failed to find account button: {e}')
-            self.random_sleep()
-            try:
-                search_account_field = self.page.wait_for_selector(
-                    'input[placeholder="输入文章来源的账号名称或微信号，回车进行搜索"]',
-                    timeout=3000
-                )
-                search_account_field.fill(author)
-            except Exception as e:
-                self.logger.error(f'Failed to find search field,{str(e)}')
-                break
-            self.random_sleep()
-            try:
-                self.page.wait_for_selector(
-                    'button[class="weui-desktop-icon-btn weui-desktop-search__btn"]',
-                    timeout=3000
-                ).click()
-            except Exception as e:
-                self.logger.error(f'Failed to find search button: {e}')
-                break
-            self.random_sleep()
-            # 等待账号选择器出现
-            try:
-                account_selector = self.page.wait_for_selector(
-                    '//li[@class="inner_link_account_item"]/div[1]',
-                    timeout=3000
-                )
-                account_selector.click()
-
-            except Exception as e:
-                self.logger.error(f'failed to click account, {author} seems does not exist')
                 continue
-            self.random_sleep()
+            await self.random_sleep()
+            retry_count = 0
+            
+            while retry_count < self.max_retries:
+                try:
+                    # 清空搜索框重新输入
+                    search_account_field = await self.page.wait_for_selector(
+                        'input[placeholder="输入文章来源的账号名称或微信号，回车进行搜索"]',
+                        timeout=3000
+                    )
+                    await search_account_field.fill("")  # 先清空
+                    await search_account_field.fill(author)
+                    
+                    await self.random_sleep()
+                    search_button = await self.page.wait_for_selector(
+                        'button[class="weui-desktop-icon-btn weui-desktop-search__btn"]',
+                        timeout=3000
+                    )
+                    await search_button.click()
+                    
+                    await self.random_sleep()
+                    # 等待账号选择器出现
+                    account_selector = await self.page.wait_for_selector(
+                        '//li[@class="inner_link_account_item"]/div[1]',
+                        timeout=6000
+                    )
+                    await account_selector.click()
+                    # 如果成功找到并点击了账号，跳出重试循环
+                    break
+                    
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count >= self.max_retries:
+                        self.logger.error(f'Failed to search and select account after {self.max_retries} retries: {author}, error: {e}')
+                        break
+                    self.logger.warning(f'Retry {retry_count}/{self.max_retries} for account: {author}, error: {e}')
+                    await self.random_sleep(2)  # 失败后多等待一会
+            
+            if retry_count >= self.max_retries:
+                if pbar:
+                    pbar.update(1)
+                continue  # 重试次数用完，跳过当前作者
+                
+            await self.random_sleep()
             # 获取页码信息
             try:
-                max_page_label = self.page.wait_for_selector(
+                max_page_label = await self.page.wait_for_selector(
                     'span[class="weui-desktop-pagination__num__wrp"] > label:nth-of-type(2)',
                     timeout=3000
                 )
-                max_page_num = int(max_page_label.inner_text())
+                max_page_num = int(await max_page_label.inner_text())
             except Exception as e:
                 self.logger.warning(f'Failed to get max page number: {e}, set default max page number to 1')
                 max_page_num = 1
@@ -184,15 +185,35 @@ class Wechat(BaseCrawler):
             articles = []
             while len(articles) < max_article_num and page <= max_page_num:
                 try:
-                    self.random_sleep()
-                    article_titles_elements = self.page.query_selector_all('div[class="inner_link_article_title"] > span:nth-of-type(2)')
-                    article_publish_times_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(1)')
-                    article_original_urls_elements = self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(2) > a[href]')
+                    await asyncio.sleep(1.0) 
+                    await self.random_sleep()
+                    article_titles_elements = await self.page.query_selector_all('div[class="inner_link_article_title"] > span:nth-of-type(2)')
+                    article_publish_times_elements = await self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(1)')
+                    article_original_urls_elements = await self.page.query_selector_all('div[class="inner_link_article_date"] > span:nth-of-type(2) > a[href]')
                     cnt = 0
                     for i in range(len(article_titles_elements)):
-                        article_title = str(article_titles_elements[i].inner_text())
-                        article_publish_time = str(article_publish_times_elements[i].inner_text())
-                        article_original_url = str(article_original_urls_elements[i].get_attribute('href'))
+                        article_title = str(await article_titles_elements[i].inner_text())
+                        article_publish_time = str(await article_publish_times_elements[i].inner_text())
+                        article_original_url = str(await article_original_urls_elements[i].get_attribute('href'))
+                        
+                        # 检查时间范围
+                        if time_range:
+                            try:
+                                pub_date = datetime.strptime(article_publish_time, '%Y-%m-%d')
+                                if start_date and pub_date < start_date:
+                                    # 如果文章时间早于开始时间，直接跳到下一个作者
+                                    self.logger.debug(f'Article date {pub_date} is earlier than start_date {start_date}, skip to next author')
+                                    page = max_page_num + 1  # 强制退出当前作者的循环
+                                    break
+                                if end_date and pub_date > end_date:
+                                    # 如果文章时间晚于结束时间，跳过当前文章继续检查
+                                    continue
+                            except:
+                                self.logger.warning(f'无法解析文章发布时间: {article_publish_time}')
+                                
+                        if recruitment_keywords and not any(keyword in article_title for keyword in recruitment_keywords):
+                            continue
+                        
                         if(article_original_url not in scraped_original_urls):
                             articles.append({
                                 'author': author,
@@ -206,7 +227,7 @@ class Wechat(BaseCrawler):
                     try: 
                         # 通过文本内容定位"下一页"按钮
                         next_page_button = self.page.get_by_text("下一页")
-                        next_page_button.click()
+                        await next_page_button.click()
                     except Exception as e:
                         self.counter['error'] += 1
                         self.logger.warning(f'Page: {page}, Next Button error, {type(e)}: {e}, author: {author}')
@@ -217,111 +238,289 @@ class Wechat(BaseCrawler):
                     break  # 如果处理页面出错，跳出当前账号的处理
 
             self.update_scraped_articles(scraped_original_urls, articles)
-            self.logger.info(f'save {len(articles)} articles from {author}')
-            total_articles.extend(articles)
-            if len(total_articles) >= total_max_article_num:
-                break
+            if(len(articles) > 0):
+                self.logger.info(f'save {len(articles)} articles from {author}')
+                total_articles.extend(articles)
+                if len(total_articles) >= total_max_article_num:
+                    if pbar:
+                        pbar.update(1)
+                    break
+            else:
+                self.logger.debug(f'no articles from {author}')
+            if pbar:
+                pbar.update(1)
 
         self.logger.info(f'save total {len(total_articles)} articles from {self.authors}')
         return total_articles
 
-    def download_article(self, article: dict, add_scraped_records: list) -> None:
-        """下载单篇文章内容并保存元数据
+    async def scrape(self, max_article_num: int = 5, total_max_article_num: int = 20, time_range: tuple = None, recruitment_keywords: list[str] = None) -> None:
+        """抓取微信公众号文章
+
+        Args:
+            max_article_num: 每个公众号最大抓取数量
+            total_max_article_num: 总共最大抓取数量
+            time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
+            recruitment_keywords: 可选的招聘关键词列表，只抓取标题包含关键词的文章
+        """
+        try:
+            # 先获取已经抓取的链接
+            scraped_original_urls = self.get_scraped_original_urls()
+            # 检查cookies是否存在，不存在则登录获取
+            cookie_ts, cookies = self.read_cookies(timeout=3*24*3600)  
+            if cookies is None:
+                cookies = await self.login_for_cookies()  
+                self.save_cookies(cookies)  
+            else:
+                await self.init_cookies(cookies, go_base_url=True)
+
+            start_time = time.time()
+            if self.debug == False:
+                lock_path = self.base_dir / self.lock_file
+                lock_path.write_text(str(int(start_time)))  # 写入锁文件
+                scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
+                with tqdm(total=len(self.authors), desc="抓取公众号", unit="个") as pbar:
+                    articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords, pbar)
+                self.update_scraped_articles([article['original_url'] for article in articles], articles)
+                lock_path.unlink()  # 删除锁文件
+            else:
+                with tqdm(total=len(self.authors), desc="抓取公众号", unit="个") as pbar:
+                    articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords, pbar)
+                self.update_scraped_articles([article['original_url'] for article in articles], articles)
+        
+            self.save_counter(start_time)  
+            self.update_f.close()  
+            
+        except Exception as e:
+            self.logger.error(f"抓取出错: {e}")
+
+    async def download_article(self, article: dict, save_dir: Path = None, bot_tag: str = 'abstract') -> None:
+        """下载单篇文章内容
+        Args:
+            article: 文章信息字典（需包含original_url）
+            save_dir: 文章保存目录，如果为None则使用默认目录
+            bot_tag: 机器人标签，默认为'abstract'
+        """
+        try:
+            title = article.get('title', '未知标题')
+            clean_title = clean_filename(title)
+            original_url = article['original_url']
+            
+            self.logger.debug(f"开始处理文章: {title}, URL: {original_url}")
+            
+            md_file = save_dir / f"{clean_title}.md"
+            from etl.transform.wechatmp2md import wechatmp2md_async
+            try:
+                success = await wechatmp2md_async(original_url, md_file, 'url')
+            except Exception as e:
+                self.logger.exception(e)
+            if success:
+                with open(md_file, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read()
+                content = re.sub(r'!\[.*?\]\(.*?\)', '', content)
+                content = re.sub(r'\n\s*\n', '\n', content).strip()
+                if content:
+                    with open(md_file, 'w', encoding='utf-8') as f:
+                        f.write(content.strip())
+                else:
+                    self.logger.error(f"转换失败，MD文件内容为空: {md_file}")
+                    return
+                from etl.transform.abstract import generate_abstract_async
+                try:
+                    abstract = await generate_abstract_async(md_file, bot_tag=bot_tag)
+                except Exception as e:
+                    self.logger.error(f"生成摘要时发生错误: {e}")
+                    abstract = None
+                if abstract:
+                    try:
+                        # article['content'] = abstract
+                        with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                            json.dump(article, f, ensure_ascii=False,indent=4)
+                        with open(save_dir / 'abstract.md', 'w', encoding='utf-8') as f:
+                            f.write(abstract)
+                        self.logger.debug(f"生成摘要成功: {clean_title}")
+                        preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
+                        self.logger.debug(f"原始URL: {original_url}\n摘要内容预览: {preview_abstract}")
+                    except Exception as e:
+                        self.logger.exception(e)
+                else:
+                    try:
+                        article['content'] = ""
+                        with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                            json.dump(article, f, ensure_ascii=False, indent=4)
+                        self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
+                    except Exception as e:
+                        self.logger.exception(e)
+        except Exception as e:
+            self.logger.exception(e)
+
+    async def download(self, time_range: tuple = None, bot_tag: str = 'abstract'):
+        """下载爬取到的文章
         
         Args:
-            article: 文章信息字典（需包含link/title/date等字段）
-            add_scraped_records: 用于记录已成功下载的链接列表
+            time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
+            bot_tag: 机器人标签，默认为'abstract'
         """
-        # 下载文章
-        file_url = ''
-        try:
-            # 创建新页面下载文章
-            article_page = self.context.new_page()
-            article_page.goto(article['original_url'])
-            self.counter['visit'] += 1
-            self.random_sleep()
+        # 处理时间范围
+        start_date = end_date = None
+        if time_range and len(time_range) == 2:
+            start_date = parse_date(time_range[0])
+            end_date = parse_date(time_range[1])
+            
+        self.logger.debug("开始下载文章...")
+        data_dir = self.data_dir
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 获取可用的bot_id数量
+        from etl.transform.abstract import get_bot_ids_by_tag
+        bot_ids = get_bot_ids_by_tag(bot_tag)
+        max_concurrency = len(bot_ids)
+        if max_concurrency == 0:
+            self.logger.error(f"没有找到可用的bot_id(标签:{bot_tag})")
+            return
+        self.logger.info(f"找到 {max_concurrency} 个可用的bot_id")
+        
+        # 递归查找所有JSON文件
+        json_files = list(data_dir.glob('**/*.json'))
+        self.logger.debug(f"找到 {len(json_files)} 个JSON文件")
+        
+        if not json_files:
+            self.logger.error("没有找到需要处理的文章，任务结束")
+            return
+        
+        # 创建计数器，用于进度展示
+        total_files = len(json_files)
+        processed = 0
+        success = 0
+        skipped = 0
+        failed = 0
+        
+        # 创建进度条
+        pbar = tqdm(total=total_files, desc="下载文章", unit="篇")
+        
+        # 创建任务列表用于并行处理
+        tasks = []
+        for json_file in json_files:
+            try:
+                # 检查文件是否为空
+                if json_file.stat().st_size == 0:
+                    self.logger.warning(f"跳过空JSON文件: {json_file}")
+                    skipped += 1
+                    pbar.update(1)
+                    continue
+                    
+                try:
+                    with open(json_file, 'r', encoding='utf-8') as f:
+                        article = json.load(f)
+                except json.JSONDecodeError as je:
+                    self.logger.warning(f"无法解析JSON文件: {json_file}, 错误: {je}")
+                    failed += 1
+                    pbar.update(1)
+                    continue
+                except UnicodeDecodeError as ue:
+                    # 尝试其他编码
+                    try:
+                        with open(json_file, 'r', encoding='gbk') as f:
+                            article = json.load(f)
+                    except:
+                        self.logger.warning(f"无法解码JSON文件: {json_file}, 错误: {ue}")
+                        failed += 1
+                        pbar.update(1)
+                        continue
+                
+                if not isinstance(article, dict) or 'original_url' not in article:
+                    self.logger.warning(f"跳过无效文章: {json_file}")
+                    skipped += 1
+                    pbar.update(1)
+                    continue
+                    
+                # 检查时间范围
+                if time_range and 'publish_time' in article:
+                    try:
+                        pub_date = datetime.strptime(article['publish_time'], '%Y-%m-%d')
+                        if start_date and pub_date < start_date:
+                            skipped += 1
+                            pbar.update(1)
+                            continue
+                        if end_date and pub_date > end_date:
+                            skipped += 1
+                            pbar.update(1)
+                            continue
+                    except:
+                        self.logger.warning(f"无法解析文章发布时间: {article.get('publish_time')}")
+                
+                # 使用文章所在目录作为保存目录
+                save_dir = json_file.parent
+                # 创建自定义任务，包含文件信息用于进度更新
+                tasks.append((self.download_article(article, save_dir, bot_tag), json_file))
+            except Exception as e:
+                self.logger.error(f"处理JSON文件失败: {json_file}, 错误: {e}")
+                failed += 1
+                pbar.update(1)
+        
+        # 并行执行所有下载任务，但限制并发数
+        if tasks:
+            self.logger.info(f"开始并行处理 {len(tasks)} 篇文章，并发数限制为{max_concurrency}")
+            # 创建信号量以限制并发数
+            semaphore = asyncio.Semaphore(max_concurrency)
+            
+            async def process_with_semaphore(task_info):
+                task, json_file = task_info
+                try:
+                    async with semaphore:
+                        result = await task
+                        nonlocal success
+                        success += 1
+                        return result
+                except Exception as e:
+                    self.logger.error(f"任务执行失败: {json_file}, 错误: {e}")
+                    nonlocal failed
+                    failed += 1
+                    return None
+                finally:
+                    nonlocal processed
+                    processed += 1
+                    # 更新进度条
+                    pbar.update(1)
+                    pbar.set_postfix({"成功": success, "跳过": skipped, "失败": failed})
+                    
+            # 用信号量包装所有任务
+            limited_tasks = [process_with_semaphore(task_info) for task_info in tasks]
             
             try:
-                # 下载文章内容
-                file_name = article['title']
-                metadata = {}  # 初始化元数据
-                metadata['run_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")  # 记录运行时间
-                metadata['publish_time'] = article['date']  # 记录发布时间
-                metadata['title'] = article['title']  # 记录标题
-                metadata['author'] = article['author']  # 记录作者
-                metadata['original_url'] = article['original_url']  # 记录原始链接
-                metadata['content_type'] = self.content_type  # 记录内容类型
-                year_month = article['date'][0:7].replace('-', '')  # 获取年月
-                # metadata['file_path'] = f'{year_month}/{file_name}.html'  # 记录文件路径
-                dir_path = self.base_dir / year_month  # 获取目录路径
-                self.headers['Referer'] = article['original_url']  # 设置Referer头  
-                resp = requests.get(article['original_url'], headers=self.headers, cookies=None)  # 发送HTTP请求下载文件
-                file_len = len(resp.content)  # 获取文件长度
-                dir_path.mkdir(parents=True, exist_ok=True)  # 创建目录
-                data_path = dir_path / f'{file_name}.html'  # 获取文件路径
-                meta_path = dir_path / f'{file_name}.json'  # 获取元数据文件路径
-                self.counter['scrape'] += 1  # 抓取计数器加1
-                if resp.status_code == 200 and file_len > 1000:  # 如果请求成功且文件长度大于1000字节
-                    current_time_ms = int(time.time() * 1000)  # 获取当前时间戳
-                    self.update_f.write(f"{metadata['file_path']}\t{current_time_ms}\n")  # 写入更新文件
-                    self.logger.info(f"Success download: {metadata['file_path']}, article_original_url: {article['original_url']}, file_url: {file_url}")  # 记录日志
-                    add_scraped_records.append(article['original_url'])  # 添加到已抓取链接列表
-                    self.counter['download'] += 1  # 下载计数器加1
-                    metadata['download_status'] = 'success'
-                else:
-                    self.counter['error'] += 1  # 错误计数器加1
-                    self.logger.error(f'request html error, code: {resp.status_code}, len: {file_len}, url: {file_url}')  # 记录错误日志
-                    metadata['download_status'] = 'failed'
-                meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2))  # 写入元数据
-                data_path.write_bytes(resp.content)  # 写入文件内容
+                # 并行执行任务，但受信号量限制
+                await asyncio.gather(*limited_tasks)
+            except Exception as e:
+                self.logger.error(f"任务执行过程中发生错误: {e}")
             finally:
-                # 确保关闭页面
-                article_page.close()
-        except Exception as e:
-            self.counter['error'] += 1
-            self.logger.error(f'get article_original_url error, {type(e)}: {e}, url: {article["original_url"]}')
-
-    def scrape(self, max_article_num: int = 5, total_max_article_num: int = 20) -> None:
-        """执行完整爬取流程
-        
-        Args:
-            max_article_num: 单个公众号最大抓取数量（默认5）
-            total_max_article_num: 总最大抓取数量（默认20）
-            
-        Note:
-            生产环境需设置debug=False避免反爬检测
-        """
-        cookie_ts, cookies = self.read_cookies(timeout=2.5*24*3600)  # 读取cookies
-        if cookies is None:
-            cookies = self.login_for_cookies()  # 登录并获取cookies 
-            self.save_cookies(cookies)  # 保存cookies
+                # 关闭进度条
+                pbar.close()
+                
+            self.logger.info(f"所有文章下载完成: 总数 {total_files}, 成功 {success}, 跳过 {skipped}, 失败 {failed}")
         else:
-            self.init_cookies(cookies, go_base_url=True)  # 初始化cookies
-        start_time = time.time()
-        if self.debug == False:
-            lock_path = self.base_dir / self.lock_file
-            # if lock_path.exists():
-            #     last_run_ts = lock_path.read_text()
-            #     self.logger.error(f'last run not end, last_run_ts: {last_run_ts}')  # 记录错误日志
-            #     return
-            lock_path.write_text(str(int(start_time)))  # 写入锁文件
-            scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
-            self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num)  
-            lock_path.unlink()  # 删除锁文件
-        else:
-            scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
-            self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num)  
-    
-        self.save_counter(start_time)  
-        self.update_f.close()  
-            
-    def download(self):
-        # TODO: 添加下载实现
-        pass
+            pbar.close()
+            self.logger.warning("没有有效的文章需要处理")
 
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
+
 if __name__ == "__main__":
-    wechat = Wechat(authors = "club_official_account", debug=False, headless=False)  # 初始化
-    wechat.scrape(max_article_num=5, total_max_article_num=1e10)   # max_article_num最大抓取数量
+    async def main():
+        """异步主函数"""
+        university_accounts = UNIVERSITY_OFFICIAL_ACCOUNTS
+        wechat = Wechat(authors=university_accounts, debug=True, headless=True, use_proxy=True)
+        await wechat.async_init()  # 确保在调用download前初始化
+        
+        try:
+            await wechat.scrape(max_article_num=10, total_max_article_num=1e10, time_range=("2025-01-01", "2025-03-12"))
+        finally:
+            # 清理cookies并关闭当前页面
+            await wechat.context.clear_cookies()
+            await wechat.page.close()
+            # 开新页面
+            wechat.page = await wechat.context.new_page()
+        
+        await wechat.download(time_range=("2025-01-01", "2025-03-12"))
+
+    # 运行异步主函数
+    asyncio.run(main())

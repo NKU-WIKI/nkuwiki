@@ -22,11 +22,11 @@
   "group_exit_prompt": "请你随机使用一种风格跟其他群用户说他违反规则\"{nickname}\"退出群聊。",  ## 移出群聊的提示词
 
   "patpat_prompt": "请你随机使用一种风格介绍你自己，并告诉用户输入#help可以查看帮助信息。",  ## 群内拍一拍的提示词
- 
+
   "use_character_desc": false     ## 是否在Hello插件中使用LinkAI应用的系统设定
 }
-```
 
+```text
 
 注意：
 
@@ -36,6 +36,4 @@
  - 如果使用LinkAI的服务，想在随机欢迎中结合LinkAI应用的设定，配置`"use_character_desc": true `
  - 实际 `config.json` 配置中应保证json格式，不应携带 '#' 及后面的注释
  - 如果是`docker`部署，可通过映射 `plugins/config.json` 到容器中来完成插件配置，参考[文档](https://github.com/zhayujie/chatgpt-on-wechat#3-%E6%8F%92%E4%BB%B6%E4%BD%BF%E7%94%A8)
-
-
 

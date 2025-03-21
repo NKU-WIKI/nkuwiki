@@ -21,26 +21,27 @@ from core.utils.common.token_bucket import TokenBucket
 class ChatGPTAgent(Agent, OpenAIImage):
     def __init__(self):
         super().__init__()
+        self.config = Config()
         # 替换旧版API初始化方式
         self.client = OpenAI(
-            api_key=Config().get("open_ai_api_key"),
-            base_url=Config().get("open_ai_api_base"),
+            api_key=self.config.get("core.agent.openai.api_key"),
+            base_url=self.config.get("core.agent.openai.base_url"),
         )
-        if Config().get("proxy"):
-            self.client.proxy = Config().get("proxy")
-        if Config().get("rate_limit_chatgpt"):
-            self.tb4chatgpt = TokenBucket(Config().get("rate_limit_chatgpt", 20))
+        if self.config.get("proxy"):
+            self.client.proxy = self.config.get("proxy")
+        if self.config.get("core.agent.openai.rate_limit"):
+            self.tb4chatgpt = TokenBucket(self.config.get("core.agent.openai.rate_limit", 20))
 
-        self.sessions = SessionManager(ChatGPTSession, model=Config().get("model") or "gpt-3.5-turbo")
+        self.sessions = SessionManager(ChatGPTSession, model=self.config.get("core.agent.openai.model") or "gpt-3.5-turbo")
         self.args = {
-            "model": Config().get("model") or "gpt-3.5-turbo",  # 对话模型的名称
-            "temperature": Config().get("temperature", 0.9),  # 值在[0,1]之间，越大表示回复越具有不确定性
+            "model": self.config.get("core.agent.openai.model") or "gpt-3.5-turbo",  # 对话模型的名称
+            "temperature": self.config.get("core.agent.openai.temperature", 0.9),  # 值在[0,1]之间，越大表示回复越具有不确定性
             # "max_tokens":4096,  # 回复最大的字符数
-            "top_p": Config().get("top_p", 1),
-            "frequency_penalty": Config().get("frequency_penalty", 0.0),  # [-2,2]之间，该值越大则更倾向于产生不同的内容
-            "presence_penalty": Config().get("presence_penalty", 0.0),  # [-2,2]之间，该值越大则更倾向于产生不同的内容
-            "request_timeout": Config().get("request_timeout", None),  # 请求超时时间，openai接口默认设置为600，对于难问题一般需要较长时间
-            "timeout": Config().get("request_timeout", None),  # 重试超时时间，在这个时间内，将会自动重试
+            "top_p": self.config.get("core.agent.openai.top_p", 1),
+            "frequency_penalty": self.config.get("core.agent.openai.frequency_penalty", 0.0),  # [-2,2]之间，该值越大则更倾向于产生不同的内容
+            "presence_penalty": self.config.get("core.agent.openai.presence_penalty", 0.0),  # [-2,2]之间，该值越大则更倾向于产生不同的内容
+            "request_timeout": self.config.get("core.agent.openai.request_timeout", None),  # 请求超时时间，openai接口默认设置为600，对于难问题一般需要较长时间
+            "timeout": self.config.get("core.agent.openai.request_timeout", None),  # 重试超时时间，在这个时间内，将会自动重试
         }
 
     def reply(self, query, context=None):
@@ -58,7 +59,9 @@ class ChatGPTAgent(Agent, OpenAIImage):
                 self.sessions.clear_all_session()
                 reply = Reply(ReplyType.INFO, "所有人记忆已清除")
             elif query == "#更新配置":
-                Config().load_config()
+                # Config().load_config() 不再需要显式调用
+                # 创建新的配置对象即可重新加载配置
+                self.config = Config()
                 reply = Reply(ReplyType.INFO, "配置已更新")
             if reply:
                 return reply
@@ -216,26 +219,26 @@ class AzureChatGPTAgent(ChatGPTAgent):
         super().__init__()
         # 修改Azure初始化方式
         self.client = OpenAI(
-            api_key=Config().get("azure_api_key"),
-            api_version=Config().get("azure_api_version", "2023-06-01-preview"),
-            base_url=f"{Config().get('azure_api_base')}/openai/deployments/{Config().get('azure_deployment_id')}",
-            default_headers={"api-key": Config().get("azure_api_key")}
+            api_key=self.config.get("core.agent.openai.azure.api_key"),
+            api_version=self.config.get("core.agent.openai.azure.api_version", "2023-06-01-preview"),
+            base_url=f"{self.config.get('core.agent.openai.azure.base_url')}/openai/deployments/{self.config.get('core.agent.openai.azure.deployment_id')}",
+            default_headers={"api-key": self.config.get("core.agent.openai.azure.api_key")}
         )
-        self.args["model"] = Config().get("azure_deployment_id")
+        self.args["model"] = self.config.get("core.agent.openai.azure.deployment_id")
 
     def create_img(self, query, retry_count=0, api_key=None):
-        text_to_image_model = Config().get("text_to_image")
+        text_to_image_model = self.config.get("core.agent.openai.text_to_image")
         if text_to_image_model == "dall-e-2":
             api_version = "2023-06-01-preview"
-            endpoint = Config().get("azure_openai_dalle_api_base","open_ai_api_base")
+            endpoint = self.config.get("core.agent.openai.azure.dalle_base_url","core.agent.openai.base_url")
             # 检查endpoint是否以/结尾
             if not endpoint.endswith("/"):
                 endpoint = endpoint + "/"
             url = "{}openai/images/generations:submit?api-version={}".format(endpoint, api_version)
-            api_key = Config().get("azure_openai_dalle_api_key","open_ai_api_key")
+            api_key = self.config.get("core.agent.openai.azure.dalle_api_key","core.agent.openai.api_key")
             headers = {"api-key": api_key, "Content-Type": "application/json"}
             try:
-                body = {"prompt": query, "size": Config().get("image_create_size", "256x256"),"n": 1}
+                body = {"prompt": query, "size": self.config.get("core.agent.openai.image_size", "256x256"),"n": 1}
                 submission = requests.post(url, headers=headers, json=body)
                 operation_location = submission.headers['operation-location']
                 status = ""

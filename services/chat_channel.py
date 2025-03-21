@@ -13,6 +13,7 @@ import time
 from typing import Optional, List
 from asyncio import CancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
+from loguru import logger
 
 from core.bridge.context import *
 from core.bridge.reply import *
@@ -24,7 +25,8 @@ from core.utils.plugins.plugin_manager import PluginManager
 from core.utils.plugins.event import Event, EventContext
 from core.utils.voice.audio_convert import any_to_wav
 from config import Config
-from app import App
+# 替换App类导入
+# from app import App
 
 handler_pool = ThreadPoolExecutor(max_workers=8)  # 处理消息的线程池
 
@@ -103,7 +105,7 @@ class ChatChannel(Channel):
                     ):
                         session_id = group_id
                 else:
-                    App.logger.debug(f"No need reply, groupName not in whitelist, group_name={group_name}")
+                    logger.debug(f"No need reply, groupName not in whitelist, group_name={group_name}")
                     return None
                 context["session_id"] = session_id
                 context["receiver"] = group_id
@@ -115,7 +117,7 @@ class ChatChannel(Channel):
             if e_context.is_pass() or context is None:
                 return context
             if cmsg.from_user_id == self.user_id and not Config.get("trigger_by_self", True):
-                App.logger.debug("[chat_channel]self message skipped")
+                logger.debug("[chat_channel]self message skipped")
                 return None
 
         # 根据配置的模型类型设置处理逻辑
@@ -123,13 +125,13 @@ class ChatChannel(Channel):
         # if current_model.startswith("coze"):
         #     context["bot_type"] = "coze"
         #     context["coze_api_key"] = Config().get("coze_api_key")
-        #     context["coze_a_id"] = Config().get("coze_app_id")
+        #     context["coze_a_id"] = Config(w).get("coze_app_id")
 
         # 消息内容匹配过程，并处理content
         if ctype == ContextType.TEXT:
             if first_in and "」\n- - - - - - -" in content:  # 初次匹配 过滤引用消息
-                App.logger.debug(content)
-                App.logger.debug("[chat_channel]reference query skipped")
+                logger.debug(content)
+                logger.debug("[chat_channel]reference query skipped")
                 return None
 
             nick_name_black_list = Config().get("nick_name_black_list", [])
@@ -147,10 +149,10 @@ class ChatChannel(Channel):
                         nick_name = context["msg"].actual_user_nickname
                         if nick_name and nick_name in nick_name_black_list:
                             # 黑名单过滤
-                            App.logger.warning(f"[chat_channel] Nickname {nick_name} in In BlackList, ignore")
+                            logger.warning(f"[chat_channel] Nickname {nick_name} in In BlackList, ignore")
                             return None
 
-                        App.logger.info("[chat_channel]receive group at")
+                        logger.info("[chat_channel]receive group at")
                         if not Config().get("group_at_off", False):
                             flag = True
                         self.name = self.name if self.name is not None else ""  # 部分渠道self.name可能没有赋值
@@ -167,13 +169,13 @@ class ChatChannel(Channel):
                         content = subtract_res
                 if not flag:
                     if context["origin_ctype"] == ContextType.VOICE:
-                        App.logger.info("[chat_channel]receive group voice, but checkprefix didn't match")
+                        logger.info("[chat_channel]receive group voice, but checkprefix didn't match")
                     return None
             else:  # 单聊
                 nick_name = context["msg"].from_user_nickname
                 if nick_name and nick_name in nick_name_black_list:
                     # 黑名单过滤
-                    App.logger.warning(f"[chat_channel] Nickname '{nick_name}' in In BlackList, ignore")
+                    logger.warning(f"[chat_channel] Nickname '{nick_name}' in In BlackList, ignore")
                     return None
 
                 match_prefix = check_prefix(content, Config().get("single_chat_prefix", [""]))
@@ -249,7 +251,7 @@ class ChatChannel(Channel):
                 try:
                     any_to_wav(file_path, wav_path)
                 except Exception as e:  # 转换失败，直接使用mp3，对于某些api，mp3也可以识别
-                    App().logger.warning("[chat_channel]any to wav error, use raw path. " + str(e))
+                    logger.warning("[chat_channel]any to wav error, use raw path. " + str(e))
                     wav_path = file_path
                 # 语音识别
                 reply = super().build_voice_to_text(wav_path)
@@ -278,7 +280,7 @@ class ChatChannel(Channel):
             elif context.type == ContextType.FUNCTION or context.type == ContextType.FILE:  # 文件消息及函数调用等，当前无默认逻辑
                 pass
             else:
-                App().logger.warning("[chat_channel] unknown context type: {}".format(context.type))
+                logger.warning("[chat_channel] unknown context type: {}".format(context.type))
                 return
         return reply
 
@@ -295,7 +297,7 @@ class ChatChannel(Channel):
             desire_rtype = context.get("desire_rtype")
             if not e_context.is_pass() and reply and reply.type:
                 if reply.type in self.NOT_SUPPORT_REPLYTYPE:
-                    App().logger.error("[chat_channel]reply type not support: " + str(reply.type))
+                    logger.error("[chat_channel]reply type not support: " + str(reply.type))
                     reply.type = ReplyType.ERROR
                     reply.content = "不支持发送的消息类型: " + str(reply.type)
 
@@ -315,11 +317,14 @@ class ChatChannel(Channel):
                     reply.content = "[" + str(reply.type) + "]\n" + reply.content
                 elif reply.type == ReplyType.IMAGE_URL or reply.type == ReplyType.VOICE or reply.type == ReplyType.IMAGE or reply.type == ReplyType.FILE or reply.type == ReplyType.VIDEO or reply.type == ReplyType.VIDEO_URL:
                     pass
+                elif reply.type == ReplyType.STREAM:
+                    # 处理流式回复
+                    pass
                 else:
-                    App().logger.error("[chat_channel] unknown reply type: {}".format(reply.type))
+                    logger.error("[chat_channel] unknown reply type: {}".format(reply.type))
                     return
             if desire_rtype and desire_rtype != reply.type and reply.type not in [ReplyType.ERROR, ReplyType.INFO]:
-                App().logger.warning("[chat_channel] desire_rtype: {}, but reply type: {}".format(context.get("desire_rtype"), reply.type))
+                logger.warning("[chat_channel] desire_rtype: {}, but reply type: {}".format(context.get("desire_rtype"), reply.type))
             return reply
 
     def _send_reply(self, context: Context, reply: Reply) -> None:
@@ -338,21 +343,22 @@ class ChatChannel(Channel):
 
     def _send(self, reply: Reply, context: Context, retry_cnt=0):
         try:
+            # 不再在基类中处理流式输出，统一调用子类的send方法
             self.send(reply, context)
         except Exception as e:
-            App().logger.error("[chat_channel] sendMsg error: {}".format(str(e)))
+            logger.error("[chat_channel] sendMsg error: {}".format(str(e)))
             if isinstance(e, NotImplementedError):
                 return
-            App().logger.exception(e)
+            logger.exception(e)
             if retry_cnt < 2:
                 time.sleep(3 + 3 * retry_cnt)
                 self._send(reply, context, retry_cnt + 1)
 
     def _success_callback(self, session_id, **kwargs):  # 线程正常结束时的回调函数
-        App().logger.debug("Worker return success, session_id = {}".format(session_id))
+        pass  # 移除冗余日志
 
     def _fail_callback(self, session_id, exception, **kwargs):  # 线程异常结束时的回调函数
-        App().logger.exception("Worker return exception: {}".format(exception))
+        logger.exception("Worker return exception: {}".format(exception))
 
     def _thread_pool_callback(self, session_id, **kwargs):
         def func(worker: Future):
@@ -363,9 +369,9 @@ class ChatChannel(Channel):
                 else:
                     self._success_callback(session_id, **kwargs)
             except CancelledError as e:
-                App().logger.info("Worker cancelled, session_id = {}".format(session_id))
+                logger.info("Worker cancelled, session_id = {}".format(session_id))
             except Exception as e:
-                App().logger.exception("Worker raise exception: {}".format(e))
+                logger.exception("Worker raise exception: {}".format(e))
             with self.lock:
                 self.sessions[session_id][1].release()
 
@@ -421,7 +427,7 @@ class ChatChannel(Channel):
                     future.cancel()
                 cnt = self.sessions[session_id][0].qsize()
                 if cnt > 0:
-                    App().logger.info("Cancel {} messages in session {}".format(cnt, session_id))
+                    logger.info("Cancel {} messages in session {}".format(cnt, session_id))
                 self.sessions[session_id][0] = Dequeue()
 
     def cancel_all_session(self):
@@ -431,7 +437,7 @@ class ChatChannel(Channel):
                     future.cancel()
                 cnt = self.sessions[session_id][0].qsize()
                 if cnt > 0:
-                    App().logger.info("Cancel {} messages in session {}".format(cnt, session_id))
+                    logger.info("Cancel {} messages in session {}".format(cnt, session_id))
                 self.sessions[session_id][0] = Dequeue()
 
 

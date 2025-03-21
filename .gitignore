@@ -1,28 +1,14 @@
-# 环境文件
+# 开发环境
 .env
 .env.local
 .env.*.local
-
-# 配置文件
-config.json
-plugins.json
-
-# 日志文件
-*.log
-*.log.*
-logs/
-log/
-
-# 数据文件
-data/
-
-# 本地开发文件
-processed.txt
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+
+# 构建和打包
 build/
 develop-eggs/
 dist/
@@ -39,34 +25,44 @@ wheels/
 .installed.cfg
 *.egg
 
-# 测试相关
-.coverage
-htmlcov/
-.pytest_cache/
-
-# IDE相关
-.cursor/
+# IDE和编辑器
 .vscode/
 .idea/
 *.swp
 *.swo
-.cursorrules
+.DS_Store
 
-# 数据库相关
+# 日志和数据
+*.log
+*.log.*
+logs/
+log/
+data/
+data*/
+
+# 数据库
 *.sqlite
 *.db
 *.dump
 
-# 大文件
+# 配置文件
+config.json
+plugins.json
+
+# 测试和覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 压缩和镜像文件
 *.zip
 *.tar.gz
 *.7z
 *.dmg
 *.iso
 
-# Docker相关
-docker-compose.override.yml
-
-# 常见需要忽略的文件类型
-*.tmp
-.DS_Store 
+# 临时文件
+*.tmp 
+temp*/
+./*.png
+static/

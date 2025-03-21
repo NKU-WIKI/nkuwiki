@@ -74,10 +74,10 @@ class WechatMPChannel(ChatChannel):
         super().__init__()
         self.passive_reply: bool = passive_reply
         self.NOT_SUPPORT_REPLYTYPE: list = []
-        appid = Config().get("wechatmp_app_id")
-        secret = Config().get("wechatmp_app_secret")
-        token = Config().get("wechatmp_token")
-        aes_key = Config().get("wechatmp_aes_key")
+        appid = Config().get("services.wechatmp_service.app_id")
+        secret = Config().get("services.wechatmp_service.app_secret")
+        token = Config().get("services.wechatmp_service.token")
+        aes_key = Config().get("services.wechatmp_service.aes_key")
         self.client = WechatMPClient(appid, secret)
         self.crypto = None
         if aes_key:
@@ -97,7 +97,7 @@ class WechatMPChannel(ChatChannel):
 
     def startup(self):
         """启动FastAPI服务"""
-        port = Config().get("wechatmp_port", 80)
+        port = Config().get("services.wechatmp_service.port", 80)
         thread = threading.Thread(target=self.run_uvicorn, args=(port,))
         thread.start()
         App().logger.info(f"Channel wechatmp started successfully on port {port}")

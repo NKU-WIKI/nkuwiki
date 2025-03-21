@@ -70,7 +70,7 @@ class Query:
                     and message_id not in channel.request_cnt  # insert the godcmd
                 ):
                     # The first query begin
-                    if msg.type == "voice" and wechatmp_msg.ctype == ContextType.TEXT and Config().get("voice_reply_voice", False):
+                    if msg.type == "voice" and wechatmp_msg.ctype == ContextType.TEXT and Config().get("services.voice.voice_reply_voice", False):
                         context = channel._compose_context(wechatmp_msg.ctype, content, isgroup=False, desire_rtype=ReplyType.VOICE, msg=wechatmp_msg)
                     else:
                         context = channel._compose_context(wechatmp_msg.ctype, content, isgroup=False, msg=wechatmp_msg)

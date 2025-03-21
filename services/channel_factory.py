@@ -23,6 +23,12 @@ def create_channel(channel_type) -> Channel:
     elif channel_type == "wechatmp_service":
         from services.wechatmp.wechatmp_channel import WechatMPChannel
         ch = WechatMPChannel(passive_reply=False)
+    elif channel_type == "wework":
+        from services.wework.wework_channel import WeworkChannel
+        ch = WeworkChannel()
+    elif channel_type == "weworktop":
+        from services.weworktop.weworktop_channel import WeWorkTopChannel
+        ch = WeWorkTopChannel()
     else:
         raise RuntimeError
     ch.channel_type = channel_type
