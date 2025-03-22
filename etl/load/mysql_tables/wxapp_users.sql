@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `wxapp_id` VARCHAR(100) NOT NULL COMMENT '微信小程序原始ID',
     `openid` VARCHAR(100) DEFAULT NULL COMMENT '微信用户唯一标识',
+    `cloud_id` VARCHAR(100) DEFAULT NULL COMMENT '微信云数据库ID',
     `unionid` VARCHAR(100) DEFAULT NULL COMMENT '微信开放平台唯一标识',
     `nickname` VARCHAR(100) DEFAULT NULL COMMENT '用户昵称',
     `avatar_url` VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
@@ -22,6 +23,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     UNIQUE KEY `unq_wxapp_id` (`wxapp_id`),
     UNIQUE KEY `unq_openid` (`openid`),
     KEY `idx_unionid` (`unionid`),
+    KEY `idx_cloud_id` (`cloud_id`),
     KEY `idx_create_time` (`create_time`),
     KEY `idx_status` (`status`),
     KEY `idx_nickname` (`nickname`)
