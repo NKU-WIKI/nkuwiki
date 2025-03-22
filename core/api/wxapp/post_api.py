@@ -393,4 +393,58 @@ async def like_post(
         "message": f"{action}成功",
         "liked": user_id in liked_users,
         "like_count": like_count
+    })
+
+@router.post("/posts/{post_id}/favorite", response_model=Dict[str, Any], summary="收藏/取消收藏帖子")
+@handle_api_errors("收藏帖子")
+async def favorite_post(
+    post_id: int = PathParam(..., description="帖子ID"),
+    user_id: str = Query(..., description="用户ID"),
+    is_favorite: bool = Query(True, description="是否收藏，默认为收藏操作"),
+    api_logger=Depends(get_api_logger)
+):
+    """收藏或取消收藏帖子"""
+    # 检查帖子是否存在
+    post = get_record_by_id('wxapp_posts', post_id)
+    if not post:
+        raise HTTPException(status_code=404, detail="帖子不存在")
+    
+    # 处理JSON字段
+    post = process_json_fields(post)
+    
+    # 获取当前收藏用户列表
+    favorite_users = post.get('favorite_users', [])
+    
+    # 根据is_favorite参数决定是收藏还是取消收藏
+    is_already_favorited = user_id in favorite_users
+    
+    if is_already_favorited and not is_favorite:
+        # 取消收藏
+        favorite_users.remove(user_id)
+        action = "取消收藏"
+    elif not is_already_favorited and is_favorite:
+        # 收藏
+        favorite_users.append(user_id)
+        action = "收藏"
+    else:
+        # 状态已匹配，无需更改
+        return create_standard_response({
+            "success": True,
+            "message": f"已经{'收藏' if is_favorite else '取消收藏'}",
+            "favorited": is_favorite
+        })
+    
+    # 更新帖子
+    success = update_record('wxapp_posts', post_id, {
+        'favorite_users': json.dumps(favorite_users),
+        'update_time': format_datetime(None)  # 使用当前时间
+    })
+    
+    if not success:
+        raise HTTPException(status_code=500, detail=f"{action}失败")
+    
+    return create_standard_response({
+        "success": True,
+        "message": f"{action}成功",
+        "favorited": user_id in favorite_users
     }) 
