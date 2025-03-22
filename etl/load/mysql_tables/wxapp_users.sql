@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     `province` VARCHAR(50) DEFAULT NULL COMMENT '省份',
     `city` VARCHAR(50) DEFAULT NULL COMMENT '城市',
     `language` VARCHAR(20) DEFAULT NULL COMMENT '语言',
+    `token_count` INT DEFAULT 0 COMMENT '用户Token数量',
+    `followers_count` INT DEFAULT 0 COMMENT '关注者数量',
+    `following_count` INT DEFAULT 0 COMMENT '关注的用户数量',
     `create_time` DATETIME NOT NULL COMMENT '创建时间',
     `update_time` DATETIME NOT NULL COMMENT '更新时间',
     `last_login` DATETIME DEFAULT NULL COMMENT '最后登录时间',
@@ -19,5 +22,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     UNIQUE KEY `unq_wxapp_id` (`wxapp_id`),
     UNIQUE KEY `unq_openid` (`openid`),
     KEY `idx_unionid` (`unionid`),
-    KEY `idx_create_time` (`create_time`)
+    KEY `idx_create_time` (`create_time`),
+    KEY `idx_status` (`status`),
+    KEY `idx_nickname` (`nickname`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序用户数据表'; 
