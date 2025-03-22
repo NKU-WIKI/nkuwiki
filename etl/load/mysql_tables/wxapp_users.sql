@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS `wxapp_users` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `wxapp_id` VARCHAR(100) NOT NULL COMMENT '微信小程序原始ID',
+    `openid` VARCHAR(100) DEFAULT NULL COMMENT '微信用户唯一标识',
+    `unionid` VARCHAR(100) DEFAULT NULL COMMENT '微信开放平台唯一标识',
+    `nickname` VARCHAR(100) DEFAULT NULL COMMENT '用户昵称',
+    `avatar_url` VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
+    `gender` TINYINT DEFAULT 0 COMMENT '性别：0-未知, 1-男, 2-女',
+    `country` VARCHAR(50) DEFAULT NULL COMMENT '国家',
+    `province` VARCHAR(50) DEFAULT NULL COMMENT '省份',
+    `city` VARCHAR(50) DEFAULT NULL COMMENT '城市',
+    `language` VARCHAR(20) DEFAULT NULL COMMENT '语言',
+    `create_time` DATETIME NOT NULL COMMENT '创建时间',
+    `update_time` DATETIME NOT NULL COMMENT '更新时间',
+    `last_login` DATETIME DEFAULT NULL COMMENT '最后登录时间',
+    `status` TINYINT DEFAULT 1 COMMENT '状态：1-正常, 0-禁用',
+    `is_deleted` TINYINT DEFAULT 0 COMMENT '是否删除：1-已删除, 0-未删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unq_wxapp_id` (`wxapp_id`),
+    UNIQUE KEY `unq_openid` (`openid`),
+    KEY `idx_unionid` (`unionid`),
+    KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序用户数据表'; 

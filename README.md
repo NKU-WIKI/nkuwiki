@@ -323,3 +323,184 @@ python app.py
 ## 🤖 通道使用指南
 
 本项目支持多种通道接入，包括终端、微信公众号、企业微信等。详细配置和使用说明请参考[配置指南](./docs/configuration_guide.md)中的通道配置部分。
+
+# 南开Wiki微信小程序数据迁移方案
+
+本方案用于将微信小程序云数据库中的数据（帖子、用户、评论等）迁移到南开Wiki后端数据库。
+
+## 方案概述
+
+本方案采用两种同步机制：
+
+1. **后端主动拉取**: 通过南开Wiki后端的爬虫模块，主动从微信小程序获取数据
+2. **前端主动推送**: 在微信小程序端增加同步功能，将数据主动推送给南开Wiki后端
+
+## 系统架构
+
+```
++---------------------+        +---------------------+
+|  微信小程序云数据库   |        |     南开Wiki后端     |
+|  (posts, users)     |<------>|     MySQL数据库      |
++---------------------+        +---------------------+
+         ^                              ^
+         |                              |
+         |      +----------------+      |
+         +----->| 同步中间层API   |<-----+
+                +----------------+
+```
+
+## 功能实现
+
+### 1. 后端实现
+
+#### 1.1 数据库表创建
+
+创建了三个表用于存储微信小程序数据：
+- `wxapp_posts`: 存储帖子数据
+- `wxapp_users`: 存储用户数据
+- `wxapp_comments`: 存储评论数据
+
+#### 1.2 数据采集模块
+
+`etl/crawler/wechat_mini.py`：微信小程序数据采集工具类，支持：
+- 全量同步：一次性获取所有数据
+- 增量同步：只获取上次同步后的新数据
+- 数据转换：将微信小程序数据格式转换为南开Wiki数据库格式
+
+#### 1.3 数据导出API
+
+`etl/api/wxapp_export.py`：提供将南开Wiki数据库数据导出给微信小程序的API接口。
+- `/api/wxapp/export_data`: 支持导出posts和users数据
+
+### 2. 前端实现
+
+#### 2.1 数据同步工具
+
+`services/app/sync_wxapp_data.js`：微信小程序端的数据同步工具，提供：
+- 全量同步：`syncAllData()`
+- 增量同步：`incrementalSync(startTime)`
+- 单集合同步：`syncCollection(collection)`
+
+## 使用方式
+
+### 1. 配置设置
+
+1. 在配置文件中设置API密钥：
+   ```python
+   # config.json
+   {
+     "etl": {
+       "api": {
+         "wxapp_export": {
+           "secret_key": "your_secret_api_key"
+         }
+       },
+       "crawler": {
+         "wechat_mini": {
+           "api_url": "http://your_wxapp_api_url/api",
+           "api_key": "your_secret_api_key"
+         }
+       }
+     }
+   }
+   ```
+
+2. 在微信小程序中设置API地址和密钥：
+   ```javascript
+   // sync_wxapp_data.js
+   const config = {
+     apiUrl: 'https://your_nkuwiki_api_url/api/wxapp/export_data',
+     apiKey: 'your_secret_api_key'
+   };
+   ```
+
+### 2. 执行同步
+
+#### 2.1 后端主动拉取
+
+```python
+# 在南开Wiki后端执行
+python -m etl.crawler.wechat_mini
+```
+
+#### 2.2 前端主动推送
+
+```javascript
+// 在微信小程序中调用
+const syncUtils = require('./sync_wxapp_data');
+
+// 全量同步
+syncUtils.syncAllData().then(result => {
+  console.log('同步结果:', result);
+});
+
+// 增量同步
+const lastSyncTime = '2023-04-01T00:00:00Z';  // ISO8601格式
+syncUtils.incrementalSync(lastSyncTime).then(result => {
+  console.log('增量同步结果:', result);
+});
+```
+
+## 数据映射
+
+微信小程序数据库字段和南开Wiki数据库字段的映射关系：
+
+### 帖子表映射
+| 微信小程序字段 | 南开Wiki字段 |
+|--------------|-------------|
+| _id | wxapp_id |
+| authorId | author_id |
+| authorName | author_name |
+| authorAvatar | author_avatar |
+| content | content |
+| likes | likes |
+| likedUsers | liked_users (JSON) |
+| favoriteUsers | favorite_users (JSON) |
+| comments | 单独存储到wxapp_comments表 |
+| images | images (JSON) |
+| tags | tags (JSON) |
+| createTime | create_time |
+| updateTime | update_time |
+
+### 用户表映射
+| 微信小程序字段 | 南开Wiki字段 |
+|--------------|-------------|
+| _id | wxapp_id |
+| openid | openid |
+| unionid | unionid |
+| nickName | nickname |
+| avatarUrl | avatar_url |
+| gender | gender |
+| country | country |
+| province | province |
+| city | city |
+| language | language |
+| createTime | create_time |
+| updateTime | update_time |
+| lastLogin | last_login |
+
+## 维护与监控
+
+- 日志记录：同步过程的详细日志存储在`etl/logs/etl.log`文件中
+- 同步状态：最近同步时间记录在`etl/data/cache/wxapp_last_sync.txt`文件中
+- 错误处理：同步过程中的错误会被捕获并记录，不会影响系统正常运行
+
+## 安全性考虑
+
+- API密钥验证：所有API请求需要提供有效的密钥才能访问
+- 数据验证：所有输入数据都经过验证和清洗，防止注入攻击
+- 数据隔离：微信小程序数据存储在独立的表中，不影响现有系统
+
+## 扩展性
+
+本方案采用模块化设计，易于扩展：
+- 支持添加更多数据表
+- 支持添加更多同步方式
+- 支持添加更多数据源
+
+## 进一步改进
+
+- 添加定时同步任务，定期从微信小程序拉取数据
+- 实现双向同步，支持南开Wiki数据反向同步到微信小程序
+- 增加数据差异对比，只同步有变化的记录
+- 添加数据冲突解决机制

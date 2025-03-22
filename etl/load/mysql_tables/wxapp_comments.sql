@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS `wxapp_comments` (
+    `id` BIGINT NOT NULL AUTO_INCREMENT,
+    `wxapp_id` VARCHAR(100) NOT NULL COMMENT '微信小程序原始ID',
+    `post_id` VARCHAR(100) NOT NULL COMMENT '帖子ID',
+    `author_id` VARCHAR(100) NOT NULL COMMENT '作者ID',
+    `author_name` VARCHAR(100) DEFAULT NULL COMMENT '作者名称',
+    `author_avatar` VARCHAR(500) DEFAULT NULL COMMENT '作者头像URL',
+    `content` TEXT COMMENT '评论内容',
+    `images` JSON DEFAULT NULL COMMENT '图片列表',
+    `likes` INT DEFAULT 0 COMMENT '点赞数',
+    `liked_users` JSON DEFAULT NULL COMMENT '点赞用户列表',
+    `create_time` DATETIME NOT NULL COMMENT '创建时间',
+    `update_time` DATETIME NOT NULL COMMENT '更新时间',
+    `status` TINYINT DEFAULT 1 COMMENT '状态：1-正常, 0-禁用',
+    `is_deleted` TINYINT DEFAULT 0 COMMENT '是否删除：1-已删除, 0-未删除',
+    PRIMARY KEY (`id`),
+    UNIQUE KEY `unq_wxapp_id` (`wxapp_id`),
+    KEY `idx_post_id` (`post_id`),
+    KEY `idx_author_id` (`author_id`),
+    KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序评论数据表'; 

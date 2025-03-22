@@ -13,6 +13,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from etl.load import *
 
+from .data_api import register_data_api
+from .wxapp_export import register_api as register_wxapp_export_api
+
 # API服务配置
 API_HOST = "0.0.0.0"
 API_PORT = 8000
@@ -35,3 +38,18 @@ __all__ = [
     'APIRouter','Path','Query','Body','HTTPException','CORSMiddleware',
     'EasyRAGPipeline','get_node_content'
 ]
+
+def register_all_apis(app):
+    """
+    注册所有API到Flask应用
+    
+    Args:
+        app: Flask应用实例
+    """
+    # 注册数据API
+    register_data_api(app)
+    
+    # 注册微信小程序数据导出API
+    register_wxapp_export_api(app)
+    
+    logger.debug("已注册所有ETL API模块")
