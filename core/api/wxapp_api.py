@@ -6,9 +6,13 @@ import re
 import time
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Path as PathParam, Depends, Query, Body
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Any, Optional, Union, Callable
+from pydantic import BaseModel, Field, validator, Generic, TypeVar
+from typing import List, Dict, Any, Optional, Union, Callable, TypeVar, Generic
 from loguru import logger
+from fastapi.responses import JSONResponse
+
+# 导入标准响应模块
+from core.api.response import StandardResponse, create_standard_response, get_schema_api_router
 
 # 数据库相关导入
 from etl.load.py_mysql import (
@@ -19,12 +23,41 @@ from etl.load.py_mysql import (
 # 导入JSON字段处理工具函数
 from etl.load.process_json import process_post_json_fields, process_post_create_data
 
-# 创建专用API路由
-wxapp_router = APIRouter(
+# 定义泛型类型变量
+T = TypeVar('T')
+
+# 创建专用API路由（使用适配器函数）
+wxapp_router = get_schema_api_router(
     prefix="/wxapp",
     tags=["微信小程序"],
     responses={404: {"description": "Not found"}},
 )
+
+# 添加异常处理中间件
+@wxapp_router.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """自定义HTTP异常处理器，确保异常也返回标准格式"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=create_standard_response(
+            data=None,
+            code=exc.status_code,
+            message=str(exc.detail)
+        )
+    )
+
+@wxapp_router.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """通用异常处理器，确保所有异常都返回标准格式"""
+    logger.error(f"未捕获的异常: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content=create_standard_response(
+            data=None,
+            code=500,
+            message=f"服务器内部错误: {str(exc)}"
+        )
+    )
 
 # 请求和响应模型
 class UserBase(BaseModel):
@@ -180,7 +213,7 @@ def process_json_fields(post_data):
     return process_post_json_fields(post_data)
 
 # ====================== 用户接口 ======================
-@wxapp_router.post("/users", response_model=UserResponse, summary="创建用户")
+@wxapp_router.post("/users", response_model=Dict[str, Any], summary="创建用户")
 async def create_user(user: UserCreate):
     """创建新用户"""
     try:
@@ -205,28 +238,28 @@ async def create_user(user: UserCreate):
         if not created_user:
             raise HTTPException(status_code=404, detail="找不到创建的用户")
         
-        return created_user
+        return create_standard_response(created_user)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"创建用户失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"创建用户失败: {str(e)}")
 
-@wxapp_router.get("/users/{user_id}", response_model=UserResponse, summary="获取用户信息")
+@wxapp_router.get("/users/{user_id}", response_model=Dict[str, Any], summary="获取用户信息")
 async def get_user(user_id: int = PathParam(..., description="用户ID")):
     """获取指定用户信息"""
     try:
         user = get_record_by_id('wxapp_users', user_id)
         if not user:
             raise HTTPException(status_code=404, detail="用户不存在")
-        return user
+        return create_standard_response(user)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取用户失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取用户失败: {str(e)}")
 
-@wxapp_router.get("/users", response_model=List[UserResponse], summary="查询用户列表")
+@wxapp_router.get("/users", response_model=Dict[str, Any], summary="查询用户列表")
 async def list_users(
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
     offset: int = Query(0, description="分页偏移量", ge=0),
@@ -245,10 +278,10 @@ async def list_users(
             limit=limit,
             offset=offset
         )
-        return users
+        return create_standard_response(users)
     except Exception as e:
         logger.error(f"查询用户列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"查询用户列表失败: {str(e)}")
+        return create_standard_response([], code=500, message=f"查询用户列表失败: {str(e)}")
 
 @wxapp_router.put("/users/{user_id}", response_model=UserResponse, summary="更新用户信息")
 async def update_user(
@@ -350,7 +383,7 @@ async def create_post(post: PostCreate):
         logger.error(f"创建帖子失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"创建帖子失败: {str(e)}")
 
-@wxapp_router.get("/posts/{post_id}", response_model=PostResponse, summary="获取帖子信息")
+@wxapp_router.get("/posts/{post_id}", response_model=Dict[str, Any], summary="获取帖子信息")
 async def get_post(post_id: int = PathParam(..., description="帖子ID")):
     """获取指定帖子信息"""
     try:
@@ -361,14 +394,14 @@ async def get_post(post_id: int = PathParam(..., description="帖子ID")):
         # 处理JSON字段，使用新的工具函数
         post = process_post_json_fields(post)
         
-        return post
+        return create_standard_response(post)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取帖子失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取帖子失败: {str(e)}")
 
-@wxapp_router.get("/posts", response_model=List[PostResponse], summary="查询帖子列表")
+@wxapp_router.get("/posts", response_model=Dict[str, Any], summary="查询帖子列表")
 async def list_posts(
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
     offset: int = Query(0, description="分页偏移量", ge=0),
@@ -412,15 +445,15 @@ async def list_posts(
                 post_tags = post.get('tags', [])
                 if post_tags and tag in post_tags:
                     filtered_posts.append(post)
-            return filtered_posts
+            processed_posts = filtered_posts
         
-        return processed_posts
+        return create_standard_response(processed_posts)
     except Exception as e:
         logger.error(f"查询帖子列表失败: {str(e)}")
         # 返回空列表而不是抛出异常，避免前端崩溃
-        return []
+        return create_standard_response([], code=500, message=f"查询帖子列表失败: {str(e)}")
 
-@wxapp_router.put("/posts/{post_id}", response_model=PostResponse, summary="更新帖子")
+@wxapp_router.put("/posts/{post_id}", response_model=Dict[str, Any], summary="更新帖子")
 async def update_post(
     post_update: PostUpdate,
     post_id: int = PathParam(..., description="帖子ID")
@@ -435,7 +468,7 @@ async def update_post(
         # 过滤掉None值
         update_data = {k: v for k, v in post_update.dict().items() if v is not None}
         if not update_data:
-            return process_post_json_fields(post)
+            return create_standard_response(process_post_json_fields(post))
         
         # 处理JSON字段
         for field in ['images', 'tags']:
@@ -456,14 +489,14 @@ async def update_post(
         # 处理返回的JSON字段
         updated_post = process_post_json_fields(updated_post)
         
-        return updated_post
+        return create_standard_response(updated_post)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"更新帖子失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"更新帖子失败: {str(e)}")
 
-@wxapp_router.delete("/posts/{post_id}", response_model=dict, summary="删除帖子")
+@wxapp_router.delete("/posts/{post_id}", response_model=Dict[str, Any], summary="删除帖子")
 async def delete_post(post_id: int = PathParam(..., description="帖子ID")):
     """删除帖子（标记删除）"""
     try:
@@ -482,14 +515,14 @@ async def delete_post(post_id: int = PathParam(..., description="帖子ID")):
         if not success:
             raise HTTPException(status_code=500, detail="删除帖子失败")
         
-        return {"success": True, "message": "帖子已删除"}
+        return create_standard_response({"success": True, "message": "帖子已删除"})
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"删除帖子失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除帖子失败: {str(e)}")
 
-@wxapp_router.post("/posts/{post_id}/like", response_model=dict, summary="点赞帖子")
+@wxapp_router.post("/posts/{post_id}/like", response_model=Dict[str, Any], summary="点赞帖子")
 async def like_post(
     post_id: int = PathParam(..., description="帖子ID"),
     user_id: str = Body(..., embed=True, description="用户ID")
@@ -509,7 +542,7 @@ async def like_post(
         
         # 检查是否已点赞
         if user_id in liked_users:
-            return {"success": True, "message": "已经点赞过了", "likes": len(liked_users)}
+            return create_standard_response({"success": True, "message": "已经点赞过了", "likes": len(liked_users)})
         
         # 添加用户到点赞列表
         liked_users.append(user_id)
@@ -525,14 +558,14 @@ async def like_post(
         if not success:
             raise HTTPException(status_code=500, detail="点赞失败")
         
-        return {"success": True, "message": "点赞成功", "likes": len(liked_users)}
+        return create_standard_response({"success": True, "message": "点赞成功", "likes": len(liked_users)})
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"点赞帖子失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"点赞帖子失败: {str(e)}")
 
-@wxapp_router.post("/posts/{post_id}/unlike", response_model=dict, summary="取消点赞帖子")
+@wxapp_router.post("/posts/{post_id}/unlike", response_model=Dict[str, Any], summary="取消点赞帖子")
 async def unlike_post(
     post_id: int = PathParam(..., description="帖子ID"),
     user_id: str = Body(..., embed=True, description="用户ID")
@@ -563,7 +596,7 @@ async def unlike_post(
         if not updated:
             raise HTTPException(status_code=500, detail="取消点赞失败")
         
-        return {"success": True, "message": "取消点赞成功", "likes": len(liked_users)}
+        return create_standard_response({"success": True, "message": "取消点赞成功", "likes": len(liked_users)})
     except HTTPException:
         raise
     except Exception as e:
@@ -571,7 +604,7 @@ async def unlike_post(
         raise HTTPException(status_code=500, detail=f"取消点赞帖子失败: {str(e)}")
 
 # 添加收藏帖子接口
-@wxapp_router.post("/posts/{post_id}/favorite", response_model=dict, summary="收藏帖子")
+@wxapp_router.post("/posts/{post_id}/favorite", response_model=Dict[str, Any], summary="收藏帖子")
 async def favorite_post(
     post_id: int = PathParam(..., description="帖子ID"),
     user_id: str = Body(..., embed=True, description="用户ID")
@@ -604,7 +637,7 @@ async def favorite_post(
         if not updated:
             raise HTTPException(status_code=500, detail="收藏失败")
         
-        return {"success": True, "message": "收藏成功", "favorite_count": len(favorite_users)}
+        return create_standard_response({"success": True, "message": "收藏成功", "favorite_count": len(favorite_users)})
     except HTTPException:
         raise
     except Exception as e:
@@ -612,7 +645,7 @@ async def favorite_post(
         raise HTTPException(status_code=500, detail=f"收藏帖子失败: {str(e)}")
 
 # 添加取消收藏帖子接口
-@wxapp_router.post("/posts/{post_id}/unfavorite", response_model=dict, summary="取消收藏帖子")
+@wxapp_router.post("/posts/{post_id}/unfavorite", response_model=Dict[str, Any], summary="取消收藏帖子")
 async def unfavorite_post(
     post_id: int = PathParam(..., description="帖子ID"),
     user_id: str = Body(..., embed=True, description="用户ID")
@@ -645,7 +678,7 @@ async def unfavorite_post(
         if not updated:
             raise HTTPException(status_code=500, detail="取消收藏失败")
         
-        return {"success": True, "message": "取消收藏成功", "favorite_count": len(favorite_users)}
+        return create_standard_response({"success": True, "message": "取消收藏成功", "favorite_count": len(favorite_users)})
     except HTTPException:
         raise
     except Exception as e:
@@ -693,35 +726,35 @@ async def create_comment(comment: CommentCreate):
         logger.error(f"创建评论失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"创建评论失败: {str(e)}")
 
-@wxapp_router.get("/comments/{comment_id}", response_model=CommentResponse, summary="获取评论信息")
+@wxapp_router.get("/comments/{comment_id}", response_model=Dict[str, Any], summary="获取评论信息")
 async def get_comment(comment_id: int = PathParam(..., description="评论ID")):
     """获取指定评论信息"""
     try:
         comment = get_record_by_id('wxapp_comments', comment_id)
         if not comment:
             raise HTTPException(status_code=404, detail="评论不存在")
-            
-        # 处理评论中的JSON字段
+        
+        # 处理JSON字段
         comment = process_json_fields(comment)
         
-        return comment
+        return create_standard_response(comment)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"获取评论失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取评论失败: {str(e)}")
 
-@wxapp_router.get("/comments", response_model=List[CommentResponse], summary="查询评论列表")
+@wxapp_router.get("/comments", response_model=Dict[str, Any], summary="查询评论列表")
 async def list_comments(
-    post_id: Optional[str] = Query(None, description="帖子ID"),
-    author_id: Optional[str] = Query(None, description="作者ID"),
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
     offset: int = Query(0, description="分页偏移量", ge=0),
+    post_id: Optional[str] = Query(None, description="帖子ID"),
+    author_id: Optional[str] = Query(None, description="作者ID"),
     status: Optional[int] = Query(None, description="评论状态: 1-正常, 0-禁用")
 ):
     """获取评论列表"""
     try:
-        conditions = {"is_deleted": 0}
+        conditions = {}
         if post_id:
             conditions['post_id'] = post_id
         if author_id:
@@ -732,22 +765,25 @@ async def list_comments(
         comments = query_records(
             'wxapp_comments',
             conditions=conditions,
-            order_by='id ASC',  # 按时间正序排列评论
+            order_by='id DESC',
             limit=limit,
             offset=offset
         )
         
-        # 处理所有评论中的JSON字段
+        # 处理返回的评论列表，确保JSON字段正确解析
         processed_comments = []
         for comment in comments:
-            processed_comment = process_json_fields(comment)
-            processed_comments.append(processed_comment)
-            
-        return processed_comments
+            try:
+                processed_comment = process_json_fields(comment)
+                processed_comments.append(processed_comment)
+            except Exception as e:
+                logger.error(f"处理评论数据失败: {str(e)}, 跳过该评论")
+                # 继续处理下一个评论而不中断整个过程
+        
+        return create_standard_response(processed_comments)
     except Exception as e:
         logger.error(f"查询评论列表失败: {str(e)}")
-        # 返回空列表而不是抛出异常，避免前端崩溃
-        return []
+        return create_standard_response([], code=500, message=f"查询评论列表失败: {str(e)}")
 
 @wxapp_router.put("/comments/{comment_id}", response_model=CommentResponse, summary="更新评论")
 async def update_comment(
@@ -764,7 +800,7 @@ async def update_comment(
         # 过滤掉None值
         update_data = {k: v for k, v in comment_update.dict().items() if v is not None}
         if not update_data:
-            return process_json_fields(comment)
+            return comment
         
         # 处理JSON字段
         if 'images' in update_data and update_data['images'] is not None:
@@ -832,7 +868,7 @@ async def delete_comment(comment_id: int = PathParam(..., description="评论ID"
         logger.error(f"删除评论失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"删除评论失败: {str(e)}")
 
-@wxapp_router.post("/comments/{comment_id}/like", response_model=dict, summary="点赞评论")
+@wxapp_router.post("/comments/{comment_id}/like", response_model=Dict[str, Any], summary="点赞评论")
 async def like_comment(
     comment_id: int = PathParam(..., description="评论ID"),
     user_id: str = Body(..., embed=True, description="用户ID")
@@ -852,7 +888,7 @@ async def like_comment(
         
         # 检查是否已点赞
         if user_id in liked_users:
-            return {"success": True, "message": "已经点赞过了", "likes": len(liked_users)}
+            return create_standard_response({"success": True, "message": "已经点赞过了", "likes": len(liked_users)})
         
         # 添加用户到点赞列表
         liked_users.append(user_id)
@@ -868,14 +904,14 @@ async def like_comment(
         if not success:
             raise HTTPException(status_code=500, detail="点赞失败")
         
-        return {"success": True, "message": "点赞成功", "likes": len(liked_users)}
+        return create_standard_response({"success": True, "message": "点赞成功", "likes": len(liked_users)})
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"点赞评论失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"点赞评论失败: {str(e)}")
 
-@wxapp_router.post("/comments/{comment_id}/unlike", response_model=dict, summary="取消点赞评论")
+@wxapp_router.post("/comments/{comment_id}/unlike", response_model=Dict[str, Any], summary="取消点赞评论")
 async def unlike_comment(
     comment_id: int = PathParam(..., description="评论ID"),
     user_id: str = Body(..., embed=True, description="用户ID")
@@ -895,7 +931,7 @@ async def unlike_comment(
         
         # 检查是否已点赞
         if user_id not in liked_users:
-            return {"success": True, "message": "未点赞", "likes": len(liked_users)}
+            return create_standard_response({"success": True, "message": "未点赞", "likes": len(liked_users)})
         
         # 从点赞列表移除用户
         liked_users.remove(user_id)
@@ -911,7 +947,7 @@ async def unlike_comment(
         if not success:
             raise HTTPException(status_code=500, detail="取消点赞失败")
         
-        return {"success": True, "message": "取消点赞成功", "likes": len(liked_users)}
+        return create_standard_response({"success": True, "message": "取消点赞成功", "likes": len(liked_users)})
     except HTTPException:
         raise
     except Exception as e:

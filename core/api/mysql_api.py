@@ -7,17 +7,47 @@ from fastapi import APIRouter, HTTPException, Path as PathParam, Depends
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional, Union, Callable
 from loguru import logger
+from fastapi.responses import JSONResponse
+
+# 导入标准响应模块
+from core.api.response import create_standard_response, StandardResponse, get_schema_api_router
 
 # 数据库相关导入
 from etl.load import get_conn
 from etl.load.py_mysql import query_records, count_records, execute_custom_query, get_nkuwiki_tables
 
 # 创建专用API路由
-mysql_router = APIRouter(
+mysql_router = get_schema_api_router(
     prefix="/mysql",
     tags=["MySQL查询"],
     responses={404: {"description": "Not found"}},
 )
+
+# 添加异常处理中间件
+@mysql_router.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """自定义HTTP异常处理器，确保异常也返回标准格式"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=create_standard_response(
+            data=None,
+            code=exc.status_code,
+            message=str(exc.detail)
+        )
+    )
+
+@mysql_router.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """通用异常处理器，确保所有异常都返回标准格式"""
+    logger.error(f"未捕获的异常: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content=create_standard_response(
+            data=None,
+            code=500,
+            message=f"服务器内部错误: {str(exc)}"
+        )
+    )
 
 # 请求和响应模型
 class TablesResponse(BaseModel):

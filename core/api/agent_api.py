@@ -4,11 +4,14 @@ Agent查询API接口
 """
 import re
 from fastapi import APIRouter, HTTPException, Path as PathParam, Depends
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional, Union, Callable
 from loguru import logger
 import json
+
+# 导入标准响应模块
+from core.api.response import create_standard_response, StandardResponse, get_schema_api_router
 
 # 移除CozeAgent顶层导入，防止循环导入
 # from core.agent.coze.coze_agent_sdk import CozeAgent
@@ -16,11 +19,37 @@ from core import config
 from core.bridge.reply import ReplyType
 
 # 创建专用API路由
-agent_router = APIRouter(
+agent_router = get_schema_api_router(
     prefix="/agent",
     tags=["Agent功能"],
     responses={404: {"description": "Not found"}}
 )
+
+# 添加异常处理中间件
+@agent_router.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """自定义HTTP异常处理器，确保异常也返回标准格式"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=create_standard_response(
+            data=None,
+            code=exc.status_code,
+            message=str(exc.detail)
+        )
+    )
+
+@agent_router.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """通用异常处理器，确保所有异常都返回标准格式"""
+    logger.error(f"未捕获的异常: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content=create_standard_response(
+            data=None,
+            code=500,
+            message=f"服务器内部错误: {str(exc)}"
+        )
+    )
 
 # 请求和响应模型
 class ChatRequest(BaseModel):

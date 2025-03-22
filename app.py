@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 from loguru import logger
 from contextvars import ContextVar
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
@@ -13,8 +13,10 @@ from config import Config
 from core.api.mysql_api import mysql_router
 from core.api.agent_api import agent_router
 from core.api.wxapp_api import wxapp_router
+from core.api.response import create_standard_response, StandardResponse, get_schema_api_router
 from core.utils.common.singleton import singleton
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
+from contextlib import asynccontextmanager
 
 # 创建配置对象
 config = Config()
@@ -78,6 +80,32 @@ app.include_router(mysql_router)
 app.include_router(agent_router)
 # 集成微信小程序路由
 app.include_router(wxapp_router)
+
+# 添加全局异常处理器
+@app.exception_handler(HTTPException)
+async def global_http_exception_handler(request: Request, exc: HTTPException):
+    """全局HTTP异常处理器，确保异常也返回标准格式"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=create_standard_response(
+            data=None,
+            code=exc.status_code,
+            message=str(exc.detail)
+        )
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局通用异常处理器，确保所有异常都返回标准格式"""
+    logger.error(f"未捕获的异常: {str(exc)}")
+    return JSONResponse(
+        status_code=500,
+        content=create_standard_response(
+            data=None,
+            code=500,
+            message=f"服务器内部错误: {str(exc)}"
+        )
+    )
 
 # 挂载静态文件目录，用于微信校验文件等
 app.mount("/static", StaticFiles(directory="static"), name="static_files")
@@ -148,11 +176,11 @@ async def health_check(logger=Depends(get_logger)):
         logger.error(f"数据库连接失败: {str(e)}")
         db_status = f"error: {str(e)}"
     
-    return {
+    return create_standard_response({
         "status": "ok",
         "timestamp": datetime.now().isoformat(),
         "database": db_status
-    }
+    })
 
 # 信号处理函数
 def setup_signal_handlers():

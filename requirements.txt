@@ -50,6 +50,7 @@ qdrant-client          # 1.3.2+
 fastapi               # API框架
 uvicorn               # ASGI服务器
 requests              # HTTP请求库
+fastapi-responseschema  # API标准响应格式
 
 # 网页处理
 beautifulsoup4        # HTML解析
