@@ -165,6 +165,71 @@ def prepare_db_data(data_dict, is_create=False):
     
     return result
 
+def process_json_fields(post_data):
+    """处理帖子的JSON字段，确保格式正确
+    
+    Args:
+        post_data: 帖子数据字典
+        
+    Returns:
+        处理后的帖子数据字典
+    """
+    try:
+        post_copy = post_data.copy()
+        
+        # 处理images字段
+        if 'images' in post_copy:
+            try:
+                if isinstance(post_copy['images'], str) and post_copy['images'].strip():
+                    import json
+                    post_copy['images'] = json.loads(post_copy['images'])
+                elif post_copy['images'] is None or post_copy['images'] == '':
+                    post_copy['images'] = []
+            except Exception as e:
+                logger.error(f"解析帖子images字段失败: {str(e)}, 原值: {post_copy.get('images')}")
+                post_copy['images'] = []
+        
+        # 处理tags字段
+        if 'tags' in post_copy:
+            try:
+                if isinstance(post_copy['tags'], str) and post_copy['tags'].strip():
+                    import json
+                    post_copy['tags'] = json.loads(post_copy['tags'])
+                elif post_copy['tags'] is None or post_copy['tags'] == '':
+                    post_copy['tags'] = []
+            except Exception as e:
+                logger.error(f"解析帖子tags字段失败: {str(e)}, 原值: {post_copy.get('tags')}")
+                post_copy['tags'] = []
+        
+        # 处理liked_users字段
+        if 'liked_users' in post_copy:
+            try:
+                if isinstance(post_copy['liked_users'], str) and post_copy['liked_users'].strip():
+                    import json
+                    post_copy['liked_users'] = json.loads(post_copy['liked_users'])
+                elif post_copy['liked_users'] is None or post_copy['liked_users'] == '':
+                    post_copy['liked_users'] = []
+            except Exception as e:
+                logger.error(f"解析帖子liked_users字段失败: {str(e)}, 原值: {post_copy.get('liked_users')}")
+                post_copy['liked_users'] = []
+                
+        # 处理favorite_users字段
+        if 'favorite_users' in post_copy:
+            try:
+                if isinstance(post_copy['favorite_users'], str) and post_copy['favorite_users'].strip():
+                    import json
+                    post_copy['favorite_users'] = json.loads(post_copy['favorite_users'])
+                elif post_copy['favorite_users'] is None or post_copy['favorite_users'] == '':
+                    post_copy['favorite_users'] = []
+            except Exception as e:
+                logger.error(f"解析帖子favorite_users字段失败: {str(e)}, 原值: {post_copy.get('favorite_users')}")
+                post_copy['favorite_users'] = []
+        
+        return post_copy
+    except Exception as e:
+        logger.error(f"处理JSON字段失败: {str(e)}")
+        return post_data  # 如果处理失败，返回原始数据
+
 # ====================== 用户接口 ======================
 @wxapp_router.post("/users", response_model=UserResponse, summary="创建用户")
 async def create_user(user: UserCreate):
@@ -301,8 +366,25 @@ async def delete_user(user_id: int = PathParam(..., description="用户ID")):
 async def create_post(post: PostCreate):
     """创建新帖子"""
     try:
+        # 验证并确保JSON字段格式正确
+        post_dict = post.dict()
+        
+        # 确保images字段是列表
+        if 'images' in post_dict and post_dict['images'] is not None:
+            if not isinstance(post_dict['images'], list):
+                post_dict['images'] = []
+        else:
+            post_dict['images'] = []
+            
+        # 确保tags字段是列表    
+        if 'tags' in post_dict and post_dict['tags'] is not None:
+            if not isinstance(post_dict['tags'], list):
+                post_dict['tags'] = []
+        else:
+            post_dict['tags'] = []
+            
         # 准备数据
-        post_data = prepare_db_data(post.dict(), is_create=True)
+        post_data = prepare_db_data(post_dict, is_create=True)
         
         # 插入记录
         post_id = insert_record('wxapp_posts', post_data)
@@ -313,6 +395,9 @@ async def create_post(post: PostCreate):
         created_post = get_record_by_id('wxapp_posts', post_id)
         if not created_post:
             raise HTTPException(status_code=404, detail="找不到创建的帖子")
+            
+        # 处理返回的JSON字段
+        created_post = process_json_fields(created_post)
         
         return created_post
     except HTTPException:
@@ -328,6 +413,10 @@ async def get_post(post_id: int = PathParam(..., description="帖子ID")):
         post = get_record_by_id('wxapp_posts', post_id)
         if not post:
             raise HTTPException(status_code=404, detail="帖子不存在")
+            
+        # 处理JSON字段
+        post = process_json_fields(post)
+        
         return post
     except HTTPException:
         raise
@@ -359,18 +448,31 @@ async def list_posts(
             offset=offset
         )
         
+        # 处理返回的帖子列表，确保JSON字段正确解析
+        processed_posts = []
+        for post in posts:
+            try:
+                # 处理帖子JSON字段
+                processed_post = process_json_fields(post)
+                processed_posts.append(processed_post)
+            except Exception as e:
+                logger.error(f"处理帖子数据失败: {str(e)}, 跳过该帖子")
+                # 继续处理下一个帖子而不中断整个过程
+        
         # 如果有标签过滤，需要在内存中处理
-        if tag and posts:
+        if tag and processed_posts:
             filtered_posts = []
-            for post in posts:
-                if post.get('tags') and tag in post.get('tags'):
+            for post in processed_posts:
+                post_tags = post.get('tags', [])
+                if post_tags and tag in post_tags:
                     filtered_posts.append(post)
             return filtered_posts
         
-        return posts
+        return processed_posts
     except Exception as e:
         logger.error(f"查询帖子列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"查询帖子列表失败: {str(e)}")
+        # 返回空列表而不是抛出异常，避免前端崩溃
+        return []
 
 @wxapp_router.put("/posts/{post_id}", response_model=PostResponse, summary="更新帖子")
 async def update_post(
@@ -387,7 +489,7 @@ async def update_post(
         # 过滤掉None值
         update_data = {k: v for k, v in post_update.dict().items() if v is not None}
         if not update_data:
-            return post
+            return process_json_fields(post)
         
         # 处理JSON字段
         for field in ['images', 'tags']:
@@ -404,6 +506,10 @@ async def update_post(
         
         # 获取更新后的帖子
         updated_post = get_record_by_id('wxapp_posts', post_id)
+        
+        # 处理返回的JSON字段
+        updated_post = process_json_fields(updated_post)
+        
         return updated_post
     except HTTPException:
         raise
@@ -449,16 +555,11 @@ async def like_post(
         if not post:
             raise HTTPException(status_code=404, detail="帖子不存在")
         
+        # 处理帖子中的JSON字段，确保liked_users格式正确
+        processed_post = process_json_fields(post)
+        
         # 获取当前点赞信息
-        liked_users = post.get('liked_users', [])
-        if not liked_users:
-            liked_users = []
-        elif isinstance(liked_users, str):
-            import json
-            try:
-                liked_users = json.loads(liked_users)
-            except:
-                liked_users = []
+        liked_users = processed_post.get('liked_users', [])
         
         # 检查是否已点赞
         if user_id in liked_users:
@@ -497,16 +598,11 @@ async def unlike_post(
         if not post:
             raise HTTPException(status_code=404, detail="帖子不存在")
         
+        # 处理帖子中的JSON字段，确保liked_users格式正确
+        processed_post = process_json_fields(post)
+        
         # 获取当前点赞信息
-        liked_users = post.get('liked_users', [])
-        if not liked_users:
-            return {"success": True, "message": "未点赞", "likes": 0}
-        elif isinstance(liked_users, str):
-            import json
-            try:
-                liked_users = json.loads(liked_users)
-            except:
-                liked_users = []
+        liked_users = processed_post.get('liked_users', [])
         
         # 检查是否已点赞
         if user_id not in liked_users:
@@ -564,6 +660,9 @@ async def create_comment(comment: CommentCreate):
         if not created_comment:
             raise HTTPException(status_code=404, detail="找不到创建的评论")
         
+        # 处理评论中的JSON字段
+        created_comment = process_json_fields(created_comment)
+        
         return created_comment
     except HTTPException:
         raise
@@ -578,6 +677,10 @@ async def get_comment(comment_id: int = PathParam(..., description="评论ID")):
         comment = get_record_by_id('wxapp_comments', comment_id)
         if not comment:
             raise HTTPException(status_code=404, detail="评论不存在")
+            
+        # 处理评论中的JSON字段
+        comment = process_json_fields(comment)
+        
         return comment
     except HTTPException:
         raise
@@ -610,10 +713,18 @@ async def list_comments(
             limit=limit,
             offset=offset
         )
-        return comments
+        
+        # 处理所有评论中的JSON字段
+        processed_comments = []
+        for comment in comments:
+            processed_comment = process_json_fields(comment)
+            processed_comments.append(processed_comment)
+            
+        return processed_comments
     except Exception as e:
         logger.error(f"查询评论列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"查询评论列表失败: {str(e)}")
+        # 返回空列表而不是抛出异常，避免前端崩溃
+        return []
 
 @wxapp_router.put("/comments/{comment_id}", response_model=CommentResponse, summary="更新评论")
 async def update_comment(
@@ -630,7 +741,7 @@ async def update_comment(
         # 过滤掉None值
         update_data = {k: v for k, v in comment_update.dict().items() if v is not None}
         if not update_data:
-            return comment
+            return process_json_fields(comment)
         
         # 处理JSON字段
         if 'images' in update_data and update_data['images'] is not None:
@@ -646,6 +757,10 @@ async def update_comment(
         
         # 获取更新后的评论
         updated_comment = get_record_by_id('wxapp_comments', comment_id)
+        
+        # 处理评论中的JSON字段
+        updated_comment = process_json_fields(updated_comment)
+        
         return updated_comment
     except HTTPException:
         raise
@@ -706,16 +821,11 @@ async def like_comment(
         if not comment:
             raise HTTPException(status_code=404, detail="评论不存在")
         
+        # 处理评论中的JSON字段，确保liked_users格式正确
+        processed_comment = process_json_fields(comment)
+        
         # 获取当前点赞信息
-        liked_users = comment.get('liked_users', [])
-        if not liked_users:
-            liked_users = []
-        elif isinstance(liked_users, str):
-            import json
-            try:
-                liked_users = json.loads(liked_users)
-            except:
-                liked_users = []
+        liked_users = processed_comment.get('liked_users', [])
         
         # 检查是否已点赞
         if user_id in liked_users:
@@ -754,16 +864,11 @@ async def unlike_comment(
         if not comment:
             raise HTTPException(status_code=404, detail="评论不存在")
         
+        # 处理评论中的JSON字段，确保liked_users格式正确
+        processed_comment = process_json_fields(comment)
+        
         # 获取当前点赞信息
-        liked_users = comment.get('liked_users', [])
-        if not liked_users:
-            return {"success": True, "message": "未点赞", "likes": 0}
-        elif isinstance(liked_users, str):
-            import json
-            try:
-                liked_users = json.loads(liked_users)
-            except:
-                liked_users = []
+        liked_users = processed_comment.get('liked_users', [])
         
         # 检查是否已点赞
         if user_id not in liked_users:
