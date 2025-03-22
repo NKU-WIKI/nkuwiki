@@ -68,7 +68,7 @@ class UserResponse(UserBase):
 class UserSyncRequest(BaseModel):
     """云函数同步用户请求"""
     id: str = Field(..., description="微信云数据库ID")
-    _id: Optional[str] = Field(None, description="微信云数据库ID（别名）")
+    cloud_id_alias: Optional[str] = Field(None, description="微信云数据库ID（别名）")
     wxapp_id: str = Field(..., description="微信小程序原始ID")
     openid: str = Field(..., description="微信用户唯一标识")
     nickname: Optional[str] = Field(None, description="用户昵称")
@@ -393,7 +393,7 @@ async def update_user_token(
 @handle_api_errors("同步微信云用户")
 async def sync_wxapp_user(
     user_data: UserSyncRequest,
-    request: Request = Depends(),
+    request: Request,
     cloud_source: Optional[str] = Header(None, alias="X-Cloud-Source"),
     prefer_cloud_id: Optional[str] = Header(None, alias="X-Prefer-Cloud-ID"),
     api_logger=Depends(get_api_logger)
@@ -413,8 +413,7 @@ async def sync_wxapp_user(
         # 确保ID字段一致性（使用id作为主键）
         cloud_id = user_data.id
         if not cloud_id:
-            api_logger.warning("同步请求中没有提供云ID，使用随机生成ID")
-            raise HTTPException(status_code=400, detail="云ID不能为空")
+            raise HTTPException(status_code=400, detail="缺少云数据库ID")
         
         api_logger.debug(f"使用云ID: {cloud_id}")
         

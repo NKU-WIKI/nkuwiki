@@ -996,6 +996,8 @@ if __name__ == "__main__":
     delete_table("wxapp_comments")
     delete_table("wxapp_posts")
     delete_table("wxapp_users")
+    delete_table("wxapp_feedback")
+    delete_table("wxapp_notifications")
     init_database()  # 初始化数据库
     # get_table_structure("wxapp_posts")
     # query_table("wxapp_posts")

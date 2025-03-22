@@ -79,7 +79,7 @@ def register_routers(app: FastAPI):
         
         # 记录路由信息
         logger.info(f"微信小程序API路由已注册 - 前缀: {wxapp_router.prefix}")
-        for route in sorted([f"{', '.join(route.methods)} {wxapp_router.prefix}{route.path}" for route in wxapp_router.routes]):
+        for route in sorted([f"{', '.join(route.methods)} {route.path}" for route in wxapp_router.routes]):
             logger.info(f"  路由: {route}")
     except Exception as e:
         logger.error(f"微信小程序API路由注册失败: {str(e)}")
