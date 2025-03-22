@@ -4,6 +4,12 @@ import json
 import copy
 from singleton_decorator import singleton
 from loguru import logger
+import logging
+from typing import Any, Dict, Optional
+
+# 初始化日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
@@ -580,4 +586,6 @@ class Config(dict):
         except Exception as e:
             logger.exception(e)
             return self
-#         return self
+
+# 创建全局配置实例
+config = Config()

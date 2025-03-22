@@ -3,7 +3,7 @@
 提供用户管理相关的API接口
 """
 from datetime import datetime
-from fastapi import HTTPException, Path as PathParam, Depends, Query
+from fastapi import HTTPException, Path as PathParam, Depends, Query, Body
 from pydantic import BaseModel, Field, validator
 from typing import Dict, Any, Optional, List
 
@@ -183,4 +183,166 @@ async def delete_user(
     if not success:
         raise HTTPException(status_code=500, detail="删除用户失败")
     
-    return {"success": True, "message": "用户已删除"} 
+    return {"success": True, "message": "用户已删除"}
+
+@router.get("/users/{user_id}/follow-stats", response_model=Dict[str, Any], summary="获取用户关注统计")
+@handle_api_errors("获取用户关注统计")
+async def get_user_follow_stats(
+    user_id: str = PathParam(..., description="用户ID"),
+    api_logger=Depends(get_api_logger)
+):
+    """
+    获取用户关注和粉丝数量统计
+    - 返回用户关注的人数和粉丝数量
+    """
+    api_logger.debug(f"获取用户ID={user_id}的关注统计")
+    
+    # 查询用户关注的人数
+    followed_query = "SELECT COUNT(*) as count FROM wxapp_user_follows WHERE follower_id = %s"
+    try:
+        followed_result = query_records("wxapp_user_follows", {"follower_id": user_id}, limit=1) 
+        # 如果上面的方法不适用，可以使用自定义查询
+        # followed_result = execute_custom_query(followed_query, [user_id])
+        followed_count = len(followed_result)
+    except Exception as e:
+        api_logger.error(f"查询用户关注数失败: {str(e)}")
+        followed_count = 0
+    
+    # 查询用户的粉丝数
+    try:
+        follower_result = query_records("wxapp_user_follows", {"followed_id": user_id}, limit=1000)
+        # 如果上面的方法不适用，可以使用自定义查询
+        # follower_query = "SELECT COUNT(*) as count FROM wxapp_user_follows WHERE followed_id = %s"
+        # follower_result = execute_custom_query(follower_query, [user_id])
+        follower_count = len(follower_result)
+    except Exception as e:
+        api_logger.error(f"查询用户粉丝数失败: {str(e)}")
+        follower_count = 0
+    
+    # 返回标准响应
+    return create_standard_response(
+        code=200,
+        message="获取用户关注统计成功",
+        data={
+            "followedCount": followed_count,
+            "followerCount": follower_count
+        }
+    )
+
+@router.get("/users/{user_id}/token", response_model=Dict[str, Any], summary="获取用户Token数量")
+@handle_api_errors("获取用户Token")
+async def get_user_token(
+    user_id: str = PathParam(..., description="用户ID"),
+    api_logger=Depends(get_api_logger)
+):
+    """
+    获取用户Token数量
+    - 返回用户的Token余额
+    """
+    api_logger.debug(f"获取用户ID={user_id}的Token数量")
+    
+    try:
+        # 查询用户Token数量
+        user_record = get_record_by_id("wxapp_users", user_id)
+        if not user_record:
+            return create_standard_response(
+                code=404,
+                message="用户不存在",
+                data={"token": 0}
+            )
+        
+        # 获取token字段，如果不存在则默认为0
+        token = user_record.get("token", 0)
+        api_logger.debug(f"用户ID={user_id}的Token数量为{token}")
+        
+        return create_standard_response(
+            code=200,
+            message="获取用户Token成功",
+            data={"token": token}
+        )
+    except Exception as e:
+        api_logger.error(f"获取用户Token失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取用户Token失败: {str(e)}")
+
+@router.post("/users/{user_id}/token", response_model=Dict[str, Any], summary="更新用户Token数量")
+@handle_api_errors("更新用户Token")
+async def update_user_token(
+    token_data: Dict[str, Any] = Body(..., description="Token更新数据"),
+    user_id: str = PathParam(..., description="用户ID"),
+    api_logger=Depends(get_api_logger)
+):
+    """
+    更新用户的Token数量
+    
+    - 支持增加或设置具体数值
+    - 参数:
+      - action: "add"表示增加，"set"表示设置
+      - amount: 增加或设置的数量
+      
+    请求示例:
+    ```json
+    {
+        "action": "add",
+        "amount": 10
+    }
+    ```
+    """
+    api_logger.debug(f"更新用户ID={user_id}的Token数量: {token_data}")
+    
+    # 验证参数
+    action = token_data.get("action", "add")
+    amount = token_data.get("amount", 0)
+    
+    if action not in ["add", "set"]:
+        return create_standard_response(
+            code=400,
+            message="无效的操作类型，必须是'add'或'set'",
+            data=None
+        )
+    
+    if not isinstance(amount, (int, float)) or amount < 0:
+        return create_standard_response(
+            code=400,
+            message="无效的Token数量",
+            data=None
+        )
+    
+    try:
+        # 查询用户当前Token
+        user_record = get_record_by_id("wxapp_users", user_id)
+        if not user_record:
+            return create_standard_response(
+                code=404,
+                message="用户不存在",
+                data=None
+            )
+        
+        current_token = user_record.get("token", 0)
+        
+        # 根据操作类型计算新的Token数量
+        new_token = current_token + amount if action == "add" else amount
+        
+        # 更新用户Token
+        update_data = {
+            "token": new_token,
+            "update_time": format_datetime(datetime.now())
+        }
+        
+        success = update_record("wxapp_users", user_id, update_data)
+        if not success:
+            return create_standard_response(
+                code=500,
+                message="更新用户Token失败",
+                data=None
+            )
+        
+        api_logger.debug(f"更新用户ID={user_id}的Token成功: {new_token}")
+        
+        return create_standard_response(
+            code=200,
+            message="更新用户Token成功",
+            data={"token": new_token}
+        )
+    except Exception as e:
+        api_logger.error(f"更新用户Token失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"更新用户Token失败: {str(e)}") 
