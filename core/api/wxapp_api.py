@@ -6,7 +6,7 @@ import re
 import time
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Path as PathParam, Depends, Query, Body
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, Generic, TypeVar
 from typing import List, Dict, Any, Optional, Union, Callable, TypeVar, Generic
 from loguru import logger
 from fastapi.responses import JSONResponse
@@ -18,7 +18,7 @@ from core.api.response import StandardResponse, create_standard_response, get_sc
 from etl.load.py_mysql import (
     insert_record, update_record, delete_record, 
     query_records, count_records, get_record_by_id,
-    batch_insert, upsert_record
+    batch_insert, upsert_record, execute_raw_query
 )
 # 导入JSON字段处理工具函数
 from etl.load.process_json import process_post_json_fields, process_post_create_data
@@ -34,8 +34,6 @@ wxapp_router = get_schema_api_router(
 )
 
 # 添加异常处理中间件
-# 注释掉路由器上的异常处理器，移动到全局异常处理
-'''
 @wxapp_router.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """自定义HTTP异常处理器，确保异常也返回标准格式"""
@@ -60,7 +58,6 @@ async def general_exception_handler(request, exc):
             message=f"服务器内部错误: {str(exc)}"
         )
     )
-'''
 
 # 请求和响应模型
 class UserBase(BaseModel):
@@ -955,4 +952,83 @@ async def unlike_comment(
         raise
     except Exception as e:
         logger.error(f"取消点赞评论失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"取消点赞评论失败: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"取消点赞评论失败: {str(e)}")
+
+# ====================== 用户收藏/点赞接口 ======================
+@wxapp_router.get("/users/{user_id}/favorites", response_model=Dict[str, Any], summary="获取用户收藏的帖子")
+async def get_user_favorites(
+    user_id: str = PathParam(..., description="用户ID"),
+    limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
+    offset: int = Query(0, description="分页偏移量", ge=0)
+):
+    """获取用户收藏的帖子列表"""
+    try:
+        # 在帖子表中查询favorite_users字段包含当前用户ID的帖子
+        query = f"""
+        SELECT p.* 
+        FROM wxapp_posts p
+        WHERE p.is_deleted = 0 
+          AND p.status = 1
+          AND p.favorite_users LIKE '%{user_id}%'
+        ORDER BY p.id DESC
+        LIMIT {limit} OFFSET {offset}
+        """
+        
+        posts = execute_raw_query(query)
+        logger.debug(f"查询到用户 {user_id} 的收藏帖子 {len(posts)} 条")
+        
+        # 处理返回的帖子列表，确保JSON字段正确解析
+        processed_posts = []
+        for post in posts:
+            try:
+                # 处理帖子JSON字段
+                processed_post = process_post_json_fields(post)
+                processed_posts.append(processed_post)
+            except Exception as e:
+                logger.error(f"处理帖子数据失败: {str(e)}, 跳过该帖子")
+                # 继续处理下一个帖子而不中断整个过程
+        
+        return create_standard_response(processed_posts)
+    except Exception as e:
+        logger.error(f"查询用户收藏帖子失败: {str(e)}")
+        # 返回空列表
+        return create_standard_response([], code=500, message=f"查询用户收藏帖子失败: {str(e)}")
+
+@wxapp_router.get("/users/{user_id}/liked-posts", response_model=Dict[str, Any], summary="获取用户点赞的帖子")
+async def get_user_liked_posts(
+    user_id: str = PathParam(..., description="用户ID"),
+    limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
+    offset: int = Query(0, description="分页偏移量", ge=0)
+):
+    """获取用户点赞的帖子列表"""
+    try:
+        # 在帖子表中查询liked_users字段包含当前用户ID的帖子
+        query = f"""
+        SELECT p.* 
+        FROM wxapp_posts p
+        WHERE p.is_deleted = 0 
+          AND p.status = 1
+          AND p.liked_users LIKE '%{user_id}%'
+        ORDER BY p.id DESC
+        LIMIT {limit} OFFSET {offset}
+        """
+        
+        posts = execute_raw_query(query)
+        logger.debug(f"查询到用户 {user_id} 的点赞帖子 {len(posts)} 条")
+        
+        # 处理返回的帖子列表，确保JSON字段正确解析
+        processed_posts = []
+        for post in posts:
+            try:
+                # 处理帖子JSON字段
+                processed_post = process_post_json_fields(post)
+                processed_posts.append(processed_post)
+            except Exception as e:
+                logger.error(f"处理帖子数据失败: {str(e)}, 跳过该帖子")
+                # 继续处理下一个帖子而不中断整个过程
+        
+        return create_standard_response(processed_posts)
+    except Exception as e:
+        logger.error(f"查询用户点赞帖子失败: {str(e)}")
+        # 返回空列表
+        return create_standard_response([], code=500, message=f"查询用户点赞帖子失败: {str(e)}") 

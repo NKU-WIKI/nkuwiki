@@ -29,6 +29,7 @@ etl/load/py_mysql.py - MySQL数据库操作模块
 - get_nkuwiki_tables(): 获取nkuwiki数据库中的所有表
 - transfer_table_from_mysql_to_nkuwiki(table_name): 将表从MySQL迁移到nkuwiki数据库
 - import_json_dir_to_table(dir_path, table_name, platform, tag, batch_size): 将目录中的JSON文件导入到指定表
+- execute_raw_query(query, params=None): 执行原生SQL查询，返回查询结果
 """
 
 def init_database():
@@ -952,6 +953,43 @@ def import_json_dir_to_table(dir_path: str = None, table_name: str = None, platf
             load_logger.warning(f"  {i+1}. {f}")
     
     return result
+
+def execute_raw_query(query, params=None):
+    """
+    执行原生SQL查询，返回查询结果
+    
+    Args:
+        query (str): SQL查询语句
+        params (tuple, optional): 查询参数
+    
+    Returns:
+        list: 包含查询结果的字典列表
+    """
+    try:
+        # 获取数据库连接
+        connection = get_conn()
+        cursor = connection.cursor(dictionary=True)
+        
+        # 执行查询
+        try:
+            if params:
+                cursor.execute(query, params)
+            else:
+                cursor.execute(query)
+            
+            # 获取结果
+            result = cursor.fetchall()
+            load_logger.debug(f"执行原生SQL查询成功，返回 {len(result)} 条记录")
+            return result
+        finally:
+            cursor.close()
+    except Exception as e:
+        load_logger.error(f"执行原生SQL查询失败: {str(e)}")
+        load_logger.error(f"查询语句: {query}")
+        if params:
+            load_logger.error(f"查询参数: {params}")
+        # 返回空列表而不是抛出异常
+        return []
 
 if __name__ == "__main__":
     # delete_table("wechat_nku")  # 注释掉删除表的操作
