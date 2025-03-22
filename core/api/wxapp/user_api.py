@@ -95,7 +95,7 @@ async def create_user(
 @router.get("/users/{user_id}", response_model=Dict[str, Any], summary="获取用户信息")
 @handle_api_errors("获取用户")
 async def get_user(
-    user_id: int = PathParam(..., description="用户ID"),
+    user_id: str = PathParam(..., description="用户ID"),
     api_logger=Depends(get_api_logger)
 ):
     """获取指定用户信息"""
@@ -130,7 +130,7 @@ async def list_users(
 @handle_api_errors("更新用户")
 async def update_user(
     user_update: UserUpdate,
-    user_id: int = PathParam(..., description="用户ID"),
+    user_id: str = PathParam(..., description="用户ID"),
     api_logger=Depends(get_api_logger)
 ):
     """更新用户信息"""
@@ -164,7 +164,7 @@ async def update_user(
 @router.delete("/users/{user_id}", response_model=dict, summary="删除用户")
 @handle_api_errors("删除用户")
 async def delete_user(
-    user_id: int = PathParam(..., description="用户ID"),
+    user_id: str = PathParam(..., description="用户ID"),
     api_logger=Depends(get_api_logger)
 ):
     """删除用户（标记删除）"""

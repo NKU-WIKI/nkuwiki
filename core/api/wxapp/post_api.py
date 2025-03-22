@@ -21,7 +21,7 @@ from etl.load.py_mysql import (
 # 帖子模型
 class PostBase(BaseModel):
     """帖子基础信息"""
-    user_id: int = Field(..., description="发布用户ID")
+    user_id: str = Field(..., description="发布用户ID")
     title: str = Field(..., description="帖子标题", min_length=1, max_length=100)
     content: str = Field(..., description="帖子内容")
     images: Optional[List[str]] = Field(default=[], description="图片URL列表")
@@ -159,7 +159,7 @@ async def get_post(
 async def list_posts(
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
     offset: int = Query(0, description="分页偏移量", ge=0),
-    user_id: Optional[int] = Query(None, description="按用户ID筛选"),
+    user_id: Optional[str] = Query(None, description="按用户ID筛选"),
     category_id: Optional[int] = Query(None, description="按分类ID筛选"),
     tag: Optional[str] = Query(None, description="按标签筛选"),
     status: Optional[int] = Query(1, description="帖子状态: 1-正常, 0-禁用"),
