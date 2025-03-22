@@ -21,7 +21,7 @@ from etl.load.py_mysql import (
 # 评论模型
 class CommentBase(BaseModel):
     """评论基础信息"""
-    user_id: int = Field(..., description="评论用户ID")
+    user_id: str = Field(..., description="评论用户ID")
     post_id: int = Field(..., description="帖子ID")
     content: str = Field(..., description="评论内容", min_length=1, max_length=1000)
     parent_id: Optional[int] = Field(None, description="父评论ID，用于回复")
@@ -132,13 +132,13 @@ async def get_comment(
 @router.get("/comments", response_model=Dict[str, Any], summary="查询评论列表")
 @handle_api_errors("查询评论列表")
 async def list_comments(
-    post_id: Optional[int] = Query(None, description="帖子ID"),
-    user_id: Optional[int] = Query(None, description="用户ID"),
-    parent_id: Optional[int] = Query(None, description="父评论ID"),
-    limit: int = Query(50, description="返回记录数量限制", ge=1, le=100),
+    post_id: int = Query(..., description="帖子ID"),
+    parent_id: Optional[int] = Query(None, description="父评论ID（回复）"),
+    user_id: Optional[str] = Query(None, description="用户ID"),
+    limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
     offset: int = Query(0, description="分页偏移量", ge=0),
     status: Optional[int] = Query(1, description="评论状态: 1-正常, 0-禁用"),
-    order_by: str = Query("create_time DESC", description="排序方式"),
+    order_by: str = Query("create_time ASC", description="排序方式"),
     api_logger=Depends(get_api_logger)
 ):
     """获取评论列表"""
@@ -264,7 +264,7 @@ async def delete_comment(
 @handle_api_errors("点赞评论")
 async def like_comment(
     comment_id: int = PathParam(..., description="评论ID"),
-    user_id: int = Query(..., description="用户ID"),
+    user_id: str = Query(..., description="用户ID"),
     api_logger=Depends(get_api_logger)
 ):
     """点赞或取消点赞评论"""
