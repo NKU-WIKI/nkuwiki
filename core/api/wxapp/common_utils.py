@@ -73,4 +73,11 @@ def process_json_fields(data_dict, json_fields=None):
             elif value is None:
                 result[field] = []
     
+    # 为了兼容前端，增加author_name和author_avatar字段
+    if 'user_name' in result and 'author_name' not in result:
+        result['author_name'] = result['user_name']
+    
+    if 'user_avatar' in result and 'author_avatar' not in result:
+        result['author_avatar'] = result['user_avatar']
+    
     return result 
