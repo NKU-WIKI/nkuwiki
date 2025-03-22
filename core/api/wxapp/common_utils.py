@@ -9,7 +9,8 @@ from typing import Dict, Any, List
 def format_datetime(dt):
     """格式化日期时间"""
     if not dt:
-        return None
+        # 如果dt为None，使用当前时间
+        return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 # 数据库准备
