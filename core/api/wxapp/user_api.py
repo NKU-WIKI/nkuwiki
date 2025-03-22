@@ -271,36 +271,30 @@ async def get_user_follow_stats(
     api_logger.debug(f"获取用户ID={user_id}的关注统计")
     
     # 查询用户关注的人数
-    followed_query = "SELECT COUNT(*) as count FROM wxapp_user_follows WHERE follower_id = %s"
     try:
-        followed_result = query_records("wxapp_user_follows", {"follower_id": user_id}, limit=1) 
-        # 如果上面的方法不适用，可以使用自定义查询
-        # followed_result = execute_custom_query(followed_query, [user_id])
-        followed_count = len(followed_result)
+        # 使用适当的条件查询
+        followed_result = query_records("wxapp_user_follows", {"follower_id": user_id})
+        followed_count = len(followed_result) if followed_result else 0
+        api_logger.debug(f"用户ID={user_id}关注了{followed_count}人")
     except Exception as e:
         api_logger.error(f"查询用户关注数失败: {str(e)}")
         followed_count = 0
     
     # 查询用户的粉丝数
     try:
-        follower_result = query_records("wxapp_user_follows", {"followed_id": user_id}, limit=1000)
-        # 如果上面的方法不适用，可以使用自定义查询
-        # follower_query = "SELECT COUNT(*) as count FROM wxapp_user_follows WHERE followed_id = %s"
-        # follower_result = execute_custom_query(follower_query, [user_id])
-        follower_count = len(follower_result)
+        # 使用适当的条件查询
+        follower_result = query_records("wxapp_user_follows", {"followed_id": user_id})
+        follower_count = len(follower_result) if follower_result else 0
+        api_logger.debug(f"用户ID={user_id}有{follower_count}个粉丝")
     except Exception as e:
         api_logger.error(f"查询用户粉丝数失败: {str(e)}")
         follower_count = 0
     
     # 返回标准响应
-    return create_standard_response(
-        code=200,
-        message="获取用户关注统计成功",
-        data={
-            "followedCount": followed_count,
-            "followerCount": follower_count
-        }
-    )
+    return create_standard_response({
+        "followedCount": followed_count,
+        "followerCount": follower_count
+    })
 
 @router.get("/users/{user_id}/token", response_model=Dict[str, Any], summary="获取用户Token数量")
 @handle_api_errors("获取用户Token")
@@ -318,21 +312,17 @@ async def get_user_token(
         # 查询用户Token数量
         user_record = get_record_by_id("wxapp_users", user_id)
         if not user_record:
-            return create_standard_response(
-                code=404,
-                message="用户不存在",
-                data={"token": 0}
-            )
+            return create_standard_response({
+                "token": 0
+            }, code=404, message="用户不存在")
         
         # 获取token字段，如果不存在则默认为0
         token = user_record.get("token", 0)
         api_logger.debug(f"用户ID={user_id}的Token数量为{token}")
         
-        return create_standard_response(
-            code=200,
-            message="获取用户Token成功",
-            data={"token": token}
-        )
+        return create_standard_response({
+            "token": token
+        })
     except Exception as e:
         api_logger.error(f"获取用户Token失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取用户Token失败: {str(e)}")

@@ -134,6 +134,7 @@ async def create_post(
     # 添加其他默认值
     post_data['view_count'] = 0
     post_data['like_count'] = 0
+    post_data['favorite_count'] = 0  # 添加收藏数量初始化
     post_data['comment_count'] = 0
     post_data['status'] = 1
     post_data['is_deleted'] = 0
@@ -378,6 +379,35 @@ async def like_post(
         liked_users.append(user_id)
         like_count = post.get('like_count', 0) + 1
         action = "点赞"
+        
+        # 如果是点赞操作，给帖子作者发送通知
+        try:
+            # 获取帖子作者ID
+            author_id = post.get('user_id')
+            # 如果点赞用户不是作者本人，才发送通知
+            if author_id and author_id != user_id:
+                # 获取点赞用户信息
+                liker_info = get_record_by_id('wxapp_users', user_id)
+                if liker_info:
+                    liker_name = liker_info.get('nickname', '用户')
+                    # 创建通知数据
+                    notification_data = {
+                        'user_id': author_id,  # 通知接收者是帖子作者
+                        'title': '收到新点赞',
+                        'content': f"{liker_name} 点赞了你的帖子「{post.get('title', '无标题')}」",
+                        'type': 'like',
+                        'is_read': 0,
+                        'sender_id': user_id,  # 发送者是点赞用户
+                        'related_id': str(post_id)  # 关联ID是帖子ID
+                    }
+                    # 准备数据
+                    notification_data = prepare_db_data(notification_data, is_create=True)
+                    # 插入通知记录
+                    insert_record('wxapp_notifications', notification_data)
+                    api_logger.debug(f"已为用户{author_id}创建点赞通知")
+        except Exception as e:
+            # 通知创建失败不影响点赞功能
+            api_logger.error(f"创建点赞通知失败: {str(e)}")
     
     # 获取当前时间
     current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -425,11 +455,42 @@ async def favorite_post(
     if is_already_favorited and not is_favorite:
         # 取消收藏
         favorite_users.remove(user_id)
+        favorite_count = max(0, post.get('favorite_count', 0) - 1)
         action = "取消收藏"
     elif not is_already_favorited and is_favorite:
         # 收藏
         favorite_users.append(user_id)
+        favorite_count = post.get('favorite_count', 0) + 1
         action = "收藏"
+        
+        # 如果是收藏操作，给帖子作者发送通知
+        try:
+            # 获取帖子作者ID
+            author_id = post.get('user_id')
+            # 如果收藏用户不是作者本人，才发送通知
+            if author_id and author_id != user_id:
+                # 获取收藏用户信息
+                favoriter_info = get_record_by_id('wxapp_users', user_id)
+                if favoriter_info:
+                    favoriter_name = favoriter_info.get('nickname', '用户')
+                    # 创建通知数据
+                    notification_data = {
+                        'user_id': author_id,  # 通知接收者是帖子作者
+                        'title': '收到新收藏',
+                        'content': f"{favoriter_name} 收藏了你的帖子「{post.get('title', '无标题')}」",
+                        'type': 'like',  # 使用like类型，因为UI上可能没有专门的收藏类型
+                        'is_read': 0,
+                        'sender_id': user_id,  # 发送者是收藏用户
+                        'related_id': str(post_id)  # 关联ID是帖子ID
+                    }
+                    # 准备数据
+                    notification_data = prepare_db_data(notification_data, is_create=True)
+                    # 插入通知记录
+                    insert_record('wxapp_notifications', notification_data)
+                    api_logger.debug(f"已为用户{author_id}创建收藏通知")
+        except Exception as e:
+            # 通知创建失败不影响收藏功能
+            api_logger.error(f"创建收藏通知失败: {str(e)}")
     else:
         # 状态已匹配，无需更改
         return create_standard_response({
@@ -444,14 +505,21 @@ async def favorite_post(
     # 更新帖子
     success = update_record('wxapp_posts', post_id, {
         'favorite_users': json.dumps(favorite_users),
+        'favorite_count': favorite_count,  # 添加收藏数量更新
         'update_time': current_time  # 直接使用当前时间字符串
     })
     
     if not success:
         raise HTTPException(status_code=500, detail=f"{action}失败")
     
-    return create_standard_response({
-        "success": True,
-        "message": f"{action}成功",
-        "favorited": user_id in favorite_users
-    }) 
+    # 创建响应数据
+    response_data = {
+        "is_favorited": is_favorite,
+        "favorite_count": favorite_count  # 返回最新收藏数量
+    }
+    
+    # 返回标准响应
+    return create_standard_response(
+        data=response_data,
+        message=f"{action}成功"
+    ) 
