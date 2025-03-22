@@ -134,8 +134,8 @@ async def create_post(
     # 添加其他默认值
     post_data['view_count'] = 0
     post_data['like_count'] = 0
-    post_data['favorite_count'] = 0  # 添加收藏数量初始化
     post_data['comment_count'] = 0
+    post_data['favorite_count'] = 0  # 添加收藏数量初始化
     post_data['status'] = 1
     post_data['is_deleted'] = 0
     post_data['platform'] = 'wxapp'
@@ -443,13 +443,13 @@ async def favorite_post(
     if is_already_favorited and not is_favorite:
         # 取消收藏
         favorite_users.remove(user_id)
-        favorite_count = max(0, post.get('favorite_count', 0) - 1)
         action = "取消收藏"
+        favorite_count = max(0, post.get('favorite_count', 0) - 1)  # 计算新的收藏数
     elif not is_already_favorited and is_favorite:
         # 收藏
         favorite_users.append(user_id)
-        favorite_count = post.get('favorite_count', 0) + 1
         action = "收藏"
+        favorite_count = post.get('favorite_count', 0) + 1  # 计算新的收藏数
         
         # 如果是收藏操作，给帖子作者发送通知
         try:
@@ -493,7 +493,7 @@ async def favorite_post(
     # 更新帖子
     success = update_record('wxapp_posts', post_id, {
         'favorite_users': json.dumps(favorite_users),
-        'favorite_count': favorite_count,  # 添加收藏数量更新
+        'favorite_count': favorite_count,  # 更新收藏数
         'update_time': current_time  # 直接使用当前时间字符串
     })
     

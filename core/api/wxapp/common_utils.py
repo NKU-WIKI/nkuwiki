@@ -28,9 +28,13 @@ def prepare_db_data(data_dict, is_create=False):
     result = dict(data_dict)
     
     # 处理JSON字段
-    for field in ['images', 'tags', 'liked_users', 'favorite_users']:
+    for field in ['images', 'tags', 'liked_users', 'favorite_users', 'device_info']:
         if field in result and result[field] is not None:
-            result[field] = str(result[field])
+            import json
+            if isinstance(result[field], (dict, list)):
+                result[field] = json.dumps(result[field])
+            else:
+                result[field] = str(result[field])
     
     # 添加创建/更新时间
     current_time = format_datetime(datetime.now())
@@ -53,7 +57,7 @@ def process_json_fields(data_dict, json_fields=None):
         处理后的数据字典
     """
     if json_fields is None:
-        json_fields = ['images', 'tags', 'liked_users', 'favorite_users']
+        json_fields = ['images', 'tags', 'liked_users', 'favorite_users', 'device_info']
     
     if not data_dict:
         return data_dict
@@ -69,10 +73,10 @@ def process_json_fields(data_dict, json_fields=None):
                     parsed_value = json.loads(value)
                     result[field] = parsed_value
                 except:
-                    # 如果解析失败，设置为空列表
-                    result[field] = []
+                    # 如果解析失败，设置为空列表或空字典
+                    result[field] = [] if field not in ['device_info'] else {}
             elif value is None:
-                result[field] = []
+                result[field] = [] if field not in ['device_info'] else {}
     
     # 为了兼容前端，增加author_name和author_avatar字段
     if 'user_name' in result and 'author_name' not in result:

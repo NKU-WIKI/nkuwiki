@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_posts` (
     `liked_users` JSON DEFAULT NULL COMMENT '点赞用户列表',
     `favorite_users` JSON DEFAULT NULL COMMENT '收藏用户列表',
     `comment_count` INT DEFAULT 0 COMMENT '评论数',
+    `favorite_count` INT DEFAULT 0 COMMENT '收藏数量',
     `create_time` DATETIME NOT NULL COMMENT '创建时间',
     `update_time` DATETIME NOT NULL COMMENT '更新时间',
     `platform` VARCHAR(20) DEFAULT 'wxapp' COMMENT '平台标识',

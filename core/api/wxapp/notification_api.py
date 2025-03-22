@@ -25,15 +25,22 @@ class NotificationBase(BaseModel):
     title: str = Field(..., description="通知标题")
     content: str = Field(..., description="通知内容")
     type: str = Field(..., description="通知类型: system-系统通知, like-点赞, comment-评论, follow-关注")
-    is_read: bool = Field(False, description="是否已读")
+    is_read: int = Field(0, description="是否已读: 1-已读, 0-未读")
     sender_id: Optional[str] = Field(None, description="发送者ID，如系统通知则为null")
     related_id: Optional[str] = Field(None, description="关联ID，比如帖子ID或评论ID")
+    related_type: Optional[str] = Field(None, description="关联类型，如post, comment等")
     
     @validator('type')
     def validate_type(cls, v):
         valid_types = ['system', 'like', 'comment', 'follow']
         if v not in valid_types:
             raise ValueError(f"通知类型必须是以下之一: {', '.join(valid_types)}")
+        return v
+    
+    @validator('is_read')
+    def validate_is_read(cls, v):
+        if v not in [0, 1]:
+            raise ValueError("is_read字段必须是0或1")
         return v
 
 class NotificationCreate(NotificationBase):
