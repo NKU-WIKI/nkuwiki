@@ -479,10 +479,9 @@ async def sync_wxapp_user(
             'nickname': user_data.nickname or f"用户{user_data.openid[-4:]}",
             'avatar_url': user_data.avatar_url or "/assets/icons/default-avatar.png",
             'status': 1,  # 激活状态
-            'from_cloud': True,  # 标记来源
             'cloud_id': cloud_id,  # 保存云ID
-            'university': user_data.university or "南开大学",
-            'login_type': user_data.login_type or "wechat",
+            # 'university': user_data.university or "南开大学",  # 数据库中不存在此字段
+            # 'login_type': user_data.login_type or "wechat",    # 数据库中不存在此字段
             # 更新时间
             'update_time': format_datetime(datetime.now()),
             'last_login': format_datetime(datetime.now())
