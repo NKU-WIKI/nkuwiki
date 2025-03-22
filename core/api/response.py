@@ -123,6 +123,30 @@ class ResponseSchema(StandardResponse):
     """与fastapi-responseschema兼容的响应架构"""
     pass
 
+# 自定义装饰器，模拟exception_handler，但实际上什么也不做
+def dummy_exception_handler(exc_class):
+    """模拟异常处理器装饰器，实际上什么也不做"""
+    def decorator(func):
+        return func
+    return decorator
+
+# 自定义路由器类，包含模拟的exception_handler方法
+class CompatibleAPIRouter:
+    """
+    兼容标准APIRouter并包含模拟的exception_handler方法的路由器类
+    """
+    def __init__(self, *args, **kwargs):
+        from fastapi import APIRouter
+        self._router = APIRouter(*args, **kwargs)
+        
+    def __getattr__(self, name):
+        # 如果属性不存在，则返回原始router的属性
+        return getattr(self._router, name)
+        
+    def exception_handler(self, exc_class):
+        """模拟异常处理器方法，但不执行任何实际操作"""
+        return dummy_exception_handler(exc_class)
+
 # 创建适配器函数，便于后续切换到真正的库实现
 def get_schema_api_router(*args, **kwargs):
     """
@@ -132,11 +156,20 @@ def get_schema_api_router(*args, **kwargs):
     - 开发测试阶段：返回标准FastAPI路由器，不执行实际包装
     - 部署时：调整为使用实际的fastapi-responseschema.SchemaAPIRouter
     """
-    from fastapi import APIRouter
     try:
         # 尝试导入fastapi-responseschema
         from fastapi_responseschema import SchemaAPIRouter
-        return SchemaAPIRouter(*args, **kwargs)
+        try:
+            # 测试是否真的能正常工作
+            router = SchemaAPIRouter(*args, **kwargs)
+            # 测试exception_handler方法是否存在
+            if not hasattr(router, 'exception_handler'):
+                # 如果不存在，使用兼容版本
+                return CompatibleAPIRouter(*args, **kwargs)
+            return router
+        except Exception:
+            # 导入成功但初始化失败，使用兼容版本
+            return CompatibleAPIRouter(*args, **kwargs)
     except ImportError:
-        # 如果未安装，返回普通的APIRouter
-        return APIRouter(*args, **kwargs)
+        # 导入失败，使用兼容版本
+        return CompatibleAPIRouter(*args, **kwargs)

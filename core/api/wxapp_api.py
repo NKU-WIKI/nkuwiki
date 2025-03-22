@@ -6,7 +6,7 @@ import re
 import time
 from datetime import datetime
 from fastapi import APIRouter, HTTPException, Path as PathParam, Depends, Query, Body
-from pydantic import BaseModel, Field, validator, Generic, TypeVar
+from pydantic import BaseModel, Field, validator
 from typing import List, Dict, Any, Optional, Union, Callable, TypeVar, Generic
 from loguru import logger
 from fastapi.responses import JSONResponse
@@ -34,6 +34,8 @@ wxapp_router = get_schema_api_router(
 )
 
 # 添加异常处理中间件
+# 注释掉路由器上的异常处理器，移动到全局异常处理
+'''
 @wxapp_router.exception_handler(HTTPException)
 async def http_exception_handler(request, exc):
     """自定义HTTP异常处理器，确保异常也返回标准格式"""
@@ -58,6 +60,7 @@ async def general_exception_handler(request, exc):
             message=f"服务器内部错误: {str(exc)}"
         )
     )
+'''
 
 # 请求和响应模型
 class UserBase(BaseModel):

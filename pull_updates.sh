@@ -45,9 +45,6 @@ main() {
         exit 1
     fi
     
-    # 子模块分支名称
-    SUBMODULE_BRANCH="feature-search"
-    
     # 更新根项目
     log_info "正在更新根项目..."
     git fetch
@@ -55,19 +52,11 @@ main() {
     
     git_status=$(git status -uno)
     
-    # 检查是否有本地修改并提交
-    if echo "$git_status" | grep -q "Changes not staged\|Untracked files"; then
-        log_info "检测到本地修改，准备提交..."
-        
-        # 添加所有修改
-        git add -A
-        check_result "添加文件失败"
-        
-        # 提交修改
-        git commit -m "Auto commit local changes before update: $(date)"
-        check_result "提交修改失败"
-        
-        log_success "本地修改已提交"
+    # 检查是否有本地修改
+    if echo "$git_status" | grep -q "Changes not staged"; then
+        log_warning "本地有未提交的修改，将尝试 stash"
+        git stash
+        local_changes=true
     fi
     
     # 获取当前分支
@@ -78,6 +67,15 @@ main() {
     git pull origin $current_branch
     check_result "根项目更新失败"
     log_success "根项目更新完成"
+    
+    # 如果有 stash 的更改，恢复
+    if [ "$local_changes" = true ]; then
+        log_info "恢复本地修改..."
+        git stash pop
+        if [ $? -ne 0 ]; then
+            log_warning "恢复本地修改时出现冲突，请手动解决"
+        fi
+    fi
     
     # 检查 services/app 子模块是否存在
     if [ ! -d "services/app" ]; then
@@ -90,65 +88,47 @@ main() {
     cd services/app
     check_result "无法进入 services/app 目录"
     
-    git fetch origin
+    git fetch
     check_result "子模块 fetch 失败"
     
-    # 检查子模块是否在分支上
-    submodule_branch=$(git branch --show-current)
-    if [ -z "$submodule_branch" ]; then
-        log_warning "子模块当前不在任何分支上，将检出 $SUBMODULE_BRANCH 分支"
-        git checkout $SUBMODULE_BRANCH
-        if [ $? -ne 0 ]; then
-            log_info "尝试从远程创建 $SUBMODULE_BRANCH 分支"
-            git checkout -b $SUBMODULE_BRANCH origin/$SUBMODULE_BRANCH
-            check_result "无法创建并检出 $SUBMODULE_BRANCH 分支"
-        fi
-    else
-        log_info "子模块当前分支: $submodule_branch"
-        if [ "$submodule_branch" != "$SUBMODULE_BRANCH" ]; then
-            log_warning "子模块不在 $SUBMODULE_BRANCH 分支上，正在切换..."
-            git checkout $SUBMODULE_BRANCH
-            check_result "切换到 $SUBMODULE_BRANCH 分支失败"
-        fi
+    git_status=$(git status -uno)
+    
+    # 检查子模块是否有本地修改
+    if echo "$git_status" | grep -q "Changes not staged"; then
+        log_warning "子模块有未提交的修改，将尝试 stash"
+        git stash
+        submodule_changes=true
     fi
     
-    # 检查子模块是否有本地修改并提交
-    git_status=$(git status -uno)
-    if echo "$git_status" | grep -q "Changes not staged\|Untracked files"; then
-        log_info "检测到子模块有本地修改，准备提交..."
-        
-        # 添加所有修改
-        git add -A
-        check_result "添加子模块文件失败"
-        
-        # 提交修改
-        git commit -m "Auto commit submodule local changes before update: $(date)"
-        check_result "提交子模块修改失败"
-        
-        log_success "子模块本地修改已提交"
-    fi
+    # 获取子模块当前分支
+    submodule_branch=$(git branch --show-current)
+    log_info "子模块当前分支: $submodule_branch"
     
     # 拉取子模块更新
-    log_info "拉取子模块 $SUBMODULE_BRANCH 分支更新..."
-    git pull origin $SUBMODULE_BRANCH
+    git pull origin $submodule_branch
     check_result "子模块更新失败"
     log_success "子模块更新完成"
+    
+    # 如果子模块有 stash 的更改，恢复
+    if [ "$submodule_changes" = true ]; then
+        log_info "恢复子模块本地修改..."
+        git stash pop
+        if [ $? -ne 0 ]; then
+            log_warning "恢复子模块本地修改时出现冲突，请手动解决"
+        fi
+    fi
     
     # 返回项目根目录
     cd ../..
     
     # 更新子模块引用
     log_info "更新子模块引用..."
-    git add services/app
+    git submodule update --remote services/app
+    check_result "子模块引用更新失败"
     
-    # 如果子模块引用有更新，提交更改
+    # 如果子模块引用有更新，提示用户提交
     if git status | grep -q "modified.*services/app"; then
-        log_info "提交子模块引用更新..."
-        git commit -m "Update submodule services/app reference to latest commit"
-        check_result "提交子模块引用更新失败"
-        log_success "子模块引用更新已提交"
-    else
-        log_info "子模块引用没有变化"
+        log_warning "子模块引用已更新，可能需要提交此更改"
     fi
     
     # 获取脚本结束执行时间并计算用时
@@ -156,7 +136,6 @@ main() {
     duration=$((end_time - start_time))
     
     log_success "所有更新完成！用时 ${duration} 秒"
-    log_info "本地修改已提交，子模块已设置为 $SUBMODULE_BRANCH 分支"
 }
 
 # 执行主函数
