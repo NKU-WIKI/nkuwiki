@@ -105,13 +105,12 @@ def get_schema_api_router(**kwargs):
         增强的APIRouter实例
     """
     try:
-        # 创建标准APIRouter，但设置自定义的路由类
-        router = APIRouter(route_class=SchemaAPIRoute, **kwargs)
-        # 这里可以添加路由级别的中间件或依赖
+        # 使用标准APIRouter而不是SchemaAPIRoute
+        router = APIRouter(**kwargs)
+        # 添加路由级别的中间件或依赖
         router.dependencies.append(Depends(api_request_handler))
         return router
     except Exception as e:
-        # 异常情况下使用标准APIRouter
-        from fastapi import APIRouter
+        # 异常情况下也使用标准APIRouter
         logger.error(f"创建API路由器失败: {e}")
         return APIRouter(**kwargs) 

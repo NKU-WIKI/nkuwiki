@@ -572,4 +572,5 @@ def setup_api_monitor(app: FastAPI):
         """API监控面板"""
         return MONITOR_HTML_TEMPLATE
     
-    logger.info("API监控系统已启动") 
+    # 使用带有默认request_id的logger
+    logger.bind(request_id="system", module="monitor").info("API监控系统已启动") 
