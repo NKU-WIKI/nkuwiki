@@ -9,7 +9,7 @@ from typing import Dict, Any, Optional, List
 
 # 导入通用组件
 from core.api.common import get_api_logger, handle_api_errors, create_standard_response
-from core.api.wxapp import router
+from core.api import wxapp_router as router
 from core.api.wxapp.common_utils import format_datetime
 
 # 平台信息

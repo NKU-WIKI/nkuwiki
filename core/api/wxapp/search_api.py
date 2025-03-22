@@ -4,13 +4,57 @@ from pydantic import BaseModel, Field
 import logging
 
 from core.auth.jwt_handler import validate_token
-from etl.retrieval.retrievers import get_retriever, RetrievalResult
+from etl.retrieval.retrievers import HybridRetriever, QdrantRetriever, BM25Retriever
+from llama_index.core import QueryBundle
+from llama_index.core.schema import NodeWithScore
 
-# 创建路由器
-router = APIRouter()
+# 导入全局路由器
+from core.api import wxapp_router as router
 
 # 设置日志记录器
 logger = logging.getLogger(__name__)
+
+# 定义一个简单的结果模型
+class RetrievalResult:
+    def __init__(self, results, total, query):
+        self.results = results
+        self.total = total
+        self.query = query
+
+# 定义一个搜索结果项目
+class SearchResultItem:
+    def __init__(self, id, title, content, score, source, url=None, metadata=None):
+        self.id = id
+        self.title = title
+        self.content = content
+        self.score = score
+        self.source = source
+        self.url = url
+        self.metadata = metadata
+
+# 获取检索器的函数
+def get_retriever():
+    # 这里简单返回一个模拟的检索器
+    # 实际应用中，应该根据配置创建真实的检索器实例
+    logger.warning("使用模拟检索器 - 实际项目中请实现真实检索功能")
+    
+    class MockRetriever:
+        def search(self, query, limit=10, offset=0, filters=None):
+            # 模拟搜索结果
+            results = [
+                SearchResultItem(
+                    id=f"result-{i}",
+                    title=f"搜索结果 {i} 标题",
+                    content=f"这是关于 '{query}' 的搜索结果 {i} 的内容",
+                    score=0.9 - (i * 0.1),
+                    source="模拟数据",
+                    metadata={"type": "mock"}
+                )
+                for i in range(limit)
+            ]
+            return RetrievalResult(results=results, total=100, query=query)
+    
+    return MockRetriever()
 
 # 请求模型
 class SearchQuery(BaseModel):

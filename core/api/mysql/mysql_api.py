@@ -9,7 +9,7 @@ from typing import List, Dict, Any, Optional
 
 # 导入通用组件
 from core.api.common import get_api_logger, handle_api_errors, create_standard_response
-from core.api.mysql import router
+from core.api import mysql_router as router
 
 # 数据库相关导入
 from etl.load import get_conn

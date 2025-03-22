@@ -150,7 +150,7 @@ def get_client_ip(request: Request) -> str:
     # 使用客户端直连IP
     return request.client.host if request.client else "unknown"
 
-def log_request_info(request: Request, api_logger: Optional[logger] = None) -> None:
+def log_request_info(request: Request, api_logger: Any = None) -> None:
     """
     记录请求信息
     

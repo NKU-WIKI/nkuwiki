@@ -17,7 +17,6 @@ from etl.transform.transformation import CustomTitleExtractor, CustomFilePathExt
 from qdrant_client import AsyncQdrantClient, models
 from qdrant_client.http.exceptions import UnexpectedResponse
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
-from __init__ import *
 
 def merge_strings(A, B):
     # 找到A的结尾和B的开头最长的匹配子串

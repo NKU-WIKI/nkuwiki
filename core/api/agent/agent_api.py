@@ -12,7 +12,7 @@ from loguru import logger
 
 # 导入通用组件
 from core.api.common import get_api_logger, handle_api_errors, create_standard_response
-from core.api.agent import router
+from core.api import agent_router as router
 
 # 导入必要的Agent组件
 from core import config

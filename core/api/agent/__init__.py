@@ -1,15 +1,7 @@
 """
-Agent功能API模块
-提供对AI智能体的操作接口
+Agent API模块
+提供与AI智能体交互的接口
 """
-from core.api.common import get_schema_api_router
 
-# 创建路由器
-router = get_schema_api_router(
-    prefix="/agent",
-    tags=["Agent功能"],
-    responses={404: {"description": "Not found"}}
-)
-
-# 导入子模块以注册路由
-from core.api.agent import chat_api 
+# 空的__init__.py文件，避免任何循环导入问题
+# 所有路由器和导入都在core/api/__init__.py中统一管理 

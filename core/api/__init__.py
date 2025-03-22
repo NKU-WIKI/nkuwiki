@@ -2,9 +2,14 @@
 API模块
 集中管理所有API路由并提供统一的注册入口
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from loguru import logger
 from core.api.common.exceptions import setup_exception_handlers
+
+# 预先创建所有路由器
+wxapp_router = APIRouter(prefix="/wxapp")
+mysql_router = APIRouter(prefix="/mysql")
+agent_router = APIRouter(prefix="/agent")
 
 def register_routers(app: FastAPI):
     """
@@ -16,43 +21,90 @@ def register_routers(app: FastAPI):
     # 注册全局异常处理器
     setup_exception_handlers(app)
     
-    # 导入并注册各模块路由器
+    # 注册微信小程序路由
     try:
-        from core.api.wxapp import router as wxapp_router
+        # 导入所有API模块，确保路由注册
+        import traceback
+        try:
+            import core.api.wxapp.user_api
+            logger.debug("成功导入user_api")
+        except Exception as e:
+            logger.error(f"导入user_api失败: {str(e)}")
+            logger.error(traceback.format_exc())
+        
+        try:
+            import core.api.wxapp.post_api
+            logger.debug("成功导入post_api")
+        except Exception as e:
+            logger.error(f"导入post_api失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+        try:
+            import core.api.wxapp.comment_api
+            logger.debug("成功导入comment_api")
+        except Exception as e:
+            logger.error(f"导入comment_api失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+        try:
+            import core.api.wxapp.search_api
+            logger.debug("成功导入search_api")
+        except Exception as e:
+            logger.error(f"导入search_api失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+        try:
+            import core.api.wxapp.notification_api
+            logger.debug("成功导入notification_api")
+        except Exception as e:
+            logger.error(f"导入notification_api失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+        try:
+            import core.api.wxapp.feedback_api
+            logger.debug("成功导入feedback_api")
+        except Exception as e:
+            logger.error(f"导入feedback_api失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+        try:
+            import core.api.wxapp.about_api
+            logger.debug("成功导入about_api")
+        except Exception as e:
+            logger.error(f"导入about_api失败: {str(e)}")
+            logger.error(traceback.format_exc())
+        
+        # 注册路由器
         app.include_router(wxapp_router)
         
-        # 记录注册的所有路由及其前缀
-        routes = []
-        for route in wxapp_router.routes:
-            full_path = f"{wxapp_router.prefix}{route.path}"
-            methods = ", ".join(route.methods)
-            routes.append(f"{methods} {full_path}")
-        
+        # 记录路由信息
         logger.info(f"微信小程序API路由已注册 - 前缀: {wxapp_router.prefix}")
-        for route in sorted(routes):
+        for route in sorted([f"{', '.join(route.methods)} {wxapp_router.prefix}{route.path}" for route in wxapp_router.routes]):
             logger.info(f"  路由: {route}")
-    except ImportError as e:
+    except Exception as e:
         logger.error(f"微信小程序API路由注册失败: {str(e)}")
-    except Exception as e:
-        logger.error(f"微信小程序API路由注册时发生异常: {str(e)}")
     
+    # 注册MySQL API路由
     try:
-        from core.api.mysql import router as mysql_router
+        # 导入MySQL API模块
+        import core.api.mysql.mysql_api
+        
+        # 注册路由器
         app.include_router(mysql_router)
-        logger.info(f"MySQL API路由已注册 - 前缀: {getattr(mysql_router, 'prefix', '')}")
-    except ImportError:
-        logger.warning("MySQL API模块不可用，已跳过")
+        logger.info(f"MySQL API路由已注册 - 前缀: {mysql_router.prefix}")
     except Exception as e:
-        logger.error(f"MySQL API路由注册时发生异常: {str(e)}")
+        logger.error(f"MySQL API路由注册失败: {str(e)}")
     
+    # 注册Agent API路由
     try:
-        from core.api.agent import router as agent_router
+        # 导入Agent API模块
+        import core.api.agent.agent_api
+        
+        # 注册路由器
         app.include_router(agent_router)
-        logger.info(f"Agent API路由已注册 - 前缀: {getattr(agent_router, 'prefix', '')}")
-    except ImportError:
-        logger.warning("Agent API模块不可用，已跳过")
+        logger.info(f"Agent API路由已注册 - 前缀: {agent_router.prefix}")
     except Exception as e:
-        logger.error(f"Agent API路由注册时发生异常: {str(e)}")
+        logger.error(f"Agent API路由注册失败: {str(e)}")
         
     # 记录所有已注册的应用路由
     logger.info("所有已注册的API路由:")
