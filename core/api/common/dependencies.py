@@ -1,37 +1,57 @@
 """
-API通用依赖项模块
-提供API路由使用的常用依赖注入函数
+API依赖项模块
+提供API常用的依赖注入函数
 """
-from fastapi import Depends
 from loguru import logger
-from contextvars import ContextVar
+from fastapi import Request, Depends
+from core.utils.logger import get_api_logger
 
-# 请求ID上下文变量
-request_id_var: ContextVar[str] = ContextVar("request_id", default="")
-
-def get_api_logger(module: str = "api"):
+def get_module_name(request: Request) -> str:
     """
-    提供API日志记录器
+    从请求路径中获取模块名称
+    例如 /wxapp/posts -> wxapp
     
     Args:
-        module: 模块名称
-    
+        request: FastAPI请求对象
+        
     Returns:
-        带有请求ID和模块信息的日志记录器
+        模块名称
     """
+    path = request.url.path
+    parts = path.strip('/').split('/')
+    if parts:
+        return parts[0]
+    return "api"
+
+def get_request_logger(request: Request):
+    """
+    获取绑定了请求信息的日志记录器
+    
+    Args:
+        request: FastAPI请求对象
+        
+    Returns:
+        日志记录器实例
+    """
+    module = get_module_name(request)
+    client_ip = request.client.host if request.client else "unknown"
+    path = request.url.path
+    
+    # 创建包含请求上下文的日志记录器
     return logger.bind(
-        request_id=request_id_var.get(),
-        module=module
+        client_ip=client_ip,
+        path=path,
+        module=f"{module}_api"
     )
 
-def get_mysql_logger():
-    """MySQL API专用日志记录器"""
-    return get_api_logger(module="mysql_api")
-
-def get_wxapp_logger():
-    """微信小程序API专用日志记录器"""
-    return get_api_logger(module="wxapp_api")
-
-def get_agent_logger():
-    """Agent API专用日志记录器"""
-    return get_api_logger(module="agent_api") 
+def get_api_logger_dep(request: Request):
+    """
+    提供API日志记录器的依赖注入函数
+    
+    Args:
+        request: FastAPI请求对象
+        
+    Returns:
+        日志记录器实例
+    """
+    return get_request_logger(request) 
