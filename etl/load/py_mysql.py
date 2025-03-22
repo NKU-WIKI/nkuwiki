@@ -958,35 +958,4 @@ if __name__ == "__main__":
     init_database()  # 初始化数据库
     # import_json_dir_to_table(platform="wechat", tag="nku")  # 导入数据
     
-    # 查询website_nku表内容
-    results = query_table("website_nku")
-    total_records = len(results)
-    print(f"\n开始处理 website_nku 表，共 {total_records} 条记录")
-    
-    # 更新publish_time格式
-    updated_count = 0
-    bar_width = 50
-    for record in results:
-        if record['publish_time']:
-            new_date = record['publish_time'].strftime('%Y-%m-%d')
-            if update_record("website_nku", record['id'], {"publish_time": new_date}):
-                updated_count += 1
-                # 计算进度条
-                progress = updated_count / total_records
-                filled = int(bar_width * progress)
-                bar = '=' * filled + ' ' * (bar_width - filled)
-                print(f'\r进度: [{bar}] {progress*100:.1f}%', end='', flush=True)
-    
-    print(f"\n\n更新完成: 成功更新 {updated_count}/{total_records} 条记录")
-    
-    # 显示更新后的前5条记录
-    print("\n更新后的前5条记录示例:")
-    results = query_table("website_nku")
-    for i, record in enumerate(results[:5], 1):
-        print(f"\n记录 {i}:")
-        for key, value in record.items():
-            if key == 'content':  # 内容可能很长，只显示前100个字符
-                print(f"{key}: {value[:100]}...")
-            else:
-                print(f"{key}: {value}")
     

@@ -10,8 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from config import Config
-from etl.api.mysql_api import mysql_router
+from core.api.mysql_api import mysql_router
 from core.api.agent_api import agent_router
+from core.api.wxapp_api import wxapp_router
 from core.utils.common.singleton import singleton
 from fastapi.responses import RedirectResponse
 
@@ -75,6 +76,8 @@ app.add_middleware(
 app.include_router(mysql_router)
 # 集成Agent路由
 app.include_router(agent_router)
+# 集成微信小程序路由
+app.include_router(wxapp_router)
 
 # 挂载静态文件目录，用于微信校验文件等
 app.mount("/static", StaticFiles(directory="static"), name="static_files")
