@@ -955,7 +955,9 @@ def import_json_dir_to_table(dir_path: str = None, table_name: str = None, platf
 
 if __name__ == "__main__":
     # delete_table("wechat_nku")  # 注释掉删除表的操作
-    init_database()  # 初始化数据库
+    # init_database()  # 初始化数据库
+    get_table_structure("wxapp_posts")
+    # query_table("wxapp_posts")
     # import_json_dir_to_table(platform="wechat", tag="nku")  # 导入数据
     
     
