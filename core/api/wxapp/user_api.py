@@ -68,7 +68,7 @@ class UserResponse(UserBase):
 class UserSyncRequest(BaseModel):
     """云函数同步用户请求"""
     id: str = Field(..., description="微信云数据库ID")
-    _id: Optional[str] = Field(None, description="微信云数据库ID（别名）")
+    cloud_id_alias: Optional[str] = Field(None, description="微信云数据库ID（别名）")
     wxapp_id: str = Field(..., description="微信小程序原始ID")
     openid: str = Field(..., description="微信用户唯一标识")
     nickname: Optional[str] = Field(None, description="用户昵称")
