@@ -90,7 +90,7 @@ class WeChatMiniCrawler(BaseCrawler):
             processed_post = {
                 "wxapp_id": post.get("_id", ""),  # 保存原始ID
                 "_openid": post.get("_openid", ""),  # 添加_openid字段
-                "author_id": post.get("authorId", ""),
+                "user_id": post.get("authorId", ""),
                 "author_name": post.get("authorName", ""),
                 "author_avatar": post.get("authorAvatar", ""),
                 "content": post.get("content", ""),
@@ -170,7 +170,7 @@ class WeChatMiniCrawler(BaseCrawler):
                     "wxapp_id": comment.get("_id", ""),  # 保存原始ID
                     "post_id": post_id,
                     "_openid": comment.get("_openid", ""),  # 添加_openid字段
-                    "author_id": comment.get("authorId", ""),
+                    "user_id": comment.get("authorId", ""),
                     "author_name": comment.get("authorName", ""),
                     "author_avatar": comment.get("authorAvatar", ""),
                     "content": comment.get("content", ""),

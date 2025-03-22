@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS `wxapp_posts` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `wxapp_id` VARCHAR(100) NOT NULL COMMENT '微信小程序原始ID',
-    `user_id` INT NOT NULL COMMENT '发布用户ID',
+    `user_id` VARCHAR(100) NOT NULL COMMENT '发布用户ID',
     `user_name` VARCHAR(100) DEFAULT NULL COMMENT '用户名称',
     `user_avatar` VARCHAR(500) DEFAULT NULL COMMENT '用户头像URL',
     `content` TEXT COMMENT '帖子内容',

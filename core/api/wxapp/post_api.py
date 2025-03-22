@@ -3,7 +3,7 @@
 提供帖子管理相关的API接口
 """
 from fastapi import HTTPException, Path as PathParam, Depends, Query
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, root_validator
 from typing import Dict, Any, Optional, List
 import json
 import traceback
@@ -22,13 +22,22 @@ from etl.load.py_mysql import (
 # 帖子模型
 class PostBase(BaseModel):
     """帖子基础信息"""
-    user_id: str = Field(..., description="发布用户ID")
+    user_id: Optional[str] = Field(None, description="发布用户ID")
     title: str = Field(..., description="帖子标题", min_length=1, max_length=100)
     content: str = Field(..., description="帖子内容")
     images: Optional[List[str]] = Field(default=[], description="图片URL列表")
     tags: Optional[List[str]] = Field(default=[], description="标签列表")
     category_id: Optional[int] = Field(None, description="分类ID")
     location: Optional[str] = Field(None, description="位置信息")
+    author_name: Optional[str] = Field(None, description="作者名称")
+    author_avatar: Optional[str] = Field(None, description="作者头像")
+    
+    @validator('user_id')
+    def validate_user_id(cls, v):
+        """确保user_id不为空"""
+        if not v:
+            raise ValueError("用户ID不能为空")
+        return v
     
     @validator('title')
     def validate_title(cls, v):
@@ -91,6 +100,9 @@ async def create_post(
     # 准备数据
     post_data = post.dict()
     
+    # 记录请求详情
+    api_logger.debug(f"创建帖子请求数据: {post_data}")
+    
     # 处理JSON字段
     if 'images' in post_data and post_data['images']:
         post_data['images'] = json.dumps(post_data['images'])
@@ -101,6 +113,18 @@ async def create_post(
         post_data['tags'] = json.dumps(post_data['tags'])
     else:
         post_data['tags'] = json.dumps([])
+    
+    # 适配数据库表字段
+    if 'author_name' in post_data and post_data['author_name']:
+        post_data['user_name'] = post_data['author_name']
+        
+    if 'author_avatar' in post_data and post_data['author_avatar']:
+        post_data['user_avatar'] = post_data['author_avatar']
+    
+    # 如果wxapp_id不存在，生成一个唯一ID
+    if 'wxapp_id' not in post_data or not post_data['wxapp_id']:
+        import time
+        post_data['wxapp_id'] = f"post_{int(time.time() * 1000)}"
         
     # 初始化点赞和收藏用户
     post_data['liked_users'] = json.dumps([])
@@ -111,9 +135,20 @@ async def create_post(
     post_data['like_count'] = 0
     post_data['comment_count'] = 0
     post_data['status'] = 1
+    post_data['is_deleted'] = 0
+    post_data['platform'] = 'wxapp'
     
     # 准备数据库数据
     post_data = prepare_db_data(post_data, is_create=True)
+    
+    # 移除数据库不需要的字段
+    for field in ['author_name', 'author_avatar']:
+        if field in post_data:
+            post_data.pop(field, None)
+    
+    # 数据库中user_id现在是VARCHAR类型，不需要转换为整数
+    
+    api_logger.debug(f"准备插入数据库的数据: {post_data}")
     
     # 插入记录
     post_id = insert_record('wxapp_posts', post_data)
@@ -128,6 +163,7 @@ async def create_post(
     # 处理JSON字段显示
     created_post = process_json_fields(created_post)
     
+    api_logger.info(f"帖子创建成功: ID={post_id}")
     return create_standard_response(created_post)
 
 @router.get("/posts/{post_id}", response_model=Dict[str, Any], summary="获取帖子详情")
@@ -175,15 +211,8 @@ async def list_posts(
         # 构建查询条件
         conditions = {}
         if user_id is not None:
-            # 尝试转换user_id为整数类型
-            try:
-                if isinstance(user_id, str) and user_id.isdigit():
-                    conditions['user_id'] = int(user_id)
-                else:
-                    conditions['user_id'] = user_id
-            except Exception as e:
-                api_logger.warning(f"转换user_id时出错，使用原始值: {e}")
-                conditions['user_id'] = user_id
+            # user_id现在是字符串类型，不需要转换
+            conditions['user_id'] = user_id
                 
         if category_id is not None:
             conditions['category_id'] = category_id
@@ -322,7 +351,7 @@ async def delete_post(
 @handle_api_errors("点赞帖子")
 async def like_post(
     post_id: int = PathParam(..., description="帖子ID"),
-    user_id: int = Query(..., description="用户ID"),
+    user_id: str = Query(..., description="用户ID"),
     api_logger=Depends(get_api_logger)
 ):
     """点赞或取消点赞帖子"""
