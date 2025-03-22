@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, validator, root_validator
 from typing import Dict, Any, Optional, List
 import json
 import traceback
+from datetime import datetime
 
 # 导入通用组件
 from core.api.common import get_api_logger, handle_api_errors, create_standard_response
@@ -378,11 +379,14 @@ async def like_post(
         like_count = post.get('like_count', 0) + 1
         action = "点赞"
     
+    # 获取当前时间
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
     # 更新帖子
     success = update_record('wxapp_posts', post_id, {
         'liked_users': json.dumps(liked_users),
         'like_count': like_count,
-        'update_time': format_datetime(None)  # 使用当前时间
+        'update_time': current_time  # 直接使用当前时间字符串
     })
     
     if not success:
@@ -434,10 +438,13 @@ async def favorite_post(
             "favorited": is_favorite
         })
     
+    # 获取当前时间
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
     # 更新帖子
     success = update_record('wxapp_posts', post_id, {
         'favorite_users': json.dumps(favorite_users),
-        'update_time': format_datetime(None)  # 使用当前时间
+        'update_time': current_time  # 直接使用当前时间字符串
     })
     
     if not success:
