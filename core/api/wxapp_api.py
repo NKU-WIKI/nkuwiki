@@ -16,6 +16,8 @@ from etl.load.py_mysql import (
     query_records, count_records, get_record_by_id,
     batch_insert, upsert_record
 )
+# 导入JSON字段处理工具函数
+from etl.load.process_json import process_post_json_fields, process_post_create_data
 
 # 创建专用API路由
 wxapp_router = APIRouter(
@@ -174,61 +176,8 @@ def process_json_fields(post_data):
     Returns:
         处理后的帖子数据字典
     """
-    try:
-        post_copy = post_data.copy()
-        
-        # 处理images字段
-        if 'images' in post_copy:
-            try:
-                if isinstance(post_copy['images'], str) and post_copy['images'].strip():
-                    import json
-                    post_copy['images'] = json.loads(post_copy['images'])
-                elif post_copy['images'] is None or post_copy['images'] == '':
-                    post_copy['images'] = []
-            except Exception as e:
-                logger.error(f"解析帖子images字段失败: {str(e)}, 原值: {post_copy.get('images')}")
-                post_copy['images'] = []
-        
-        # 处理tags字段
-        if 'tags' in post_copy:
-            try:
-                if isinstance(post_copy['tags'], str) and post_copy['tags'].strip():
-                    import json
-                    post_copy['tags'] = json.loads(post_copy['tags'])
-                elif post_copy['tags'] is None or post_copy['tags'] == '':
-                    post_copy['tags'] = []
-            except Exception as e:
-                logger.error(f"解析帖子tags字段失败: {str(e)}, 原值: {post_copy.get('tags')}")
-                post_copy['tags'] = []
-        
-        # 处理liked_users字段
-        if 'liked_users' in post_copy:
-            try:
-                if isinstance(post_copy['liked_users'], str) and post_copy['liked_users'].strip():
-                    import json
-                    post_copy['liked_users'] = json.loads(post_copy['liked_users'])
-                elif post_copy['liked_users'] is None or post_copy['liked_users'] == '':
-                    post_copy['liked_users'] = []
-            except Exception as e:
-                logger.error(f"解析帖子liked_users字段失败: {str(e)}, 原值: {post_copy.get('liked_users')}")
-                post_copy['liked_users'] = []
-                
-        # 处理favorite_users字段
-        if 'favorite_users' in post_copy:
-            try:
-                if isinstance(post_copy['favorite_users'], str) and post_copy['favorite_users'].strip():
-                    import json
-                    post_copy['favorite_users'] = json.loads(post_copy['favorite_users'])
-                elif post_copy['favorite_users'] is None or post_copy['favorite_users'] == '':
-                    post_copy['favorite_users'] = []
-            except Exception as e:
-                logger.error(f"解析帖子favorite_users字段失败: {str(e)}, 原值: {post_copy.get('favorite_users')}")
-                post_copy['favorite_users'] = []
-        
-        return post_copy
-    except Exception as e:
-        logger.error(f"处理JSON字段失败: {str(e)}")
-        return post_data  # 如果处理失败，返回原始数据
+    # 使用新的工具函数处理JSON字段
+    return process_post_json_fields(post_data)
 
 # ====================== 用户接口 ======================
 @wxapp_router.post("/users", response_model=UserResponse, summary="创建用户")
@@ -375,22 +324,11 @@ async def create_post(post: PostCreate):
         # 验证并确保JSON字段格式正确
         post_dict = post.dict()
         
-        # 确保images字段是列表
-        if 'images' in post_dict and post_dict['images'] is not None:
-            if not isinstance(post_dict['images'], list):
-                post_dict['images'] = []
-        else:
-            post_dict['images'] = []
-            
-        # 确保tags字段是列表    
-        if 'tags' in post_dict and post_dict['tags'] is not None:
-            if not isinstance(post_dict['tags'], list):
-                post_dict['tags'] = []
-        else:
-            post_dict['tags'] = []
-            
+        # 使用新的工具函数处理创建帖子的数据
+        post_data = process_post_create_data(post_dict)
+        
         # 准备数据
-        post_data = prepare_db_data(post_dict, is_create=True)
+        post_data = prepare_db_data(post_data, is_create=True)
         
         # 插入记录
         post_id = insert_record('wxapp_posts', post_data)
@@ -403,7 +341,7 @@ async def create_post(post: PostCreate):
             raise HTTPException(status_code=404, detail="找不到创建的帖子")
             
         # 处理返回的JSON字段
-        created_post = process_json_fields(created_post)
+        created_post = process_post_json_fields(created_post)
         
         return created_post
     except HTTPException:
@@ -420,8 +358,8 @@ async def get_post(post_id: int = PathParam(..., description="帖子ID")):
         if not post:
             raise HTTPException(status_code=404, detail="帖子不存在")
             
-        # 处理JSON字段
-        post = process_json_fields(post)
+        # 处理JSON字段，使用新的工具函数
+        post = process_post_json_fields(post)
         
         return post
     except HTTPException:
@@ -454,12 +392,14 @@ async def list_posts(
             offset=offset
         )
         
+        logger.debug(f"查询到 {len(posts)} 条帖子记录")
+        
         # 处理返回的帖子列表，确保JSON字段正确解析
         processed_posts = []
         for post in posts:
             try:
-                # 处理帖子JSON字段
-                processed_post = process_json_fields(post)
+                # 处理帖子JSON字段，使用新的工具函数
+                processed_post = process_post_json_fields(post)
                 processed_posts.append(processed_post)
             except Exception as e:
                 logger.error(f"处理帖子数据失败: {str(e)}, 跳过该帖子")
@@ -495,7 +435,7 @@ async def update_post(
         # 过滤掉None值
         update_data = {k: v for k, v in post_update.dict().items() if v is not None}
         if not update_data:
-            return process_json_fields(post)
+            return process_post_json_fields(post)
         
         # 处理JSON字段
         for field in ['images', 'tags']:
@@ -514,7 +454,7 @@ async def update_post(
         updated_post = get_record_by_id('wxapp_posts', post_id)
         
         # 处理返回的JSON字段
-        updated_post = process_json_fields(updated_post)
+        updated_post = process_post_json_fields(updated_post)
         
         return updated_post
     except HTTPException:
@@ -599,33 +539,28 @@ async def unlike_post(
 ):
     """取消点赞帖子"""
     try:
-        # 检查帖子是否存在
+        # 获取帖子信息
         post = get_record_by_id('wxapp_posts', post_id)
         if not post:
             raise HTTPException(status_code=404, detail="帖子不存在")
         
-        # 处理帖子中的JSON字段，确保liked_users格式正确
+        # 处理JSON字段
         processed_post = process_json_fields(post)
         
-        # 获取当前点赞信息
+        # 移除用户ID
         liked_users = processed_post.get('liked_users', [])
-        
-        # 检查是否已点赞
-        if user_id not in liked_users:
-            return {"success": True, "message": "未点赞", "likes": len(liked_users)}
-        
-        # 从点赞列表移除用户
-        liked_users.remove(user_id)
+        if user_id in liked_users:
+            liked_users.remove(user_id)
         
         # 更新帖子
         update_data = {
-            'likes': len(liked_users),
             'liked_users': str(liked_users),
+            'likes': max(0, len(liked_users)),
             'update_time': format_datetime(datetime.now())
         }
         
-        success = update_record('wxapp_posts', post_id, update_data)
-        if not success:
+        updated = update_record('wxapp_posts', post_id, update_data)
+        if not updated:
             raise HTTPException(status_code=500, detail="取消点赞失败")
         
         return {"success": True, "message": "取消点赞成功", "likes": len(liked_users)}
@@ -634,6 +569,88 @@ async def unlike_post(
     except Exception as e:
         logger.error(f"取消点赞帖子失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"取消点赞帖子失败: {str(e)}")
+
+# 添加收藏帖子接口
+@wxapp_router.post("/posts/{post_id}/favorite", response_model=dict, summary="收藏帖子")
+async def favorite_post(
+    post_id: int = PathParam(..., description="帖子ID"),
+    user_id: str = Body(..., embed=True, description="用户ID")
+):
+    """收藏帖子"""
+    try:
+        # 获取帖子信息
+        post = get_record_by_id('wxapp_posts', post_id)
+        if not post:
+            raise HTTPException(status_code=404, detail="帖子不存在")
+        
+        # 处理JSON字段，使用新的工具函数
+        processed_post = process_post_json_fields(post)
+        
+        # 添加用户ID到收藏列表
+        favorite_users = processed_post.get('favorite_users', [])
+        if user_id not in favorite_users:
+            favorite_users.append(user_id)
+        
+        # 更新帖子
+        update_data = {
+            'favorite_users': str(favorite_users),
+            'favorite_count': len(favorite_users),
+            'update_time': format_datetime(datetime.now())
+        }
+        
+        logger.debug(f"收藏帖子，帖子ID: {post_id}, 用户ID: {user_id}, 收藏用户列表: {favorite_users}")
+        
+        updated = update_record('wxapp_posts', post_id, update_data)
+        if not updated:
+            raise HTTPException(status_code=500, detail="收藏失败")
+        
+        return {"success": True, "message": "收藏成功", "favorite_count": len(favorite_users)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"收藏帖子失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"收藏帖子失败: {str(e)}")
+
+# 添加取消收藏帖子接口
+@wxapp_router.post("/posts/{post_id}/unfavorite", response_model=dict, summary="取消收藏帖子")
+async def unfavorite_post(
+    post_id: int = PathParam(..., description="帖子ID"),
+    user_id: str = Body(..., embed=True, description="用户ID")
+):
+    """取消收藏帖子"""
+    try:
+        # 获取帖子信息
+        post = get_record_by_id('wxapp_posts', post_id)
+        if not post:
+            raise HTTPException(status_code=404, detail="帖子不存在")
+        
+        # 处理JSON字段，使用新的工具函数
+        processed_post = process_post_json_fields(post)
+        
+        # 移除用户ID从收藏列表
+        favorite_users = processed_post.get('favorite_users', [])
+        if user_id in favorite_users:
+            favorite_users.remove(user_id)
+        
+        # 更新帖子
+        update_data = {
+            'favorite_users': str(favorite_users),
+            'favorite_count': len(favorite_users),
+            'update_time': format_datetime(datetime.now())
+        }
+        
+        logger.debug(f"取消收藏帖子，帖子ID: {post_id}, 用户ID: {user_id}, 收藏用户列表: {favorite_users}")
+        
+        updated = update_record('wxapp_posts', post_id, update_data)
+        if not updated:
+            raise HTTPException(status_code=500, detail="取消收藏失败")
+        
+        return {"success": True, "message": "取消收藏成功", "favorite_count": len(favorite_users)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"取消收藏帖子失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"取消收藏帖子失败: {str(e)}")
 
 # ====================== 评论接口 ======================
 @wxapp_router.post("/comments", response_model=CommentResponse, summary="创建评论")
