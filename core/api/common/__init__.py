@@ -4,7 +4,7 @@ API通用组件模块
 """
 from functools import wraps
 import traceback
-from typing import Any, Dict, Callable
+from typing import Any, Dict, Callable, Optional
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends
 from fastapi_responseschema.routing import SchemaAPIRoute
@@ -15,6 +15,7 @@ from contextvars import ContextVar
 from core.api.common.response import create_standard_response, StandardResponse
 from core.api.common.exceptions import setup_exception_handlers
 from core.api.common.decorators import handle_api_errors
+from core.api.common.dependencies import get_api_logger_dep as get_api_logger
 
 __all__ = [
     'create_standard_response',
@@ -48,7 +49,17 @@ def get_agent_logger():
 
 # 标准响应创建函数
 def create_standard_response(data: Any = None, code: int = 200, message: str = "success") -> Dict[str, Any]:
-    """创建标准响应格式"""
+    """
+    创建标准API响应格式
+    
+    Args:
+        data: 响应数据
+        code: 状态码
+        message: 响应消息
+        
+    Returns:
+        标准格式的响应字典
+    """
     return {
         "code": code,
         "message": message,
@@ -113,4 +124,49 @@ def get_schema_api_router(**kwargs):
     except Exception as e:
         # 异常情况下也使用标准APIRouter
         logger.error(f"创建API路由器失败: {e}")
-        return APIRouter(**kwargs) 
+        return APIRouter(**kwargs)
+
+def get_client_ip(request: Request) -> str:
+    """
+    获取客户端IP地址，支持代理服务器
+    
+    Args:
+        request: FastAPI请求对象
+        
+    Returns:
+        客户端IP地址
+    """
+    # 尝试从X-Forwarded-For获取
+    forwarded_for = request.headers.get("X-Forwarded-For")
+    if forwarded_for:
+        # 取第一个IP地址
+        return forwarded_for.split(",")[0].strip()
+    
+    # 尝试从X-Real-IP获取
+    real_ip = request.headers.get("X-Real-IP")
+    if real_ip:
+        return real_ip
+    
+    # 使用客户端直连IP
+    return request.client.host if request.client else "unknown"
+
+def log_request_info(request: Request, api_logger: Optional[logger] = None) -> None:
+    """
+    记录请求信息
+    
+    Args:
+        request: FastAPI请求对象
+        api_logger: 日志记录器，如果为None则使用默认记录器
+    """
+    if api_logger is None:
+        api_logger = get_api_logger()
+    
+    # 记录请求信息
+    client_ip = get_client_ip(request)
+    user_agent = request.headers.get("User-Agent", "unknown")
+    
+    api_logger.debug(
+        f"请求: {request.method} {request.url.path} | "
+        f"客户端: {client_ip} | "
+        f"UA: {user_agent}"
+    ) 

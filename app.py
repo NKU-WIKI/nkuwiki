@@ -15,77 +15,21 @@ from core.api import register_routers
 from core.api.common import create_standard_response
 from core.api.common.monitor import setup_api_monitor
 from core.utils.common.singleton import singleton
+from core.utils.logger import setup_logger
+from core.api.common.middleware import NotFoundMiddleware, APILoggingMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import time
 import traceback
 
 # 创建配置对象
 config = Config()
 
-# 创建日志目录
-log_dir = Path('./logs')
-log_dir.mkdir(exist_ok=True, parents=True)
-
-# API日志目录
-api_log_dir = log_dir / 'api'
-api_log_dir.mkdir(exist_ok=True, parents=True)
-
-# 移除默认的控制台日志处理器
-logger.remove()
-
-# 添加控制台日志处理器（仅在调试模式下）
-if config.get("debug", False):
-    logger.add(
-        sys.stderr, 
-        level="DEBUG", 
-        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-    )
-
-# 添加应用主日志处理器
-logger.add(
-    "logs/app.log", 
-    rotation="1 day",  # 每天轮换一次日志文件
-    retention="7 days",  # 保留7天的日志
-    level="DEBUG",
-    encoding="utf-8",
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {extra[request_id]} | {name}:{function}:{line} - {message}"
-)
-
-# 添加API专用日志处理器 - 详细版
-logger.add(
-    "logs/api/api_detailed.log", 
-    rotation="1 day",
-    retention="7 days",
-    level="DEBUG",
-    encoding="utf-8",
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {extra[request_id]} | {extra[module]} | {name}:{function}:{line} - {message}",
-    filter=lambda record: record["extra"].get("module", "").startswith("api")
-)
-
-# 添加API专用日志处理器 - 仅请求和响应
-logger.add(
-    "logs/api/api_requests.log", 
-    rotation="1 day",
-    retention="7 days",
-    level="INFO",
-    encoding="utf-8",
-    format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {extra[request_id]} | {extra[module]} | {message}",
-    filter=lambda record: record["extra"].get("module", "").startswith("api") and any(keyword in record["message"] for keyword in ["Request", "Response", "Error"])
-)
-
-# 模块专用日志处理器
-for module in ["wxapp", "mysql", "agent"]:
-    logger.add(
-        f"logs/api/{module}.log", 
-        rotation="1 day",
-        retention="7 days",
-        level="DEBUG",
-        encoding="utf-8",
-        format="{time:YYYY-MM-DD HH:mm:ss.SSS} | {level: <8} | {extra[request_id]} | {name}:{function}:{line} - {message}",
-        filter=lambda record, module=module: record["extra"].get("module", "") == f"{module}_api"
-    )
+# 初始化日志系统
+logger = setup_logger("nkuwiki")
+logger.info("日志系统初始化完成")
 
 # 定义全局App单例类
 @singleton
@@ -126,85 +70,15 @@ app.add_middleware(
 )
 
 # 添加API日志中间件
-class APILoggingMiddleware(BaseHTTPMiddleware):
-    """中间件用于记录API请求和响应"""
-    
-    async def dispatch(self, request: Request, call_next):
-        # 跳过静态文件请求
-        if request.url.path.startswith("/static"):
-            return await call_next(request)
-        
-        # 获取日志记录器
-        api_logger = logger.bind(name="core.api.middleware")
-        
-        # 记录请求开始时间
-        start_time = time.time()
-        
-        # 记录请求信息
-        client_host = request.client.host if request.client else "unknown"
-        request_id = request.headers.get("X-Request-ID", "")
-        user_agent = request.headers.get("User-Agent", "")
-        
-        # 记录请求体（对于POST/PUT请求）
-        request_body = ""
-        if request.method in ["POST", "PUT"]:
-            try:
-                # 由于请求体只能被读取一次，我们需要克隆请求体
-                body = await request.body()
-                request_body = body.decode()
-                # 重新设置请求体供后续处理
-                request._body = body
-            except Exception as e:
-                api_logger.warning(f"无法读取请求体: {e}")
-        
-        # 打印请求信息
-        request_log = (
-            f"Request: {request.method} {request.url.path}?{request.url.query} | "
-            f"ClientIP: {client_host} | "
-            f"ReqID: {request_id} | "
-            f"UA: {user_agent}"
-        )
-        if request_body:
-            # 限制请求体长度以避免日志过大
-            if len(request_body) > 500:
-                request_body = request_body[:500] + "... [截断]"
-            request_log += f" | Body: {request_body}"
-        
-        api_logger.info(request_log)
-        
-        # 处理请求
-        try:
-            response = await call_next(request)
-            
-            # 计算处理时间
-            process_time = time.time() - start_time
-            
-            # 记录响应信息
-            api_logger.info(
-                f"Response: {request.method} {request.url.path} | "
-                f"Status: {response.status_code} | "
-                f"Time: {process_time:.4f}s | "
-                f"ReqID: {request_id}"
-            )
-            
-            # 添加处理时间到响应头
-            response.headers["X-Process-Time"] = str(process_time)
-            
-            return response
-        except Exception as e:
-            # 记录异常信息
-            api_logger.error(
-                f"Error: {request.method} {request.url.path} | "
-                f"Exception: {str(e)} | "
-                f"ReqID: {request_id} | "
-                f"Traceback: {traceback.format_exc()}"
-            )
-            raise
-
 app.add_middleware(APILoggingMiddleware)
 
+# 添加404处理中间件（必须放在后面以先捕获404响应）
+app.add_middleware(NotFoundMiddleware)
+
 # 注册所有API路由
+logger.info("开始注册API路由...")
 register_routers(app)
+logger.info("API路由注册完成")
 
 # 注册API监控系统
 setup_api_monitor(app)
@@ -213,9 +87,17 @@ setup_api_monitor(app)
 app.mount("/static", StaticFiles(directory="static"), name="static_files")
 
 # 添加全局异常处理器
-@app.exception_handler(HTTPException)
-async def global_http_exception_handler(request: Request, exc: HTTPException):
+@app.exception_handler(StarletteHTTPException)
+async def global_http_exception_handler(request: Request, exc: StarletteHTTPException):
     """全局HTTP异常处理器，确保异常也返回标准格式"""
+    # 特别处理404错误
+    if exc.status_code == 404:
+        logger.warning(
+            f"404 未找到: {request.method} {request.url.path} | "
+            f"客户端: {request.client.host if request.client else 'unknown'} | "
+            f"UA: {request.headers.get('User-Agent', 'unknown')}"
+        )
+        
     return JSONResponse(
         status_code=exc.status_code,
         content=create_standard_response(
