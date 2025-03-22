@@ -4,9 +4,11 @@ API装饰器模块
 """
 import functools
 import traceback
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Union, List
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import ValidationError
 from loguru import logger
 
 def handle_api_errors(operation_name: str):
@@ -42,6 +44,42 @@ def handle_api_errors(operation_name: str):
                 api_logger.info(f"成功完成 [{operation_name}]")
                 
                 return response
+            except RequestValidationError as e:
+                # 请求参数验证错误
+                error_details = format_validation_errors(e.errors())
+                error_msg = f"参数验证错误: {error_details}"
+                
+                api_logger.warning(
+                    f"参数验证错误 [{operation_name}]: {error_details}"
+                )
+                
+                # 返回标准格式响应
+                return JSONResponse(
+                    status_code=422,
+                    content=create_standard_response(
+                        data={"errors": e.errors()},
+                        code=422,
+                        message=error_msg
+                    )
+                )
+            except ValidationError as e:
+                # Pydantic验证错误
+                error_details = format_validation_errors(e.errors())
+                error_msg = f"数据验证错误: {error_details}"
+                
+                api_logger.warning(
+                    f"数据验证错误 [{operation_name}]: {error_details}"
+                )
+                
+                # 返回标准格式响应
+                return JSONResponse(
+                    status_code=422,
+                    content=create_standard_response(
+                        data={"errors": e.errors()},
+                        code=422,
+                        message=error_msg
+                    )
+                )
             except HTTPException as e:
                 # 处理HTTP异常
                 api_logger.warning(
@@ -73,6 +111,27 @@ def handle_api_errors(operation_name: str):
                 
         return wrapper
     return decorator
+
+def format_validation_errors(errors: List[Dict]) -> str:
+    """
+    格式化验证错误信息
+    
+    Args:
+        errors: 验证错误列表
+        
+    Returns:
+        格式化后的错误信息
+    """
+    if not errors:
+        return "未知验证错误"
+    
+    formatted_errors = []
+    for error in errors:
+        loc = ".".join(str(l) for l in error.get("loc", []))
+        msg = error.get("msg", "")
+        formatted_errors.append(f"{loc}: {msg}")
+    
+    return "; ".join(formatted_errors)
 
 def create_standard_response(data: Any = None, code: int = 200, message: str = "success") -> Dict[str, Any]:
     """
