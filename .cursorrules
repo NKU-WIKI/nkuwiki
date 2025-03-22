@@ -35,7 +35,7 @@ nkuwiki校园知识共享平台
 🌱 构建可持续的互助社区
 
 这是一个前后端分离的项目，主体是后端项目，接口在core/api目录下
-services/app微信小程序，是git子模块，请求地址从config.py的services.app.base_url读取
+services/app微信小程序，是git子模块，请求地址为https://nkuwiki.com
 api文档见每个子模块下的api目录下的md文件
 
 ### 项目结构树
