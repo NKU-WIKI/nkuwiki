@@ -10,10 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from config import Config
-from core.api.mysql_api import mysql_router
-from core.api.agent_api import agent_router
-from core.api.wxapp_api import wxapp_router
-from core.api.response import create_standard_response, StandardResponse, get_schema_api_router
+# 导入新的API注册函数
+from core.api import register_routers
+from core.api.common import create_standard_response
 from core.utils.common.singleton import singleton
 from fastapi.responses import RedirectResponse, JSONResponse
 from contextlib import asynccontextmanager
@@ -74,12 +73,11 @@ app.add_middleware(
     expose_headers=["*"]  # 暴露所有响应头
 )
 
-# 集成MySQL路由
-app.include_router(mysql_router)
-# 集成Agent路由
-app.include_router(agent_router)
-# 集成微信小程序路由
-app.include_router(wxapp_router)
+# 注册所有API路由
+register_routers(app)
+
+# 挂载静态文件目录，用于微信校验文件等
+app.mount("/static", StaticFiles(directory="static"), name="static_files")
 
 # 添加全局异常处理器
 @app.exception_handler(HTTPException)
@@ -106,9 +104,6 @@ async def global_exception_handler(request: Request, exc: Exception):
             message=f"服务器内部错误: {str(exc)}"
         )
     )
-
-# 挂载静态文件目录，用于微信校验文件等
-app.mount("/static", StaticFiles(directory="static"), name="static_files")
 
 # 请求日志中间件
 @app.middleware("http")

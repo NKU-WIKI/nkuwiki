@@ -1,58 +1,22 @@
 """
-Agent查询API接口
-提供对Agent功能的访问接口
+Agent聊天API
+提供AI智能体的聊天和知识检索功能
 """
 import re
-from fastapi import APIRouter, HTTPException, Path as PathParam, Depends
-from fastapi.responses import StreamingResponse, JSONResponse
-from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Any, Optional, Union, Callable
-from loguru import logger
 import json
+from fastapi import Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field, validator
+from typing import List, Dict, Any, Optional
+from loguru import logger
 
-# 导入标准响应模块
-from core.api.response import create_standard_response, StandardResponse, get_schema_api_router
+# 导入通用组件
+from core.api.common import get_api_logger, handle_api_errors, create_standard_response
+from core.api.agent import router
 
-# 移除CozeAgent顶层导入，防止循环导入
-# from core.agent.coze.coze_agent_sdk import CozeAgent
+# 导入必要的Agent组件
 from core import config
 from core.bridge.reply import ReplyType
-
-# 创建专用API路由
-agent_router = get_schema_api_router(
-    prefix="/agent",
-    tags=["Agent功能"],
-    responses={404: {"description": "Not found"}}
-)
-
-# 添加异常处理中间件
-# 注释掉路由器上的异常处理器，移动到全局异常处理
-'''
-@agent_router.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """自定义HTTP异常处理器，确保异常也返回标准格式"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=create_standard_response(
-            data=None,
-            code=exc.status_code,
-            message=str(exc.detail)
-        )
-    )
-
-@agent_router.exception_handler(Exception)
-async def general_exception_handler(request, exc):
-    """通用异常处理器，确保所有异常都返回标准格式"""
-    logger.error(f"未捕获的异常: {str(exc)}")
-    return JSONResponse(
-        status_code=500,
-        content=create_standard_response(
-            data=None,
-            code=500,
-            message=f"服务器内部错误: {str(exc)}"
-        )
-    )
-'''
 
 # 请求和响应模型
 class ChatRequest(BaseModel):
@@ -95,31 +59,6 @@ class SearchRequest(BaseModel):
         if not v.strip():
             raise ValueError("关键词不能为空")
         return v.strip()
-
-# 依赖项函数
-def get_api_logger():
-    """提供API日志记录器"""
-    return logger.bind(module="agent_api")
-
-# 错误处理函数
-def handle_agent_error(func: Callable) -> Callable:
-    """装饰器：统一处理Agent操作异常"""
-    import functools
-    
-    @functools.wraps(func)
-    async def wrapper(*args, api_logger=Depends(get_api_logger), **kwargs):
-        try:
-            return await func(*args, api_logger=api_logger, **kwargs)
-        except ValueError as e:
-            api_logger.warning(f"输入验证错误: {str(e)}")
-            raise HTTPException(status_code=400, detail=str(e))
-        except HTTPException:
-            raise
-        except Exception as e:
-            api_logger.error(f"Agent操作失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"操作失败: {str(e)}")
-    
-    return wrapper
 
 # 格式化函数
 def format_response_content(content, format_type):
@@ -176,8 +115,8 @@ async def stream_response(generator, format_type="markdown"):
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 # API端点
-@agent_router.post("/chat")
-@handle_agent_error
+@router.post("/chat")
+@handle_api_errors("Agent对话")
 async def chat_with_agent(
     request: ChatRequest,
     api_logger=Depends(get_api_logger)
@@ -231,8 +170,8 @@ async def chat_with_agent(
         "format": request.format
     }
 
-@agent_router.post("/search", response_model=List[Dict[str, Any]])
-@handle_agent_error
+@router.post("/search", response_model=List[Dict[str, Any]])
+@handle_api_errors("知识搜索")
 async def search_knowledge(
     request: SearchRequest,
     api_logger=Depends(get_api_logger)
@@ -242,8 +181,8 @@ async def search_knowledge(
     results = []
     return results
 
-@agent_router.get("/status")
-@handle_agent_error
+@router.get("/status")
+@handle_api_errors("获取Agent状态")
 async def get_agent_status(
     api_logger=Depends(get_api_logger)
 ):

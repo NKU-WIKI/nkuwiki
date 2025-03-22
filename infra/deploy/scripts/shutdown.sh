@@ -11,3 +11,4 @@ fi
 sudo systemctl stop nkuwiki.service
 sudo systemctl disable nkuwiki.service
 sudo systemctl daemon-reload
+

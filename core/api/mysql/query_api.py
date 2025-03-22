@@ -1,56 +1,19 @@
 """
-MySQL查询API接口
+MySQL查询API
 提供对MySQL数据库的查询功能
 """
 import re
-from fastapi import APIRouter, HTTPException, Path as PathParam, Depends
+from fastapi import HTTPException, Path as PathParam, Depends
 from pydantic import BaseModel, Field, validator
-from typing import List, Dict, Any, Optional, Union, Callable
-from loguru import logger
-from fastapi.responses import JSONResponse
+from typing import List, Dict, Any, Optional
 
-# 导入标准响应模块
-from core.api.response import create_standard_response, StandardResponse, get_schema_api_router
+# 导入通用组件
+from core.api.common import get_api_logger, handle_api_errors, create_standard_response
+from core.api.mysql import router
 
 # 数据库相关导入
 from etl.load import get_conn
 from etl.load.py_mysql import query_records, count_records, execute_custom_query, get_nkuwiki_tables
-
-# 创建专用API路由
-mysql_router = get_schema_api_router(
-    prefix="/mysql",
-    tags=["MySQL查询"],
-    responses={404: {"description": "Not found"}},
-)
-
-# 添加异常处理中间件
-# 注释掉路由器上的异常处理器，移动到全局异常处理
-'''
-@mysql_router.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
-    """自定义HTTP异常处理器，确保异常也返回标准格式"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=create_standard_response(
-            data=None,
-            code=exc.status_code,
-            message=str(exc.detail)
-        )
-    )
-
-@mysql_router.exception_handler(Exception)
-async def general_exception_handler(request, exc):
-    """通用异常处理器，确保所有异常都返回标准格式"""
-    logger.error(f"未捕获的异常: {str(exc)}")
-    return JSONResponse(
-        status_code=500,
-        content=create_standard_response(
-            data=None,
-            code=500,
-            message=f"服务器内部错误: {str(exc)}"
-        )
-    )
-'''
 
 # 请求和响应模型
 class TablesResponse(BaseModel):
@@ -98,44 +61,16 @@ class CustomQueryRequest(BaseModel):
             raise ValueError("仅支持SELECT查询")
         return v
 
-# 依赖项函数
-def get_api_logger():
-    """提供API日志记录器"""
-    return logger.bind(module="mysql_api")
-
-# 错误处理函数
-def handle_db_error(func: Callable) -> Callable:
-    """装饰器：统一处理数据库操作异常"""
-    import functools
-    
-    @functools.wraps(func)
-    async def wrapper(*args, api_logger=Depends(get_api_logger), **kwargs):
-        try:
-            return await func(*args, api_logger=api_logger, **kwargs)
-        except ValueError as e:
-            # 输入验证错误
-            api_logger.warning(f"输入验证错误: {str(e)}")
-            raise HTTPException(status_code=400, detail=str(e))
-        except HTTPException:
-            # 直接传递HTTP异常
-            raise
-        except Exception as e:
-            # 其他服务器错误
-            api_logger.error(f"数据库操作失败: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"操作失败: {str(e)}")
-    
-    return wrapper
-
 # API端点
-@mysql_router.get("/tables", response_model=TablesResponse)
-@handle_db_error
+@router.get("/tables", response_model=TablesResponse)
+@handle_api_errors("获取数据库表")
 async def get_tables(api_logger=Depends(get_api_logger)):
     """获取数据库中所有表"""
     tables = get_nkuwiki_tables()
     return {"tables": tables}
 
-@mysql_router.get("/table/{table_name}/structure", response_model=TableStructureResponse)
-@handle_db_error
+@router.get("/table/{table_name}/structure", response_model=TableStructureResponse)
+@handle_api_errors("获取表结构")
 async def get_table_structure(
     table_name: str = PathParam(..., description="表名"),
     api_logger=Depends(get_api_logger)
@@ -151,8 +86,8 @@ async def get_table_structure(
         raise HTTPException(status_code=404, detail=f"表 {table_name} 不存在")
     return {"fields": structure}
 
-@mysql_router.post("/query", response_model=List[Dict[str, Any]])
-@handle_db_error
+@router.post("/query", response_model=List[Dict[str, Any]])
+@handle_api_errors("查询数据")
 async def query_data(
     request: QueryRequest,
     api_logger=Depends(get_api_logger)
@@ -167,8 +102,8 @@ async def query_data(
     )
     return records
 
-@mysql_router.post("/count", response_model=CountResponse)
-@handle_db_error
+@router.post("/count", response_model=CountResponse)
+@handle_api_errors("统计记录")
 async def count_data(
     request: CountRequest,
     api_logger=Depends(get_api_logger)
@@ -182,8 +117,8 @@ async def count_data(
         raise Exception("统计记录失败")
     return {"count": count}
 
-@mysql_router.post("/custom_query")
-@handle_db_error
+@router.post("/custom_query")
+@handle_api_errors("自定义查询")
 async def custom_query(
     request: CustomQueryRequest,
     api_logger=Depends(get_api_logger)
