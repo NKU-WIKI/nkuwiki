@@ -351,8 +351,15 @@ def run_api_service():
             
             # 检查HTTP端口是否可用
             if is_port_in_use(http_port):
-                logger.error(f"HTTP端口 {http_port} 已被占用，无法启动HTTP服务")
+                logger.warning(f"HTTP端口 {http_port} 已被占用，尝试切换到HTTPS端口 {https_port}")
                 use_http = False
+                
+                # 如果有SSL证书，就切换到HTTPS端口
+                if has_ssl:
+                    use_https = True
+                    logger.info(f"已自动切换到HTTPS端口 {https_port}")
+                else:
+                    logger.error("无法切换到HTTPS模式：未配置SSL证书")
         
         # 检查是否为特权端口（需要root权限）
         def is_privileged_port(port):
@@ -430,7 +437,26 @@ if __name__ == "__main__":
         try:
             # 检查端口
             http_port = config.get("services.website.http_port", 80)
+            https_port = config.get("services.website.https_port", 443)
             host = "0.0.0.0"
+            
+            # 检查HTTP端口是否被占用
+            def is_port_in_use(port):
+                import socket
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    return s.connect_ex((host, port)) == 0
+            
+            # 如果HTTP端口被占用，尝试使用HTTPS端口
+            if is_port_in_use(http_port):
+                logger.warning(f"HTTP端口 {http_port} 已被占用，尝试切换到HTTPS端口 {https_port}")
+                
+                # 检查HTTPS端口是否也被占用
+                if is_port_in_use(https_port):
+                    logger.error(f"HTTPS端口 {https_port} 也被占用，无法启动服务")
+                    sys.exit(1)
+                else:
+                    http_port = https_port
+                    logger.info(f"已自动切换到端口 {http_port}")
             
             # 计算worker数量
             import os, multiprocessing
