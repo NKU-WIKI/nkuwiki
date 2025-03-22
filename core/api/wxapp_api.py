@@ -318,6 +318,12 @@ async def update_user(
         if not update_data:
             return user
         
+        # 处理微信云存储的fileID
+        if "avatar_url" in update_data and update_data["avatar_url"] and update_data["avatar_url"].startswith("cloud://"):
+            # 保存微信云存储的fileID，不进行额外处理
+            logger.debug(f"检测到微信云存储fileID: {update_data['avatar_url']}")
+            # 如果需要，可以在此转换为临时URL后再保存，但简单起见，直接保存fileID
+        
         # 添加更新时间
         update_data['update_time'] = format_datetime(datetime.now())
         
