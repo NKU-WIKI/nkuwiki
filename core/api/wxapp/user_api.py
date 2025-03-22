@@ -68,7 +68,7 @@ class UserResponse(UserBase):
 class UserSyncRequest(BaseModel):
     """云函数同步用户请求"""
     id: str = Field(..., description="微信云数据库ID")
-    cloud_id_alias: Optional[str] = Field(None, description="微信云数据库ID（别名）")
+    _id: Optional[str] = Field(None, description="微信云数据库ID（别名）")
     wxapp_id: str = Field(..., description="微信小程序原始ID")
     openid: str = Field(..., description="微信用户唯一标识")
     nickname: Optional[str] = Field(None, description="用户昵称")
@@ -79,18 +79,6 @@ class UserSyncRequest(BaseModel):
     use_cloud_id: Optional[bool] = Field(False, description="是否使用云ID")
 
 # API端点
-@router.get("/users/{user_id}", response_model=Dict[str, Any], summary="获取用户信息")
-@handle_api_errors("获取用户")
-async def get_user(
-    user_id: str = PathParam(..., description="用户ID"),
-    api_logger=Depends(get_api_logger)
-):
-    """获取指定用户信息"""
-    user = get_record_by_id('wxapp_users', user_id)
-    if not user:
-        raise HTTPException(status_code=404, detail="用户不存在")
-    return create_standard_response(user)
-
 @router.get("/users/me", response_model=Dict[str, Any], summary="获取当前用户信息")
 @handle_api_errors("获取当前用户信息")
 async def get_current_user(
@@ -101,9 +89,20 @@ async def get_current_user(
     api_logger.info(f"Request: GET /users/me with user_id={user_id}")
     
     try:
-        # 查询用户信息
+        # 查询用户信息 - 先尝试直接ID查询
         api_logger.debug(f"查询用户信息: user_id={user_id}")
         user = get_record_by_id('wxapp_users', user_id)
+        
+        # 如果找不到，尝试通过cloud_id查询
+        if not user:
+            api_logger.debug(f"通过ID未找到用户 {user_id}，尝试通过cloud_id查询")
+            cloud_id_users = query_records(
+                'wxapp_users',
+                conditions={'cloud_id': user_id}
+            )
+            if cloud_id_users:
+                user = cloud_id_users[0]
+                api_logger.debug(f"通过cloud_id找到用户: {user['id']}")
         
         if not user:
             api_logger.warning(f"用户不存在: user_id={user_id}")
@@ -111,7 +110,7 @@ async def get_current_user(
         
         # 处理用户信息中的JSON字段
         user = process_json_fields(user)
-        api_logger.debug(f"用户信息获取成功")
+        api_logger.debug(f"用户信息获取成功: {user['id']}")
         
         # 返回用户信息
         api_logger.info(f"Response: 用户信息获取成功")
@@ -123,6 +122,38 @@ async def get_current_user(
         error_details = traceback.format_exc()
         api_logger.error(f"Error: 获取用户信息失败: {str(e)}\n{error_details}")
         raise HTTPException(status_code=500, detail=f"获取用户信息失败: {str(e)}")
+
+@router.get("/users/{user_id}", response_model=Dict[str, Any], summary="获取用户信息")
+@handle_api_errors("获取用户")
+async def get_user(
+    user_id: str = PathParam(..., description="用户ID"),
+    api_logger=Depends(get_api_logger)
+):
+    """获取指定用户信息，支持通过ID或云ID查询"""
+    api_logger.info(f"Request: GET /users/{user_id}")
+    
+    # 首先尝试直接通过ID查询
+    user = get_record_by_id('wxapp_users', user_id)
+    
+    # 如果找不到，尝试通过cloud_id查询
+    if not user:
+        api_logger.debug(f"通过ID未找到用户 {user_id}，尝试通过cloud_id查询")
+        cloud_id_users = query_records(
+            'wxapp_users',
+            conditions={'cloud_id': user_id}
+        )
+        if cloud_id_users:
+            user = cloud_id_users[0]
+            api_logger.debug(f"通过cloud_id找到用户: {user['id']}")
+    
+    if not user:
+        api_logger.warning(f"用户不存在: {user_id}")
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 确保返回前处理JSON字段
+    user = process_json_fields(user)
+    api_logger.info(f"Response: 成功获取用户 {user['id']}")
+    return create_standard_response(user)
 
 @router.get("/users", response_model=Dict[str, Any], summary="查询用户列表")
 @handle_api_errors("查询用户列表")
@@ -393,7 +424,7 @@ async def update_user_token(
 @handle_api_errors("同步微信云用户")
 async def sync_wxapp_user(
     user_data: UserSyncRequest,
-    request: Request,
+    request: Request = Depends(),
     cloud_source: Optional[str] = Header(None, alias="X-Cloud-Source"),
     prefer_cloud_id: Optional[str] = Header(None, alias="X-Prefer-Cloud-ID"),
     api_logger=Depends(get_api_logger)
@@ -413,7 +444,8 @@ async def sync_wxapp_user(
         # 确保ID字段一致性（使用id作为主键）
         cloud_id = user_data.id
         if not cloud_id:
-            raise HTTPException(status_code=400, detail="缺少云数据库ID")
+            api_logger.warning("同步请求中没有提供云ID，使用随机生成ID")
+            raise HTTPException(status_code=400, detail="云ID不能为空")
         
         api_logger.debug(f"使用云ID: {cloud_id}")
         
@@ -425,22 +457,18 @@ async def sync_wxapp_user(
         )
         api_logger.debug(f"是否使用云ID: {should_use_cloud_id}")
         
-        # 首先通过云ID查询用户
-        cloud_id_users = query_records(
+        # 首先通过openid查询用户，这是最可靠的唯一标识
+        existing_users = query_records(
             'wxapp_users',
-            conditions={'cloud_id': cloud_id}
+            conditions={'openid': user_data.openid}
         )
         
-        # 如果通过云ID找不到用户，再通过openid查询
-        existing_users = []
-        if cloud_id_users:
-            api_logger.debug(f"通过云ID找到用户: {cloud_id_users}")
-            existing_users = cloud_id_users
-        else:
-            api_logger.debug(f"通过云ID未找到用户，尝试使用openid: {user_data.openid}")
+        # 如果通过openid找不到用户，再通过云ID查询
+        if not existing_users:
+            api_logger.debug(f"通过openid未找到用户，尝试使用云ID: {cloud_id}")
             existing_users = query_records(
                 'wxapp_users',
-                conditions={'openid': user_data.openid}
+                conditions={'cloud_id': cloud_id}
             )
         
         # 准备用户数据
@@ -469,6 +497,8 @@ async def sync_wxapp_user(
             existing_user = existing_users[0]
             user_id = existing_user['id']
             
+            api_logger.debug(f"找到现有用户: ID={user_id}, openid={existing_user.get('openid')}, cloud_id={existing_user.get('cloud_id')}")
+            
             # 如果请求要求使用云ID，并且当前ID与云ID不同，则更新ID关联
             if should_use_cloud_id and str(user_id) != str(cloud_id):
                 api_logger.debug(f"更新用户ID关联: 服务器ID={user_id} -> 云ID={cloud_id}")
@@ -480,28 +510,44 @@ async def sync_wxapp_user(
             if success:
                 # 获取更新后的用户
                 updated_user = get_record_by_id('wxapp_users', user_id)
+                api_logger.debug(f"用户更新成功: {updated_user}")
+            else:
+                api_logger.error(f"更新用户记录失败: ID={user_id}")
+                raise HTTPException(status_code=500, detail="更新用户记录失败")
         else:
             # 用户不存在，创建新用户
-            # 如果请求指定使用云ID，则尝试使用云ID作为主键
-            if should_use_cloud_id:
-                api_logger.debug(f"使用云ID作为主键创建用户: {cloud_id}")
-                user_update['id'] = cloud_id  # 使用云ID作为主键
-            user_update['cloud_id'] = cloud_id  # 无论如何都保存云ID作为映射
+            api_logger.debug("未找到现有用户，创建新用户")
             
             # 添加创建时间
             user_update['create_time'] = format_datetime(datetime.now())
             
-            api_logger.debug(f"创建用户: 数据={user_update}")
-            user_id = insert_record('wxapp_users', user_update)
-            success = bool(user_id)
+            # 注意：这里不要尝试手动设置ID，让数据库自动分配
             
-            if success:
-                # 获取创建的用户
-                updated_user = get_record_by_id('wxapp_users', user_id)
-        
-        if not success:
-            api_logger.error(f"同步用户失败: {user_data.dict()}")
-            raise HTTPException(status_code=500, detail="同步用户失败")
+            # 检查可能的唯一键冲突
+            existing_by_wxapp_id = query_records('wxapp_users', conditions={'wxapp_id': user_data.wxapp_id})
+            if existing_by_wxapp_id:
+                api_logger.warning(f"检测到可能的wxapp_id冲突: {user_data.wxapp_id}")
+                # 更新这个用户而不是创建
+                user_id = existing_by_wxapp_id[0]['id']
+                success = update_record('wxapp_users', user_id, user_update)
+                if success:
+                    updated_user = get_record_by_id('wxapp_users', user_id)
+                    api_logger.debug(f"通过wxapp_id找到并更新用户: {updated_user}")
+            else:
+                # 尝试插入新记录
+                api_logger.debug(f"尝试创建新用户: {user_update}")
+                user_id = insert_record('wxapp_users', user_update)
+                success = user_id > 0
+                
+                if success:
+                    # 获取创建的用户
+                    updated_user = get_record_by_id('wxapp_users', user_id)
+                    api_logger.debug(f"用户创建成功: {updated_user}")
+                else:
+                    api_logger.error("用户创建失败，插入记录返回无效ID")
+                    # 详细记录错误原因
+                    api_logger.error(f"数据: {user_update}")
+                    raise HTTPException(status_code=500, detail="创建用户记录失败")
         
         if not updated_user:
             api_logger.error(f"无法获取同步后的用户: ID={user_id}")
