@@ -257,23 +257,11 @@ async def list_posts(
         total_count = count_records('wxapp_posts', conditions)
         api_logger.debug(f"总记录数: {total_count}")
         
-        # 构建响应数据
-        response_data = {
-            "posts": posts,
-            "total": total_count,
-            "limit": limit,
-            "offset": offset
-        }
-        
         # 将结果转换为前端期望的格式
         api_logger.info(f"Response: 帖子列表查询成功，返回{len(posts)}条记录")
         
         # 返回标准响应，确保结果在data字段中
-        return {
-            "code": 200,
-            "message": "success",
-            "data": posts
-        }
+        return create_standard_response(posts)
     except Exception as e:
         error_details = traceback.format_exc()
         api_logger.error(f"Error: 查询帖子列表失败: {str(e)}\n{error_details}")

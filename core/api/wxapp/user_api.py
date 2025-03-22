@@ -132,11 +132,7 @@ async def get_current_user(
         
         # 返回用户信息
         api_logger.info(f"Response: 用户信息获取成功")
-        return {
-            "code": 200,
-            "message": "success",
-            "data": user
-        }
+        return create_standard_response(user)
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -188,14 +184,12 @@ async def list_users(
         
         # 返回用户列表
         api_logger.info(f"Response: 用户列表查询成功，返回{len(users)}条记录")
-        return {
-            "code": 200,
-            "message": "success",
-            "data": users,
+        return create_standard_response({
+            "users": users,
             "total": total_count,
             "limit": limit,
             "offset": offset
-        }
+        })
     except Exception as e:
         error_details = traceback.format_exc()
         api_logger.error(f"Error: 查询用户列表失败: {str(e)}\n{error_details}")
