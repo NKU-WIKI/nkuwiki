@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS `wxapp_posts` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `wxapp_id` VARCHAR(100) NOT NULL COMMENT '微信小程序原始ID',
-    `user_id` VARCHAR(100) NOT NULL COMMENT '发布用户ID',
+    `user_id` INT NOT NULL COMMENT '发布用户ID',
     `user_name` VARCHAR(100) DEFAULT NULL COMMENT '用户名称',
     `user_avatar` VARCHAR(500) DEFAULT NULL COMMENT '用户头像URL',
     `content` TEXT COMMENT '帖子内容',
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_posts` (
     `category_id` INT DEFAULT NULL COMMENT '分类ID',
     `location` VARCHAR(255) DEFAULT NULL COMMENT '位置信息',
     `view_count` INT DEFAULT 0 COMMENT '浏览量',
-    `likes` INT DEFAULT 0 COMMENT '点赞数',
+    `like_count` INT DEFAULT 0 COMMENT '点赞数',
     `liked_users` JSON DEFAULT NULL COMMENT '点赞用户列表',
     `favorite_users` JSON DEFAULT NULL COMMENT '收藏用户列表',
     `comment_count` INT DEFAULT 0 COMMENT '评论数',
