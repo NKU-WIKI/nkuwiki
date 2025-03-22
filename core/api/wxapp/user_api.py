@@ -6,6 +6,8 @@ from datetime import datetime
 from fastapi import HTTPException, Path as PathParam, Depends, Query, Body
 from pydantic import BaseModel, Field, validator
 from typing import Dict, Any, Optional, List
+import json
+import traceback
 
 # 导入通用组件
 from core.api.common import get_api_logger, handle_api_errors, create_standard_response
@@ -104,27 +106,98 @@ async def get_user(
         raise HTTPException(status_code=404, detail="用户不存在")
     return create_standard_response(user)
 
+@router.get("/users/me", response_model=Dict[str, Any], summary="获取当前用户信息")
+@handle_api_errors("获取当前用户信息")
+async def get_current_user(
+    user_id: str = Query(..., description="用户ID"),
+    api_logger=Depends(get_api_logger)
+):
+    """获取当前登录用户信息"""
+    api_logger.info(f"Request: GET /users/me with user_id={user_id}")
+    
+    try:
+        # 查询用户信息
+        api_logger.debug(f"查询用户信息: user_id={user_id}")
+        user = get_record_by_id('wxapp_users', user_id)
+        
+        if not user:
+            api_logger.warning(f"用户不存在: user_id={user_id}")
+            raise HTTPException(status_code=404, detail="用户不存在")
+        
+        # 处理用户信息中的JSON字段
+        user = process_json_fields(user)
+        api_logger.debug(f"用户信息获取成功")
+        
+        # 返回用户信息
+        api_logger.info(f"Response: 用户信息获取成功")
+        return {
+            "code": 200,
+            "message": "success",
+            "data": user
+        }
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        
+        error_details = traceback.format_exc()
+        api_logger.error(f"Error: 获取用户信息失败: {str(e)}\n{error_details}")
+        raise HTTPException(status_code=500, detail=f"获取用户信息失败: {str(e)}")
+
 @router.get("/users", response_model=Dict[str, Any], summary="查询用户列表")
 @handle_api_errors("查询用户列表")
 async def list_users(
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
     offset: int = Query(0, description="分页偏移量", ge=0),
     status: Optional[int] = Query(None, description="用户状态: 1-正常, 0-禁用"),
+    order_by: str = Query("create_time DESC", description="排序方式"),
     api_logger=Depends(get_api_logger)
 ):
     """获取用户列表"""
-    conditions = {}
-    if status is not None:
-        conditions['status'] = status
+    api_logger.info(f"Request: GET /users with params: limit={limit}, offset={offset}, status={status}, order_by={order_by}")
     
-    users = query_records(
-        'wxapp_users',
-        conditions=conditions,
-        order_by='id DESC',
-        limit=limit,
-        offset=offset
-    )
-    return create_standard_response(users)
+    try:
+        # 构建查询条件
+        conditions = {}
+        if status is not None:
+            conditions['status'] = status
+            
+        # 添加未删除条件
+        conditions['is_deleted'] = 0
+        
+        api_logger.debug(f"查询条件: {conditions}")
+        
+        # 查询用户列表
+        api_logger.debug(f"执行查询: 表=wxapp_users, 条件={conditions}, 排序={order_by}, 限制={limit}, 偏移={offset}")
+        users = query_records(
+            'wxapp_users',
+            conditions=conditions,
+            order_by=order_by,
+            limit=limit,
+            offset=offset
+        )
+        api_logger.debug(f"查询结果数量: {len(users)}")
+        
+        # 处理所有用户的JSON字段
+        users = [process_json_fields(user) for user in users]
+            
+        # 获取总数
+        total_count = count_records('wxapp_users', conditions)
+        api_logger.debug(f"总记录数: {total_count}")
+        
+        # 返回用户列表
+        api_logger.info(f"Response: 用户列表查询成功，返回{len(users)}条记录")
+        return {
+            "code": 200,
+            "message": "success",
+            "data": users,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+    except Exception as e:
+        error_details = traceback.format_exc()
+        api_logger.error(f"Error: 查询用户列表失败: {str(e)}\n{error_details}")
+        raise HTTPException(status_code=500, detail=f"查询用户列表失败: {str(e)}")
 
 @router.put("/users/{user_id}", response_model=UserResponse, summary="更新用户信息")
 @handle_api_errors("更新用户")

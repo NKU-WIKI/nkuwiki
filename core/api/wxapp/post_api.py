@@ -6,6 +6,7 @@ from fastapi import HTTPException, Path as PathParam, Depends, Query
 from pydantic import BaseModel, Field, validator
 from typing import Dict, Any, Optional, List
 import json
+import traceback
 
 # 导入通用组件
 from core.api.common import get_api_logger, handle_api_errors, create_standard_response
@@ -167,48 +168,86 @@ async def list_posts(
     api_logger=Depends(get_api_logger)
 ):
     """获取帖子列表"""
-    conditions = {}
+    # 详细记录请求参数
+    api_logger.info(f"Request: GET /posts with params: limit={limit}, offset={offset}, user_id={user_id}, category_id={category_id}, tag={tag}, status={status}, order_by={order_by}")
     
-    # 添加筛选条件
-    if user_id is not None:
-        conditions['user_id'] = user_id
+    try:
+        # 构建查询条件
+        conditions = {}
+        if user_id is not None:
+            # 尝试转换user_id为整数类型
+            try:
+                if isinstance(user_id, str) and user_id.isdigit():
+                    conditions['user_id'] = int(user_id)
+                else:
+                    conditions['user_id'] = user_id
+            except Exception as e:
+                api_logger.warning(f"转换user_id时出错，使用原始值: {e}")
+                conditions['user_id'] = user_id
+                
+        if category_id is not None:
+            conditions['category_id'] = category_id
+            
+        if status is not None:
+            conditions['status'] = status
+            
+        # 添加未删除条件
+        conditions['is_deleted'] = 0
         
-    if category_id is not None:
-        conditions['category_id'] = category_id
+        # 记录查询条件
+        api_logger.debug(f"查询条件: {conditions}")
         
-    if status is not None:
-        conditions['status'] = status
-    
-    # 查询帖子列表
-    posts = query_records(
-        'wxapp_posts',
-        conditions=conditions,
-        order_by=order_by,
-        limit=limit,
-        offset=offset
-    )
-    
-    # 处理标签筛选（数据库级别无法直接处理JSON字段）
-    if tag and posts:
-        filtered_posts = []
-        for post in posts:
-            post = process_json_fields(post)
-            if 'tags' in post and tag in post['tags']:
-                filtered_posts.append(post)
-        posts = filtered_posts
-    else:
-        # 处理所有帖子的JSON字段
-        posts = [process_json_fields(post) for post in posts]
-    
-    # 获取总数
-    total_count = count_records('wxapp_posts', conditions)
-    
-    return create_standard_response({
-        "posts": posts,
-        "total": total_count,
-        "limit": limit,
-        "offset": offset
-    })
+        # 查询帖子列表
+        api_logger.debug(f"执行查询: 表=wxapp_posts, 条件={conditions}, 排序={order_by}, 限制={limit}, 偏移={offset}")
+        posts = query_records(
+            'wxapp_posts',
+            conditions=conditions,
+            order_by=order_by,
+            limit=limit,
+            offset=offset
+        )
+        api_logger.debug(f"查询结果数量: {len(posts)}")
+        
+        # 处理标签筛选（数据库级别无法直接处理JSON字段）
+        if tag and posts:
+            api_logger.debug(f"按标签筛选: {tag}")
+            filtered_posts = []
+            for post in posts:
+                post = process_json_fields(post)
+                if 'tags' in post and tag in post['tags']:
+                    filtered_posts.append(post)
+            posts = filtered_posts
+            api_logger.debug(f"标签筛选后数量: {len(posts)}")
+        else:
+            # 处理所有帖子的JSON字段
+            posts = [process_json_fields(post) for post in posts]
+            
+        # 获取总数
+        total_count = count_records('wxapp_posts', conditions)
+        api_logger.debug(f"总记录数: {total_count}")
+        
+        # 构建响应数据
+        response_data = {
+            "posts": posts,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
+        }
+        
+        # 将结果转换为前端期望的格式
+        api_logger.info(f"Response: 帖子列表查询成功，返回{len(posts)}条记录")
+        
+        # 返回标准响应，确保结果在data字段中
+        return {
+            "code": 200,
+            "message": "success",
+            "data": posts
+        }
+    except Exception as e:
+        error_details = traceback.format_exc()
+        api_logger.error(f"Error: 查询帖子列表失败: {str(e)}\n{error_details}")
+        # 重新抛出异常让handle_api_errors装饰器处理
+        raise HTTPException(status_code=500, detail=f"查询帖子失败: {str(e)}")
 
 @router.put("/posts/{post_id}", response_model=Dict[str, Any], summary="更新帖子")
 @handle_api_errors("更新帖子")
