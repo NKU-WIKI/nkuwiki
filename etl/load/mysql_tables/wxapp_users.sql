@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     `favorites_count` INT DEFAULT 0 COMMENT '获得的收藏数',
     `followers_count` INT DEFAULT 0 COMMENT '关注者数量',
     `following_count` INT DEFAULT 0 COMMENT '关注的用户数量',
-    `extra` JSON DEFAULT NULL COMMENT '扩展字段，存储额外信息',
+    `extra` JSON COMMENT '扩展字段，存储额外信息',
     `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `last_login` DATETIME DEFAULT NULL COMMENT '最后登录时间',

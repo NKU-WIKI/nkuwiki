@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_notifications` (
     `sender_openid` VARCHAR(100) DEFAULT NULL COMMENT '发送者openid，如系统通知则为null',
     `related_id` VARCHAR(100) DEFAULT NULL COMMENT '关联ID，比如帖子ID或评论ID',
     `related_type` VARCHAR(20) DEFAULT NULL COMMENT '关联类型，如post, comment等',
-    `extra` JSON DEFAULT NULL COMMENT '扩展字段，存储额外信息',
+    `extra` JSON COMMENT '扩展字段，存储额外信息',
     `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `platform` VARCHAR(20) DEFAULT 'wxapp' COMMENT '平台标识',
