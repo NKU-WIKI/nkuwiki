@@ -44,7 +44,7 @@ def init_database():
     """
     try:
         # 第一步：连接到nkuwiki数据库，检查连接是否正常
-        conn = get_conn(use_database=True)
+        conn = get_conn()
         load_logger.info("成功连接到nkuwiki数据库")
         conn.close()
     except mysql.connector.Error as err:
@@ -67,12 +67,25 @@ def init_database():
     success_count = 0
     failed_tables = []
     
+    # 在处理多个表时，在每个表之间添加短暂延迟，避免连接池溢出
     for sql_file in sql_files:
         table_name = sql_file.stem  # 获取文件名（不含扩展名）
         try:
-            create_table(table_name)
-            success_count += 1
-            load_logger.info(f"表 {table_name} 已创建或已存在")
+            # 每次创建表前先确保之前的连接已关闭
+            from etl.load import close_conn
+            close_conn()
+            
+            # 添加短暂延迟，让连接池有时间回收连接
+            import time
+            time.sleep(0.5)
+            
+            # 创建表
+            if create_table(table_name):
+                success_count += 1
+                load_logger.info(f"表 {table_name} 已创建或已存在")
+            else:
+                load_logger.error(f"创建表 {table_name} 失败")
+                failed_tables.append(table_name)
         except Exception as e:
             load_logger.error(f"创建表 {table_name} 失败: {e}")
             failed_tables.append(table_name)
@@ -83,6 +96,10 @@ def init_database():
         load_logger.warning(f"创建失败的表: {', '.join(failed_tables)}")
     else:
         load_logger.info(f"所有表({success_count}个)均已成功创建或已存在")
+        
+    # 最后再次清理连接池
+    from etl.load import close_conn_pool
+    close_conn_pool()
 
 def create_table(table_name: str) -> bool:
     """根据表名执行对应的SQL文件创建表结构
@@ -109,31 +126,64 @@ def create_table(table_name: str) -> bool:
         if not sql_file.exists():
             raise FileNotFoundError(f"SQL文件不存在: {sql_file}")
 
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                # 读取并执行SQL文件
-                sql_content = sql_file.read_text(encoding='utf-8')
-                for statement in sql_content.split(';'):
-                    statement = statement.strip()
-                    if statement:
-                        try:
-                            cur.execute(statement)
-                        except mysql.connector.Error as err:
-                            load_logger.error(f"执行SQL失败: {err}\n{statement}")
-                            conn.rollback()
-                            return False
-                conn.commit()
-                load_logger.debug(f"表 {table_name} 在nkuwiki数据库中创建成功，使用SQL文件: {sql_file.name}")
-                return True
+        # 读取SQL文件内容
+        sql_content = sql_file.read_text(encoding='utf-8')
+        
+        # 使用最多3次重试
+        max_retries = 3
+        retry_count = 0
+        last_error = None
+        
+        while retry_count < max_retries:
+            conn = None
+            try:
+                conn = get_conn()
+                with conn.cursor() as cur:
+                    # 执行SQL文件中的语句
+                    for statement in sql_content.split(';'):
+                        statement = statement.strip()
+                        if statement:
+                            try:
+                                cur.execute(statement)
+                            except mysql.connector.Error as err:
+                                load_logger.error(f"执行SQL失败: {err}\n{statement}")
+                                conn.rollback()
+                                raise
+                    conn.commit()
+                    load_logger.debug(f"表 {table_name} 在nkuwiki数据库中创建成功，使用SQL文件: {sql_file.name}")
+                    return True
+            except mysql.connector.Error as err:
+                retry_count += 1
+                last_error = err
+                error_msg = str(err)
+                
+                # 如果是连接池满错误并且还有重试次数，进行重试
+                if "queue is full" in error_msg and retry_count < max_retries:
+                    load_logger.warning(f"创建表 {table_name} 时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
+                    # 短暂等待后重试
+                    import time
+                    time.sleep(1)
+                    continue
+                else:
+                    load_logger.error(f"数据库错误: {error_msg}")
+                    # 对于其他错误或重试次数用尽，直接跳出循环
+                    break
+            finally:
+                # 确保连接总是被关闭
+                if conn:
+                    from etl.load import close_conn
+                    close_conn()
+        
+        # 如果有最后的错误，记录并返回失败
+        if last_error:
+            load_logger.error(f"创建表 {table_name} 失败，所有重试均失败: {str(last_error)}")
+        return False
 
     except (FileNotFoundError, ValueError) as e:
         load_logger.error(str(e))
         return False
-    except mysql.connector.Error as err:
-        load_logger.error(f"数据库错误: {err}")
-        return False
     except Exception as e:
-        load_logger.exception("表结构创建失败")
+        load_logger.exception(f"表结构 {table_name} 创建失败: {str(e)}")
         return False
 
 def process_file(file_path: str, platform: str = "wechat") -> Dict:
@@ -321,13 +371,20 @@ def delete_table(table_name: str) -> bool:
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"非法表名: {table_name}")
             
-        with get_conn() as conn:
+        conn = None
+        try:
+            conn = get_conn()
             with conn.cursor() as cursor:
                 # 使用字符串格式化（需先验证表名）
                 cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
                 conn.commit()
                 load_logger.warning(f"成功删除表: {table_name}")
                 return True
+        finally:
+            # 确保连接总是被正确关闭
+            from etl.load import close_conn
+            close_conn()
+            
     except mysql.connector.Error as e:
         load_logger.error(f"删除表 {table_name} 失败: {str(e)}")
         raise
@@ -348,54 +405,49 @@ def insert_record(table_name: str, data: Dict[str, Any]) -> int:
     Returns:
         int: 插入记录的ID，失败返回-1
     """
-    conn = None
-    max_retries = 3
-    retry_count = 0
-    
     try:
-        # 验证表名
+        # 验证表名格式（防止SQL注入）
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"非法表名: {table_name}")
-            
-        fields = list(data.keys())
-        values = list(data.values())
-        placeholders = ', '.join(['%s'] * len(fields))
         
-        while retry_count < max_retries:
-            try:
-                conn = get_conn()
-                with conn.cursor() as cursor:
-                    query = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({placeholders})"
-                    cursor.execute(query, values)
-                    conn.commit()
-                    last_id = cursor.lastrowid
-                    load_logger.debug(f"向表 {table_name} 插入记录成功，ID: {last_id}")
-                    return last_id
-            except mysql.connector.Error as e:
-                retry_count += 1
-                error_msg = str(e)
-                if "queue is full" in error_msg and retry_count < max_retries:
-                    load_logger.warning(f"连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
-                    # 短暂等待后重试
-                    import time
-                    time.sleep(0.5)
-                    continue
-                else:
-                    load_logger.error(f"插入记录失败: {error_msg}")
-                    return -1
-    except Exception as e:
-        load_logger.error(f"插入记录异常: {str(e)}")
+        if not data:
+            raise ValueError("数据不能为空")
+        
+        # 过滤无效字段
+        valid_data = {k: v for k, v in data.items() if v is not None}
+        
+        # 构建SQL
+        columns = ', '.join(valid_data.keys())
+        placeholders = ', '.join(['%s'] * len(valid_data))
+        values = list(valid_data.values())
+        
+        sql = f"INSERT INTO {table_name} ({columns}) VALUES ({placeholders})"
+        
+        conn = None
+        try:
+            conn = get_conn()
+            cursor = conn.cursor()
+            cursor.execute(sql, values)
+            conn.commit()
+            
+            # 获取自增ID
+            last_id = cursor.lastrowid
+            load_logger.debug(f"向表 {table_name} 插入记录成功，ID: {last_id}")
+            return last_id
+        finally:
+            # 确保连接总是被正确关闭
+            from etl.load import close_conn
+            close_conn()
+            
+    except mysql.connector.Error as e:
+        load_logger.error(f"插入记录失败: {str(e)}")
         return -1
-    finally:
-        # 确保关闭连接，归还到连接池
-        if conn and hasattr(conn, 'close'):
-            try:
-                close_conn()
-            except:
-                pass
+    except Exception as e:
+        load_logger.error(f"发生未知错误: {str(e)}")
+        return -1
 
 def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool:
-    """更新表中指定ID的记录
+    """更新指定表的指定记录
     
     Args:
         table_name: 表名
@@ -405,57 +457,52 @@ def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool
     Returns:
         bool: 更新是否成功
     """
-    conn = None
-    max_retries = 3
-    retry_count = 0
-    
     try:
-        # 验证表名
+        # 验证表名格式（防止SQL注入）
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"非法表名: {table_name}")
-            
-        if not data:
-            load_logger.warning("没有提供更新数据")
-            return False
-            
-        set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
-        values = list(data.values())
         
-        while retry_count < max_retries:
-            try:
-                conn = get_conn()
-                with conn.cursor() as cursor:
-                    query = f"UPDATE {table_name} SET {set_clause} WHERE id = %s"
-                    cursor.execute(query, [*values, record_id])
-                    conn.commit()
-                    affected_rows = cursor.rowcount
-                    # load_logger.debug(f"更新表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
-                    return affected_rows > 0
-            except mysql.connector.Error as e:
-                retry_count += 1
-                error_msg = str(e)
-                if "queue is full" in error_msg and retry_count < max_retries:
-                    load_logger.warning(f"更新记录时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
-                    # 短暂等待后重试
-                    import time
-                    time.sleep(0.5)
-                    continue
-                else:
-                    load_logger.error(f"更新记录失败: {error_msg}")
-                    return False
-    except Exception as e:
-        load_logger.error(f"更新记录异常: {str(e)}")
+        # 检查数据是否为空
+        if not data:
+            load_logger.warning(f"更新记录数据为空，跳过更新")
+            return True  # 没有数据要更新，视为成功
+        
+        # 构建SQL更新语句
+        set_clause = ', '.join([f"{k} = %s" for k in data.keys()])
+        values = list(data.values())
+        values.append(record_id)  # 添加WHERE条件的值
+        
+        sql = f"UPDATE {table_name} SET {set_clause} WHERE id = %s"
+        
+        conn = None
+        try:
+            conn = get_conn()
+            cursor = conn.cursor()
+            cursor.execute(sql, values)
+            conn.commit()
+            
+            if cursor.rowcount > 0:
+                load_logger.debug(f"更新表 {table_name} 记录成功，ID: {record_id}")
+                return True
+            else:
+                load_logger.warning(f"未找到要更新的记录，表: {table_name}，ID: {record_id}")
+                return False
+        finally:
+            # 确保连接总是被正确关闭
+            from etl.load import close_conn
+            close_conn()
+            
+    except mysql.connector.Error as e:
+        load_logger.error(f"更新记录失败: {str(e)}")
         return False
-    finally:
-        # 确保关闭连接，归还到连接池
-        if conn and hasattr(conn, 'close'):
-            try:
-                close_conn()
-            except:
-                pass
+    except Exception as e:
+        load_logger.error(f"发生未知错误: {str(e)}")
+        return False
 
 def delete_record(table_name: str, record_id: int) -> bool:
-    """删除表中指定ID的记录
+    """删除指定表中的指定记录（物理删除）
+    
+    注意：推荐使用逻辑删除（设置is_deleted字段），而不是物理删除
     
     Args:
         table_name: 表名
@@ -464,101 +511,79 @@ def delete_record(table_name: str, record_id: int) -> bool:
     Returns:
         bool: 删除是否成功
     """
-    conn = None
-    max_retries = 3
-    retry_count = 0
-    
     try:
-        # 验证表名
+        # 验证表名格式（防止SQL注入）
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"非法表名: {table_name}")
             
-        while retry_count < max_retries:
-            try:
-                conn = get_conn()
-                with conn.cursor() as cursor:
-                    query = f"DELETE FROM {table_name} WHERE id = %s"
-                    cursor.execute(query, (record_id,))
-                    conn.commit()
-                    affected_rows = cursor.rowcount
-                    load_logger.debug(f"删除表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
-                    return affected_rows > 0
-            except mysql.connector.Error as e:
-                retry_count += 1
-                error_msg = str(e)
-                if "queue is full" in error_msg and retry_count < max_retries:
-                    load_logger.warning(f"删除记录时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
-                    # 短暂等待后重试
-                    import time
-                    time.sleep(0.5)
-                    continue
-                else:
-                    load_logger.error(f"删除记录失败: {error_msg}")
-                    return False
-    except Exception as e:
-        load_logger.error(f"删除记录异常: {str(e)}")
+        sql = f"DELETE FROM {table_name} WHERE id = %s"
+        
+        conn = None
+        try:
+            conn = get_conn()
+            cursor = conn.cursor()
+            cursor.execute(sql, (record_id,))
+            conn.commit()
+            
+            if cursor.rowcount > 0:
+                load_logger.debug(f"删除表 {table_name} 记录成功，ID: {record_id}")
+                return True
+            else:
+                load_logger.warning(f"未找到要删除的记录，表: {table_name}，ID: {record_id}")
+                return False
+        finally:
+            # 确保连接总是被正确关闭
+            from etl.load import close_conn
+            close_conn()
+            
+    except mysql.connector.Error as e:
+        load_logger.error(f"删除记录失败: {str(e)}")
         return False
-    finally:
-        # 确保关闭连接，归还到连接池
-        if conn and hasattr(conn, 'close'):
-            try:
-                close_conn()
-            except:
-                pass
+    except Exception as e:
+        load_logger.error(f"发生未知错误: {str(e)}")
+        return False
 
 def get_record_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
-    """根据ID获取单条记录
+    """获取指定表中的指定ID记录
     
     Args:
         table_name: 表名
         record_id: 记录ID
         
     Returns:
-        Optional[Dict]: 记录字典，未找到返回None
+        Dict[str, Any]: 记录数据，未找到则返回None
     """
-    conn = None
-    max_retries = 3
-    retry_count = 0
-    
     try:
-        # 验证表名
+        # 验证表名格式（防止SQL注入）
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"非法表名: {table_name}")
             
-        while retry_count < max_retries:
-            try:
-                conn = get_conn()
-                with conn.cursor(dictionary=True) as cursor:
-                    query = f"SELECT * FROM {table_name} WHERE id = %s"
-                    cursor.execute(query, (record_id,))
-                    result = cursor.fetchone()
-                    if result:
-                        # 直接返回字典结果，因为我们使用了dictionary=True
-                        load_logger.debug(f"查询表 {table_name} 记录成功，ID: {record_id}")
-                        return result
-                    return None
-            except mysql.connector.Error as e:
-                retry_count += 1
-                error_msg = str(e)
-                if "queue is full" in error_msg and retry_count < max_retries:
-                    load_logger.warning(f"查询记录时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
-                    # 短暂等待后重试
-                    import time
-                    time.sleep(0.5)
-                    continue
-                else:
-                    load_logger.error(f"查询记录失败: {error_msg}")
-                    return None
-    except Exception as e:
-        load_logger.error(f"查询记录异常: {str(e)}")
+        sql = f"SELECT * FROM {table_name} WHERE id = %s"
+        
+        conn = None
+        try:
+            conn = get_conn()
+            cursor = conn.cursor(dictionary=True)
+            cursor.execute(sql, (record_id,))
+            result = cursor.fetchone()
+            
+            if result:
+                load_logger.debug(f"查询表 {table_name} 记录成功，ID: {record_id}")
+                return result
+            else:
+                load_logger.debug(f"未找到记录，表: {table_name}，ID: {record_id}")
+                return None
+        finally:
+            # 确保连接总是被正确关闭
+            from etl.load import close_conn
+            close_conn()
+            
+    except mysql.connector.Error as e:
+        load_logger.error(f"查询记录失败: {str(e)}")
         return None
-    finally:
-        # 确保关闭连接，归还到连接池
-        if conn and hasattr(conn, 'close'):
-            try:
-                close_conn()
-            except:
-                pass
+    except Exception as e:
+        load_logger.error(f"发生未知错误: {str(e)}")
+        return None
 
 def query_records(table_name: str, conditions: Dict[str, Any] = None, order_by: str = None, 
                 limit: int = 1000, offset: int = 0) -> List[Dict[str, Any]]:
@@ -831,7 +856,7 @@ def get_all_tables() -> List[str]:
     """
     try:
         # 使用information_schema查询，获取nkuwiki数据库的表
-        with get_conn(use_database=True) as conn:
+        with get_conn() as conn:
             with conn.cursor() as cursor:
                 # 使用information_schema.tables查询nkuwiki数据库中的表
                 cursor.execute("""
@@ -878,7 +903,7 @@ def get_nkuwiki_tables() -> List[str]:
         List[str]: nkuwiki数据库中的表名列表
     """
     try:
-        with get_conn(use_database=True) as conn:
+        with get_conn() as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SHOW TABLES")
                 tables = [table[0] for table in cursor.fetchall()]
@@ -939,7 +964,7 @@ def transfer_table_from_mysql_to_nkuwiki(table_name: str) -> bool:
         mysql_conn.close()
         
         # 3. 在nkuwiki中创建表并导入数据
-        nkuwiki_conn = get_conn(use_database=True)  # 连接到nkuwiki数据库
+        nkuwiki_conn = get_conn()  # 连接到nkuwiki数据库
         
         # 创建表
         with nkuwiki_conn.cursor() as cursor:
@@ -1142,13 +1167,29 @@ def execute_raw_query(query, params=None):
         return []
 
 if __name__ == "__main__":
-    # delete_table("wechat_nku")  # 注释掉删除表的操作
+    # 避免同时执行多个导致连接池溢出，先删除一个表
     delete_table("wxapp_comments")
+    # 删除表后释放连接池
+    from etl.load import close_conn_pool
+    close_conn_pool()
+    
+    # 再删除其他表
     delete_table("wxapp_posts")
     delete_table("wxapp_users")
     delete_table("wxapp_feedback")
     delete_table("wxapp_notifications")
-    init_database()  # 初始化数据库
+    
+    # 删除后再次清理连接池
+    close_conn_pool()
+    
+    # 等待连接池完全释放
+    import time
+    time.sleep(1)
+    
+    # 初始化数据库
+    init_database()
+    
+    # 测试其他功能
     # get_table_structure("wxapp_posts")
     # query_table("wxapp_posts")
     # import_json_dir_to_table(platform="wechat", tag="nku")  # 导入数据
