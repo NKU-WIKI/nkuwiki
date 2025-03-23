@@ -4,6 +4,10 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
 import mysql.connector  # 添加mysql.connector导入
 from etl.load import get_conn, load_logger
+import pymysql
+import json
+import os
+import time
 
 """
 etl/load/py_mysql.py - MySQL数据库操作模块
@@ -30,6 +34,11 @@ etl/load/py_mysql.py - MySQL数据库操作模块
 - transfer_table_from_mysql_to_nkuwiki(table_name): 将表从MySQL迁移到nkuwiki数据库
 - import_json_dir_to_table(dir_path, table_name, platform, tag, batch_size): 将目录中的JSON文件导入到指定表
 - execute_raw_query(query, params=None): 执行原生SQL查询，返回查询结果
+- get_mysql_config(): 获取MySQL配置
+- get_db_connection(): 获取数据库连接
+- search_posts(keyword, page=1, page_size=10, sort_by="relevance", status=1, include_deleted=False): 搜索帖子
+- search_comments(keyword, page=1, page_size=10): 搜索评论
+- search_users(keyword, page=1, page_size=10): 搜索用户
 """
 
 def init_database():
@@ -1164,6 +1173,180 @@ def execute_raw_query(query, params=None):
         if params:
             load_logger.error(f"查询参数: {params}")
         # 返回空列表而不是抛出异常
+        return []
+
+def get_mysql_config():
+    """获取MySQL配置"""
+    try:
+        # 从配置文件获取MySQL配置
+        mysql_config = {
+            'host': config.mysql.host,
+            'port': config.mysql.port,
+            'user': config.mysql.user,
+            'password': config.mysql.password,
+            'db': config.mysql.db,
+            'charset': 'utf8mb4',
+            'cursorclass': pymysql.cursors.DictCursor
+        }
+        return mysql_config
+    except Exception as e:
+        logger.error(f"获取MySQL配置失败: {str(e)}")
+        # 使用默认配置
+        return {
+            'host': 'localhost',
+            'port': 3306,
+            'user': 'root',
+            'password': '',
+            'db': 'nkuwiki',
+            'charset': 'utf8mb4',
+            'cursorclass': pymysql.cursors.DictCursor
+        }
+
+def get_db_connection():
+    """获取数据库连接"""
+    mysql_config = get_mysql_config()
+    try:
+        connection = pymysql.connect(**mysql_config)
+        return connection
+    except Exception as e:
+        logger.error(f"数据库连接失败: {str(e)}")
+        raise
+
+def search_posts(keyword, page=1, page_size=10, sort_by="relevance", status=1, include_deleted=False):
+    """搜索帖子"""
+    # 构建WHERE子句
+    where_conditions = []
+    if keyword:
+        # 使用LIKE进行模糊匹配，支持标题和内容
+        where_conditions.append(
+            f"(title LIKE '%{keyword}%' OR content LIKE '%{keyword}%')"
+        )
+    
+    # 添加状态条件
+    if status is not None:
+        where_conditions.append(f"status = {status}")
+    
+    # 是否包含已删除的帖子
+    if not include_deleted:
+        where_conditions.append("is_deleted = 0")
+        
+    where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+    
+    # 构建ORDER BY子句
+    if sort_by == "relevance" and keyword:
+        # 按相关度排序
+        order_clause = f"""
+        CASE 
+            WHEN title LIKE '%{keyword}%' THEN 5
+            WHEN content LIKE '%{keyword}%' THEN 2
+            ELSE 1
+        END DESC,
+        create_time DESC
+        """
+    elif sort_by == "time":
+        # 按时间排序
+        order_clause = "create_time DESC"
+    elif sort_by == "popularity":
+        # 按流行度排序（浏览量、点赞数、评论数）
+        order_clause = "(view_count + like_count * 2 + comment_count * 3) DESC"
+    else:
+        # 默认按时间排序
+        order_clause = "create_time DESC"
+    
+    # 执行SQL查询
+    sql = f"""
+    SELECT id, title, content, nick_name as author, 
+          DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') as create_time,
+          DATE_FORMAT(update_time, '%Y-%m-%d %H:%i:%s') as update_time,
+          view_count, like_count, comment_count, tags
+    FROM wxapp_posts
+    WHERE {where_clause}
+    ORDER BY {order_clause}
+    LIMIT {page_size}
+    OFFSET {(page - 1) * page_size}
+    """
+    
+    try:
+        results = execute_custom_query(sql)
+        
+        # 处理结果
+        processed_results = []
+        for result in results:
+            # 处理JSON字段
+            if 'tags' in result and result['tags']:
+                try:
+                    tags_data = json.loads(result['tags'])
+                    # 提取标签文本
+                    tag_names = [tag.get("name", "") for tag in tags_data if tag.get("name")]
+                    result['tag_names'] = tag_names
+                except json.JSONDecodeError:
+                    result['tag_names'] = []
+            else:
+                result['tag_names'] = []
+                
+            processed_results.append(result)
+            
+        return processed_results
+    except Exception as e:
+        logger.error(f"搜索帖子失败: {str(e)}")
+        return []
+
+def search_comments(keyword, page=1, page_size=10):
+    """搜索评论"""
+    if not keyword:
+        return []
+    
+    # 使用LIKE进行模糊匹配
+    sql = """
+    SELECT id, post_id, content, nick_name as author, 
+          DATE_FORMAT(create_time, '%Y-%m-%d %H:%i:%s') as create_time
+    FROM wxapp_comments
+    WHERE content LIKE %s
+    ORDER BY create_time DESC
+    LIMIT %s
+    OFFSET %s
+    """
+    
+    params = (f"%{keyword}%", page_size, (page - 1) * page_size)
+    
+    try:
+        results = execute_custom_query(sql, params)
+        return results
+    except Exception as e:
+        logger.error(f"搜索评论失败: {str(e)}")
+        return []
+
+def search_users(keyword, page=1, page_size=10):
+    """搜索用户"""
+    if not keyword:
+        return []
+    
+    # 构建条件查询
+    conditions = []
+    if keyword:
+        conditions.append("nick_name LIKE %s")
+        conditions.append("real_name LIKE %s")
+        conditions.append("bio LIKE %s")
+    
+    where_clause = " OR ".join(conditions) if conditions else "1=1"
+    
+    sql = """
+    SELECT id, openid, nick_name, avatar, bio
+    FROM wxapp_users
+    WHERE {}
+    LIMIT %s
+    OFFSET %s
+    """.format(where_clause)
+    
+    # 构建参数
+    keyword_param = f"%{keyword}%"
+    params = (keyword_param, keyword_param, keyword_param, page_size, (page - 1) * page_size)
+    
+    try:
+        results = execute_custom_query(sql, params)
+        return results
+    except Exception as e:
+        logger.error(f"搜索用户失败: {str(e)}")
         return []
 
 if __name__ == "__main__":

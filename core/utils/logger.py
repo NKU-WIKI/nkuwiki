@@ -41,6 +41,17 @@ logger.add(
     enqueue=True
 )
 
+# 添加警告级别专用日志处理器
+logger.add(
+    LOG_ROOT_DIR / "nkuwiki(warning).log",
+    rotation="10 MB",
+    retention="1 week",
+    level="WARNING",
+    format=LOG_FORMAT,
+    enqueue=True,
+    filter=lambda record: record["level"].no >= logger.level("WARNING").no
+)
+
 def register_logger(module_name: str):
     """
     为指定模块注册专用的日志记录器

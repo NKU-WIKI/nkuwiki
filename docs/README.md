@@ -1,48 +1,42 @@
-# nkuwiki 项目文档
+# 南开Wiki RAG接口文档
 
-此目录包含nkuwiki项目的详细文档。
+## 文档导航
 
-## 文档索引
+南开Wiki检索增强生成(RAG)接口文档集合，用于开发者了解和使用RAG服务。
 
-### 快速入门
+### 核心文档
 
-- [安装指南](./installation_guide.md) - 环境准备、项目安装和依赖管理
-- [配置指南](./configuration_guide.md) - 详细配置说明和通道配置
-- [部署指南](./deployment_guide.md) - 部署MySQL和Qdrant服务，项目运行方法
+- [RAG API接口文档](./rag_api.md) - 详细的API接口说明，包含参数、响应格式和示例
+- [RAG接口使用指南](./rag_usage_guide.md) - 开发者使用指南，包含最佳实践和示例代码
+- [RAG接口测试报告](./rag_test_report.md) - 测试结果和性能报告
 
-### 服务文档
+## 快速开始
 
-- [应用入口](./application_entry.md) - app.py应用入口文件详解
-- [服务架构](./service_architecture.md) - 系统架构和主要组件说明
-- [API服务使用指南](./api_usage_guide.md) - API服务的使用方法
-- [问答服务使用指南](./qa_service_guide.md) - 问答服务的配置和使用方法
+对于希望快速集成RAG接口的开发者，建议先阅读[RAG接口使用指南](./rag_usage_guide.md)，了解基本概念和使用方式。
 
-### 开发文档
+需要详细API参数和响应格式的开发者，可以参考[RAG API接口文档](./rag_api.md)。
 
-- [日志指南](./logging_guide.md) - 日志配置和使用方法
+## 测试环境
 
-### API文档
+我们提供了一个简化的测试环境：
 
-- [MySQL API](../etl/api/mysql_api.md) - MySQL数据库访问接口
-- [Agent API](../core/api/agent_api.md) - 智能体交互接口
-- [HiAgent API](./api/HiagentAPI.md) - HiAgent API文档
-- [Coze API](./api/cozeAPI.md) - Coze API文档
+```
+http://localhost:8888/rag
+```
 
-### 资源
+该测试环境实现了与正式环境相同的API接口，但使用了模拟数据，非常适合前端开发和接口集成测试。
 
-- [技术报告](./assets/技术报告.pdf) - 项目技术报告
+## 贡献与反馈
 
-## 项目架构图
+如发现文档错误或有改进建议，请通过以下方式反馈：
 
-请参考[服务架构](./service_architecture.md)文档了解nkuwiki项目的架构设计。
+1. 提交Issue到项目仓库
+2. 发送邮件至维护团队
+3. 在小程序内提交反馈
 
-## 启动服务
+## 版本历史
 
-nkuwiki提供两种服务模式：
-
-1. **API服务**: `python app.py --api`
-2. **问答服务**: `python app.py --qa`
-
-可同时启动两种服务：`python app.py --api --qa`
-
-详细参数和使用方法见[应用入口](./application_entry.md)文档。
+**v1.0.0** (2025-03-24)
+- 初始版本
+- 支持基本RAG功能
+- 提供三种输出格式：markdown、text、html

@@ -1,6 +1,7 @@
 ## 角色
 你是一个卓越高效的编程助手, 用中文回答问题，不要过多解释，不要重复。
 根据微信云+私有服务器后端混合框架最佳实践开发
+
 ## 规范
 
 ### 代码
@@ -30,13 +31,23 @@ nkuwiki校园知识共享平台
 💡 开放知识资源免费获取
 🌱 构建可持续的互助社区
 
-这是一个前后端分离的项目，主体是后端项目，接口在core/api目录下
+这是一个前后端分离的项目，主体是后端项目，接口在api目录下
 services/app微信小程序，是git子模块，请求地址为https://nkuwiki.com
-api文档见每个子模块下的api目录下的md文件
+或者http://localhost:8000[8000~8007]
+api文档见docs/api_docs.md
+服务部署脚本./nkuwiki_service_manager.sh
+crontab -e 添加定时任务
+
+库表在etl/load/mysql_tables目录下
+
+现在需要实现rag，并在前端展示，详见https://github.com/ghost233lism/Nkuwiki/issues/13
+
+
 
 ### 项目结构树
 
 ```plaintext
+- api # api模块，负责智能体对话、贡献激励、平台治理等算法应用
 - core # core模块，负责智能体对话、贡献激励、平台治理等算法应用
   - agent  # 智能体应用
     - coze  # Coze平台对接
@@ -44,12 +55,9 @@ api文档见每个子模块下的api目录下的md文件
     （openai,chatgpt,hiagent、etc.）
     - session_manager.py  # 会话管理器
     - agent_factory.py  # 智能体工厂
-  - auth  # 处理认证和授权
   - bridge  # 桥接服务与智能体
+  - plugins  # 插件管理系统
   - utils  # 通用工具函数和类
-    - plugins  # 插件管理系统
-      - plugin_manager.py  # 插件管理器
-    - common  # 通用工具库
     - voice  # 语音处理
     - translate  # 翻译工具
 - docs  # 项目文档
@@ -60,7 +68,6 @@ api文档见每个子模块下的api目录下的md文件
     - HiagentAPI.md
 - etl  # etl模块，负责数据抽取、转换和加载
   - __init__.py  # etl模块全局共享配置项、环境变量、路径和工具函数
-  - api  # 检索和生成服务的api
   - crawler  # 爬虫模块，负责从各种数据源抓取数据
     - base_crawler.py  # 基础爬虫类
     (website,wechat, market, etc.)
@@ -125,15 +132,18 @@ services/app
 │   └── post/ # 发帖页
 │
 ├── api/ # API接口封装
-│   ├── agent_api.md # Agent API文档
-│   ├── mysql_api.md # MySQL API文档
+│   ├── api_docs.md # API文档
 │   └── README.md # API说明文档
 │
 ├── assets/ # 静态资源
 │   └── icons/ # 图标文件
 │
 ├── utils/ # 工具函数
-│   └── util.js # 通用工具函数
+│   ├── api/ #接口函数
+│   │   ├── agent/ # 智能体接口
+│   │   ├── search/ # 搜索接口
+│   │   ├── user/ # 用户接口
+│   └── util.ts # 通用工具函数
 │
 ├── cloudfunctions/ # 云函数
 │   └── login/ # 登录相关云函数

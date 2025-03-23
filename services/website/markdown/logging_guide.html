@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>项目日志使用指南 | 南开WIKI</title>
+    <meta name="description" content="本项目使用 [Loguru](https://github.com/Delgan/loguru) 库进行日志管理。为了保持一致性和便于查找问题，我们在每个模块的 `__init__.py` 文件中创建了专用的 logger 实例，供该模块内的所有文件共享使用。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="_1">项目日志使用指南</h1>
+<p>本项目使用 <a href="https://github.com/Delgan/loguru">Loguru</a> 库进行日志管理。为了保持一致性和便于查找问题，我们在每个模块的 <code>__init__.py</code> 文件中创建了专用的 logger 实例，供该模块内的所有文件共享使用。</p>
+<h2 id="_2">日志实例</h2>
+<p>每个模块都有自己专用的 logger 实例，命名格式为 <code>{module_name}_logger</code>：</p>
+<table>
+<thead>
+<tr>
+<th>模块</th>
+<th>Logger 实例</th>
+<th>日志文件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>crawler</td>
+<td><code>crawler_logger</code></td>
+<td><code>logs/crawler.log</code></td>
+</tr>
+<tr>
+<td>embedding</td>
+<td><code>embedding_logger</code></td>
+<td><code>logs/embedding.log</code></td>
+</tr>
+<tr>
+<td>load</td>
+<td><code>load_logger</code></td>
+<td><code>logs/load.log</code></td>
+</tr>
+<tr>
+<td>transform</td>
+<td><code>transform_logger</code></td>
+<td><code>logs/transform.log</code></td>
+</tr>
+<tr>
+<td>retrieval</td>
+<td><code>retrieval_logger</code></td>
+<td><code>logs/retrieval.log</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="_3">在模块中使用日志</h2>
+<h3 id="logger">导入模块 logger</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 在模块文件中导入</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">etl.crawler</span><span class="w"> </span><span class="kn">import</span> <span class="n">crawler_logger</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">my_function</span><span class="p">():</span>
+    <span class="n">crawler_logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;这是一条信息日志&quot;</span><span class="p">)</span>
+    <span class="n">crawler_logger</span><span class="o">.</span><span class="n">error</span><span class="p">(</span><span class="s2">&quot;这是一条错误日志&quot;</span><span class="p">)</span>
+
+<span class="err">```</span><span class="n">text</span>
+
+<span class="c1">### 自定义上下文信息</span>
+
+<span class="err">```</span><span class="n">python</span>
+<span class="c1"># 添加上下文信息创建特定实例</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">MyCrawler</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">crawler_logger</span><span class="o">.</span><span class="n">bind</span><span class="p">(</span><span class="n">crawler</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s2">&quot;处理中...&quot;</span><span class="p">)</span>  <span class="c1"># 日志会包含crawler=name的上下文</span>
+</code></pre></div>
+
+<h2 id="_4">日志级别</h2>
+<p>支持的日志级别（从低到高）：</p>
+<ul>
+<li>
+<p><code>DEBUG</code>: 调试信息，用于开发阶段</p>
+</li>
+<li>
+<p><code>INFO</code>: 一般信息，记录程序正常运行状态</p>
+</li>
+<li>
+<p><code>SUCCESS</code>: 成功信息，表示任务成功完成</p>
+</li>
+<li>
+<p><code>WARNING</code>: 警告信息，不影响程序运行但需要注意</p>
+</li>
+<li>
+<p><code>ERROR</code>: 错误信息，表示发生了错误但不会导致程序崩溃</p>
+</li>
+<li>
+<p><code>CRITICAL</code>: 严重错误，可能导致程序崩溃</p>
+</li>
+</ul>
+<h2 id="_5">日志格式</h2>
+<p>所有日志采用统一格式：</p>
+<div class="codehilite"><pre><span></span><code>{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}
+
+```text
+
+## 最佳实践
+
+1. **始终使用模块级别的日志实例**，不要创建新的 logger 实例
+
+2. **适当使用日志级别**，避免过多的 DEBUG 日志进入生产环境
+
+3. **使用 bind() 添加上下文**，便于日志分析和问题排查
+
+4. **添加有意义的日志信息**，包括操作对象、关键参数等
+
+5. **异常处理中记录详细信息**，包括异常类型、错误消息和关键变量
+
+## 示例
+
+### 基本用法
+
+```python
+from etl.retrieval import retrieval_logger
+
+retrieval_logger.info(&quot;开始检索&quot;)
+retrieval_logger.debug(f&quot;参数设置: topk={topk}&quot;)
+
+try:
+    # 业务逻辑
+    result = perform_retrieval()
+    retrieval_logger.success(f&quot;检索成功: 找到 {len(result)} 条记录&quot;)
+except Exception as e:
+    retrieval_logger.error(f&quot;检索失败: {str(e)}&quot;)
+
+```text
+
+### 在类中使用
+
+```python
+from etl.load import load_logger
+
+class DataLoader:
+    def __init__(self, source):
+        self.source = source
+        self.logger = load_logger.bind(source=source)
+
+    def load(self):
+        self.logger.info(f&quot;开始加载数据&quot;)
+        # ...处理逻辑
+        self.logger.success(&quot;数据加载完成&quot;)
+</code></pre></div>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

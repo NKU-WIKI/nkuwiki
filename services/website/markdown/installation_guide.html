@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>nkuwiki 安装指南 | 南开WIKI</title>
+    <meta name="description" content="本文档提供了nkuwiki项目的安装步骤，包括环境准备、获取代码和安装依赖。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="nkuwiki">nkuwiki 安装指南</h1>
+<p>本文档提供了nkuwiki项目的安装步骤，包括环境准备、获取代码和安装依赖。</p>
+<h2 id="_1">环境准备</h2>
+<ul>
+<li>python 3.10.12</li>
+<li>python3-venv(linux可能需要单独安装，windows/macos一般内置) or miniconda3</li>
+<li>git</li>
+<li>docker or docker-desktop (windows)(可选，用于容器化部署)</li>
+<li>mysql latest (可选，用于rag)</li>
+<li>qdrant latest (可选，用于rag)</li>
+</ul>
+<h2 id="_2">获取代码</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 克隆仓库</span>
+git<span class="w"> </span>clone<span class="w"> </span>https://github.com/NKU-WIKI/nkuwiki.git
+
+<span class="c1"># 克隆微信小程序子模块</span>
+git<span class="w"> </span>submodule<span class="w"> </span>update<span class="w"> </span>--init<span class="w"> </span>--recursive
+<span class="nb">cd</span><span class="w"> </span>nkuwiki
+</code></pre></div>
+
+<h2 id="_3">安装依赖</h2>
+<h3 id="venv">方式一：使用 venv 创建虚拟环境</h3>
+<p>step1 安装venv模块</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 安装venv模块</span>
+pip<span class="w"> </span>install<span class="w"> </span>venv<span class="w">  </span><span class="c1"># 如果需要安装</span>
+</code></pre></div>
+
+<p>step2 创建虚拟环境</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 创建虚拟环境（默认在当前目录）</span>
+python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>nkuwiki<span class="w"> </span>--python<span class="o">=</span><span class="m">3</span>.10.12
+
+<span class="c1"># 或者指定安装路径</span>
+<span class="c1"># python3 -m venv path/to/yourvenv --python=3.10.12</span>
+<span class="c1"># 例如 python3 -m venv /opt/venvs/nkuwiki --python=3.10.12 (linux)</span>
+<span class="c1"># python3 -m venv d:\venvs\nkuwiki --python=3.10.12 (windows)</span>
+</code></pre></div>
+
+<p>step3 激活虚拟环境</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 当前目录环境激活</span>
+<span class="c1"># linux/macos</span>
+<span class="nb">source</span><span class="w"> </span>nkuwiki/bin/activate
+
+<span class="c1"># windows</span>
+nkuwiki<span class="se">\s</span>cripts<span class="se">\a</span>ctivate
+
+<span class="c1"># 指定路径环境激活</span>
+<span class="c1"># linux/macos</span>
+<span class="c1"># source path/to/yourvenv/bin/activate</span>
+<span class="c1"># 例如 source /opt/venvs/nkuwiki/bin/activate</span>
+
+<span class="c1"># windows</span>
+<span class="c1"># path\to\yourvenv\scripts\activate</span>
+<span class="c1"># 例如 d:\venvs\nkuwiki\scripts\activate</span>
+</code></pre></div>
+
+<h3 id="conda">方式二：使用 conda 创建虚拟环境</h3>
+<p>step1 安装miniconda3</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 下载miniconda安装程序</span>
+<span class="c1"># windows: https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe</span>
+<span class="c1"># linux: https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh</span>
+<span class="c1"># macos: https://repo.anaconda.com/miniconda/Miniconda3-latest-MacOSX-x86_64.sh</span>
+
+<span class="c1"># linux/macos安装</span>
+<span class="c1"># bash miniconda3-latest-linux-x86_64.sh</span>
+<span class="c1"># 按照提示完成安装并初始化</span>
+<span class="c1"># conda init</span>
+
+<span class="c1"># windows安装</span>
+<span class="c1"># 运行下载的exe文件，按照提示完成安装</span>
+</code></pre></div>
+
+<p>step2 创建虚拟环境</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 创建名为nkuwiki的环境，指定python版本为3.10.12</span>
+conda<span class="w"> </span>create<span class="w"> </span>-n<span class="w"> </span>nkuwiki<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.10.12
+
+<span class="c1"># 或者指定安装路径</span>
+<span class="c1"># conda create -p path/to/conda/envs/nkuwiki python=3.10.12</span>
+<span class="c1"># 例如 conda create -p /opt/conda/envs/nkuwiki python=3.10.12 (linux/macos)</span>
+<span class="c1"># conda create -p d:\conda\envs\nkuwiki python=3.10.12 (windows)</span>
+</code></pre></div>
+
+<p>step3 激活虚拟环境</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 使用环境名激活</span>
+conda<span class="w"> </span>init
+conda<span class="w"> </span>activate<span class="w"> </span>nkuwiki
+
+<span class="c1"># 或者使用路径激活</span>
+<span class="c1"># conda activate path/to/conda/envs/nkuwiki</span>
+<span class="c1"># 例如 conda activate /opt/conda/envs/nkuwiki (linux/macos)</span>
+<span class="c1"># conda activate d:\conda\envs\nkuwiki (windows)</span>
+</code></pre></div>
+
+<h3 id="_4">安装项目依赖</h3>
+<div class="codehilite"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>requirements.txt
+playwright<span class="w"> </span>install<span class="w"> </span>chromium<span class="w"> </span><span class="c1"># 使用playwright内置浏览器</span>
+</code></pre></div>
+
+<blockquote>
+<p>注意：项目依赖包含多种AI模型接口，如 Claude API、Google Gemini、智谱AI等。确保您有足够的网络连接和磁盘空间来安装这些依赖。 </p>
+</blockquote>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

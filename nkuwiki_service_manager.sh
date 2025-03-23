@@ -34,9 +34,9 @@ function show_help {
     echo ""
     echo -e "${GREEN}== 服务实例管理 ==${NC}"
     echo -e "  ${YELLOW}create${NC} [起始端口] [实例数]   - 创建指定数量的服务实例，从起始端口开始"
-    echo -e "  ${YELLOW}start${NC}                      - 启动所有nkuwiki服务"
+    echo -e "  ${YELLOW}start${NC}                      - 启动所有nkuwiki服务并部署文档"
     echo -e "  ${YELLOW}stop${NC}                       - 停止所有nkuwiki服务"
-    echo -e "  ${YELLOW}restart${NC}                    - 重启所有nkuwiki服务"
+    echo -e "  ${YELLOW}restart${NC} [website]          - 重启所有nkuwiki服务并部署文档，添加website参数仅重启网站服务并部署文档"
     echo -e "  ${YELLOW}status${NC}                     - 显示所有nkuwiki服务状态和端口监听情况"
     echo -e "  ${YELLOW}enable${NC}                     - 启用所有nkuwiki服务开机自启"
     echo -e "  ${YELLOW}disable${NC}                    - 禁用所有nkuwiki服务开机自启"
@@ -46,18 +46,35 @@ function show_help {
     echo -e "  ${YELLOW}cloudflare${NC}                 - 配置Cloudflare IP范围和真实IP获取支持"
     echo -e "  ${YELLOW}setup-ssl${NC}                  - 设置SSL证书路径并验证证书是否存在"
     echo ""
-    echo -e "${GREEN}== 一键操作 ==${NC}"
-    echo -e "  ${YELLOW}deploy${NC} [起始端口] [实例数]  - 一键部署服务和配置(创建服务+负载均衡+SSL配置+启动服务)"
+    echo -e "${GREEN}== 文档管理 ==${NC}"
+    echo -e "  ${YELLOW}docs${NC}                       - 部署文档到网站"
+    echo -e "  ${YELLOW}website${NC} restart            - 重启网站服务并部署文档"
+    echo ""
+    echo -e "${GREEN}== 系统维护 ==${NC}"
     echo -e "  ${YELLOW}cleanup${NC}                    - 清理所有创建的服务(不包括主服务)"
     echo -e "  ${YELLOW}cleanup-config${NC}             - 清理所有生成的Nginx配置文件"
+    echo -e "  ${YELLOW}cleanup-logs${NC} [天数] [选项] - 清理日志文件，可指定天数清理指定时间前的日志，不指定则清理所有日志"
+    echo -e "                               选项: --force/-f 不询问直接清理"
+    echo ""
+    echo -e "${GREEN}== 一键操作 ==${NC}"
+    echo -e "  ${YELLOW}deploy${NC} [起始端口] [实例数]  - 一键部署服务和配置(创建服务+负载均衡+SSL配置+启动服务+部署文档)"
     echo -e "  ${YELLOW}help${NC}                       - 显示此帮助信息"
     echo ""
     echo -e "${GREEN}== 使用示例 ==${NC}"
     echo -e "  $0 create 8000 4           - 创建4个服务，监听端口8000-8003"
     echo -e "  $0 nginx 8000 4            - 为端口8000-8003生成Nginx负载均衡配置"
-    echo -e "  $0 deploy 8000 4           - 一键部署4个服务实例并配置Nginx"
+    echo -e "  $0 deploy 8000 4           - 一键部署4个服务实例并配置Nginx(含文档部署)"
+    echo -e "  $0 docs                    - 仅部署文档到网站"
+    echo -e "  $0 restart website         - 仅重启网站服务并部署文档"
+    echo -e "  $0 website restart         - 仅重启网站服务并部署文档(替代写法)"
+    echo -e "  $0 start                   - 启动所有服务并部署文档"
+    echo -e "  $0 restart                 - 重启所有服务并部署文档"
     echo -e "  $0 status                  - 显示所有服务状态和端口监听情况"
     echo -e "  $0 cleanup && $0 cleanup-config - 完全清理服务和配置"
+    echo -e "  $0 cleanup-logs            - 清理所有日志文件"
+    echo -e "  $0 cleanup-logs 7          - 清理7天前的日志文件"
+    echo -e "  $0 cleanup-logs --force    - 强制清理所有日志文件，不询问确认"
+    echo -e "  $0 cleanup-logs 7 --force  - 强制清理7天前的日志文件，不询问确认"
     echo ""
     echo -e "${BLUE}注意事项:${NC}"
     echo -e "  1. 本脚本需要root权限执行"
@@ -65,6 +82,7 @@ function show_help {
     echo -e "  3. 配置使用的域名默认为nkuwiki.com，可在脚本中修改"
     echo -e "  4. SSL证书默认路径为 ${SSL_CERT_PATH} 和 ${SSL_KEY_PATH}"
     echo -e "  5. 使用Cloudflare时，建议设置SSL/TLS模式为Full或Full(Strict)"
+    echo -e "  6. 日志清理功能会操作 ${PROJECT_ROOT:-$(pwd)}/logs 目录"
 }
 
 # 检查是否是root用户
@@ -618,6 +636,10 @@ function start_services {
             echo -e "${YELLOW}查看日志: journalctl -u $failed_service${NC}"
         done
     fi
+    
+    # 部署文档并重启网站
+    echo -e "${BLUE}更新网站和文档...${NC}"
+    deploy_docs || echo -e "${YELLOW}文档部署跳过或失败，网站可能需要手动更新${NC}"
 }
 
 # 配置Nginx
@@ -656,47 +678,34 @@ function configure_nginx {
 
 # 一键部署
 function deploy {
-    local start_port=$1
-    local count=$2
-    
-    # 设置默认值
-    start_port=${start_port:-8000}
-    count=${count:-8}
-    
-    echo -e "${BLUE}一键部署nkuwiki服务 (端口: $start_port, 实例数: $count)${NC}"
-    
-    # 1. 创建服务文件
-    create_service "$start_port" "$count"
-    
-    # 2. 配置Nginx
-    configure_nginx "$start_port" "$count"
-    
-    # 3. 重新加载Nginx配置
-    echo -e "${BLUE}重新加载Nginx配置...${NC}"
-    nginx -t && systemctl reload nginx
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}Nginx配置测试失败，请检查配置${NC}"
-        return 1
+    if [ $# -lt 2 ]; then
+        echo -e "${RED}错误: 需要起始端口和实例数参数${NC}"
+        exit 1
     fi
+    
+    local start_port=$1
+    local num_instance=$2
+    
+    # 1. 创建所有服务
+    create_service $start_port $num_instance
+    
+    # 2. 生成Nginx配置
+    generate_nginx_config $start_port $num_instance
+    
+    # 3. 生成Cloudflare配置
+    generate_cloudflare_config
     
     # 4. 启动所有服务
     start_services
     
-    # 5. 启用所有服务开机自启
-    echo -e "${BLUE}设置所有服务开机自启...${NC}"
-    systemctl enable nkuwiki.service
+    # 5. 设置开机自启
+    enable_services
     
-    for service in $(get_all_services); do
-        # 跳过主服务，已在上面处理
-        if [ "$service" = "nkuwiki.service" ]; then
-            continue
-        fi
-        systemctl enable "$service"
-    done
+    # 6. 部署文档到网站
+    echo -e "${BLUE}部署文档到网站...${NC}"
+    deploy_docs || echo -e "${YELLOW}文档部署跳过或失败，网站可能需要手动更新${NC}"
     
-    # 6. 显示部署结果
-    echo -e "${GREEN}部署完成!${NC}"
-    status_services
+    echo -e "${GREEN}完整部署成功完成!${NC}"
 }
 
 # 停止所有服务
@@ -711,12 +720,46 @@ function stop_services {
 
 # 重启所有服务
 function restart_services {
-    echo -e "${BLUE}重启所有nkuwiki服务...${NC}"
-    for service in $(get_all_services); do
-        echo -e "重启 $service..."
-        systemctl restart $service
+    echo -e "${BLUE}重启所有nkuwiki服务实例...${NC}"
+    
+    # 重启主服务
+    echo -e "${YELLOW}重启 nkuwiki.service...${NC}"
+    systemctl restart nkuwiki.service
+    
+    if ! systemctl is-active nkuwiki.service >/dev/null 2>&1; then
+        echo -e "${RED}重启 nkuwiki.service 失败，检查日志: journalctl -u nkuwiki.service${NC}"
+    else
+        echo -e "${GREEN}主服务 nkuwiki.service 已重启${NC}"
+    fi
+    
+    # 重启其他服务
+    local failed_services=()
+    
+    for service in $(get_all_services | grep -v "^nkuwiki.service$"); do
+        echo -e "${YELLOW}重启 $service...${NC}"
+        systemctl restart "$service"
+        
+        # 检查服务是否成功重启
+        if ! systemctl is-active "$service" >/dev/null 2>&1; then
+            echo -e "${RED}重启 $service 失败${NC}"
+            failed_services+=("$service")
+        else
+            echo -e "${GREEN}服务 $service 已重启${NC}"
+        fi
     done
-    echo -e "${GREEN}所有服务已重启${NC}"
+    
+    # 如果有重启失败的服务，显示错误信息
+    if [ ${#failed_services[@]} -gt 0 ]; then
+        echo -e "${RED}以下服务重启失败:${NC}"
+        for failed_service in "${failed_services[@]}"; do
+            echo -e "${RED}- $failed_service${NC}"
+            echo -e "${YELLOW}查看日志: journalctl -u $failed_service${NC}"
+        done
+    fi
+    
+    # 部署文档并重启网站
+    echo -e "${BLUE}更新网站和文档...${NC}"
+    deploy_docs || echo -e "${YELLOW}文档部署跳过或失败，网站可能需要手动更新${NC}"
 }
 
 # 显示所有服务状态
@@ -869,6 +912,201 @@ function cleanup_config {
     echo -e "${GREEN}所有配置文件已清理${NC}"
 }
 
+# 清理日志文件
+function cleanup_logs {
+    local days=$1
+    local force=$2
+    
+    # 获取项目根目录
+    if [ -z "$PROJECT_ROOT" ]; then
+        PROJECT_ROOT="$(pwd)"
+    fi
+    
+    LOGS_DIR="${PROJECT_ROOT}/logs"
+    
+    # 检查日志目录是否存在
+    if [ ! -d "$LOGS_DIR" ]; then
+        echo -e "${YELLOW}警告: 日志目录不存在 ${LOGS_DIR}${NC}"
+        echo -e "${BLUE}创建日志目录...${NC}"
+        mkdir -p "$LOGS_DIR"
+        echo -e "${GREEN}日志目录已创建${NC}"
+        return 0
+    fi
+    
+    # 统计日志文件大小和数量
+    total_size=$(du -sh "$LOGS_DIR" | cut -f1)
+    total_files=$(find "$LOGS_DIR" -type f | wc -l)
+    
+    echo -e "${BLUE}日志目录信息:${NC}"
+    echo -e "  目录: ${LOGS_DIR}"
+    echo -e "  文件总数: ${total_files}"
+    echo -e "  总大小: ${total_size}"
+    
+    # 根据不同的清理策略执行清理
+    if [ -z "$days" ]; then
+        # 清理所有日志文件
+        if [ "$force" != "force" ]; then
+            echo -e "${YELLOW}准备清理所有日志文件...${NC}"
+            read -p "确认清理所有日志文件? (y/n): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo -e "${RED}操作已取消${NC}"
+                return 1
+            fi
+        else
+            echo -e "${YELLOW}强制模式: 清理所有日志文件...${NC}"
+        fi
+        
+        echo -e "${BLUE}清理所有日志文件...${NC}"
+        find "$LOGS_DIR" -type f -name "*.log" -delete
+        find "$LOGS_DIR" -type f -name "*.log.*" -delete
+        echo -e "${GREEN}所有日志文件已清理完成${NC}"
+    else
+        # 清理指定天数前的日志
+        if [ "$force" != "force" ]; then
+            echo -e "${YELLOW}准备清理 $days 天前的日志文件...${NC}"
+            read -p "确认清理 $days 天前的日志文件? (y/n): " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                echo -e "${RED}操作已取消${NC}"
+                return 1
+            fi
+        else
+            echo -e "${YELLOW}强制模式: 清理 $days 天前的日志文件...${NC}"
+        fi
+        
+        echo -e "${BLUE}清理 $days 天前的日志文件...${NC}"
+        find "$LOGS_DIR" -type f -name "*.log" -mtime +$days -delete
+        find "$LOGS_DIR" -type f -name "*.log.*" -mtime +$days -delete
+        echo -e "${GREEN}$days 天前的日志文件已清理完成${NC}"
+    fi
+    
+    # 清理后的统计
+    new_total_size=$(du -sh "$LOGS_DIR" | cut -f1)
+    new_total_files=$(find "$LOGS_DIR" -type f | wc -l)
+    
+    echo -e "${BLUE}清理后信息:${NC}"
+    echo -e "  文件总数: ${new_total_files} (清理了 $((total_files - new_total_files)) 个文件)"
+    echo -e "  总大小: ${new_total_size}"
+    
+    return 0
+}
+
+# 部署文档到网站
+function deploy_docs {
+    echo -e "${BLUE}=== 开始部署文档到网站 ===${NC}"
+    
+    # 获取项目根目录
+    if [ -z "$PROJECT_ROOT" ]; then
+        PROJECT_ROOT="$(pwd)"
+    fi
+    
+    WEBSITE_DIR="${PROJECT_ROOT}/services/website"
+    DOCS_DIR="${PROJECT_ROOT}/docs"
+    
+    # 1. 检查文档目录是否存在
+    if [ ! -d "$DOCS_DIR" ]; then
+        echo -e "${RED}错误: 文档目录不存在 ${DOCS_DIR}${NC}"
+        exit 1
+    fi
+    
+    # 2. 检查文档转换脚本是否存在
+    if [ ! -f "${WEBSITE_DIR}/markdown_to_html.py" ]; then
+        echo -e "${RED}错误: 文档转换脚本不存在 ${WEBSITE_DIR}/markdown_to_html.py${NC}"
+        exit 1
+    fi
+    
+    # 3. 检查文档页面是否存在
+    if [ ! -f "${WEBSITE_DIR}/docs.html" ]; then
+        echo -e "${RED}错误: 文档页面不存在 ${WEBSITE_DIR}/docs.html${NC}"
+        exit 1
+    fi
+    
+    # 4. 创建markdown目录（如果不存在）
+    MARKDOWN_DIR="${WEBSITE_DIR}/markdown"
+    if [ ! -d "$MARKDOWN_DIR" ]; then
+        echo -e "${BLUE}创建markdown目录...${NC}"
+        mkdir -p "$MARKDOWN_DIR"
+    fi
+    
+    # 5. 安装依赖
+    echo -e "${BLUE}检查并安装python依赖...${NC}"
+    if ! command -v pip &> /dev/null && ! command -v pip3 &> /dev/null; then
+        echo -e "${YELLOW}未检测到pip，正在安装...${NC}"
+        apt-get update && apt-get install -y python3-pip
+    fi
+    
+    pip install markdown 2>/dev/null || pip3 install markdown 2>/dev/null
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}安装markdown依赖失败${NC}"
+        exit 1
+    fi
+    
+    # 6. 运行转换脚本
+    echo -e "${BLUE}运行markdown转换脚本...${NC}"
+    cd "$WEBSITE_DIR"
+    python markdown_to_html.py || python3 markdown_to_html.py
+    
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}文档转换失败，请检查错误信息${NC}"
+        cd "$PROJECT_ROOT"
+        exit 1
+    fi
+    
+    echo -e "${GREEN}文档转换完成！${NC}"
+    
+    # 7. 确保文档目录权限正确
+    echo -e "${BLUE}设置文档目录权限...${NC}"
+    chown -R www-data:www-data "$MARKDOWN_DIR" 2>/dev/null
+    chmod -R 755 "$MARKDOWN_DIR" 2>/dev/null
+    
+    # 8. 重启网站服务
+    echo -e "${BLUE}重启网站服务...${NC}"
+    if systemctl is-active --quiet nginx; then
+        systemctl restart nginx
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}重启Nginx失败，请手动检查${NC}"
+        else
+            echo -e "${GREEN}Nginx服务已重启${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Nginx服务未运行，跳过重启${NC}"
+    fi
+    
+    echo -e "${GREEN}文档部署完成! 文档可在 /docs.html 访问${NC}"
+    
+    # 返回原目录
+    cd "$PROJECT_ROOT"
+}
+
+# 重启网站服务
+function restart_website {
+    echo -e "${BLUE}重启网站服务...${NC}"
+    
+    # 检查Nginx是否运行
+    if systemctl is-active --quiet nginx; then
+        systemctl restart nginx
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}重启Nginx失败，请手动检查${NC}"
+            return 1
+        else
+            echo -e "${GREEN}Nginx服务已重启${NC}"
+        fi
+    else
+        echo -e "${YELLOW}Nginx服务未运行${NC}"
+        systemctl start nginx
+        if [ $? -ne 0 ]; then
+            echo -e "${RED}启动Nginx失败，请手动检查${NC}"
+            return 1
+        else
+            echo -e "${GREEN}Nginx服务已启动${NC}"
+        fi
+    fi
+    
+    return 0
+}
+
 # 主函数
 function main {
     check_root
@@ -894,7 +1132,14 @@ function main {
             stop_services
             ;;
         restart)
-            restart_services
+            if [ $# -gt 1 ] && [ "$2" = "website" ]; then
+                # 重启网站并部署文档
+                echo -e "${BLUE}重启网站并部署文档...${NC}"
+                restart_website
+                deploy_docs || echo -e "${YELLOW}文档部署跳过或失败${NC}"
+            else
+                restart_services
+            fi
             ;;
         status)
             status_services
@@ -919,6 +1164,21 @@ function main {
         setup-ssl)
             setup_ssl
             ;;
+        docs)
+            deploy_docs
+            ;;
+        website)
+            if [ $# -gt 1 ] && [ "$2" = "restart" ]; then
+                # 重启网站并部署文档
+                echo -e "${BLUE}重启网站并部署文档...${NC}"
+                restart_website
+                deploy_docs || echo -e "${YELLOW}文档部署跳过或失败${NC}"
+            else
+                echo -e "${RED}错误: website命令需要子命令 (restart)${NC}"
+                show_help
+                exit 1
+            fi
+            ;;
         deploy)
             if [ $# -lt 3 ]; then
                 echo -e "${RED}错误: deploy命令需要起始端口和实例数参数${NC}"
@@ -932,6 +1192,28 @@ function main {
             ;;
         cleanup-config)
             cleanup_config
+            ;;
+        cleanup-logs)
+            local force_flag=""
+            local days_value=""
+            
+            # 检查参数
+            shift  # 移除第一个参数 (cleanup-logs)
+            while [ $# -gt 0 ]; do
+                case "$1" in
+                    --force|-f)
+                        force_flag="force"
+                        ;;
+                    *)
+                        if [[ "$1" =~ ^[0-9]+$ ]]; then
+                            days_value="$1"
+                        fi
+                        ;;
+                esac
+                shift
+            done
+            
+            cleanup_logs "$days_value" "$force_flag"
             ;;
         help)
             show_help

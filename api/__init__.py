@@ -4,15 +4,17 @@ API模块
 """
 from fastapi import APIRouter
 
-# 创建各模块的路由器
+# 创建各种路由器
+health_router = APIRouter(tags=["health"])
 wxapp_router = APIRouter(prefix="/wxapp", tags=["wxapp"])
+health_router = APIRouter(tags=["health"])
 mysql_router = APIRouter(prefix="/mysql", tags=["mysql"])
 agent_router = APIRouter(prefix="/agent", tags=["agent"])
+admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 # 将这些路由器暴露给外部
 __all__ = [
     "wxapp_router",
-    "mysql_router",
     "agent_router",
     "register_routers",
 ]
@@ -28,9 +30,11 @@ def register_routers(app):
     # 注意：健康检查端点已在app.py中定义
     # 不再重复注册/health端点
         
+    app.include_router(health_router)
     app.include_router(wxapp_router)
     app.include_router(mysql_router)
     app.include_router(agent_router)
+    app.include_router(admin_router)
 
 # 导入各子模块的路由，这会触发子模块中的路由注册
 # 使用明确的导入代替通配符导入

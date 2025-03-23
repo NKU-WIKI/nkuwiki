@@ -17,7 +17,8 @@ from api.wxapp.common_utils import format_datetime, prepare_db_data, process_jso
 # 导入数据库操作函数
 from etl.load.py_mysql import (
     insert_record, update_record, delete_record, 
-    query_records, count_records, get_record_by_id
+    query_records, count_records, get_record_by_id,
+    execute_raw_query
 )
 
 # 帖子模型

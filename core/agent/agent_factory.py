@@ -11,6 +11,47 @@ logger = register_logger("core.agent.factory")
 from core.agent.agent import Agent
 from config import Config
 
+class AgentFactory:
+    """智能体工厂类，负责创建和管理不同类型的智能体实例"""
+    
+    _instance_cache = {}  # 智能体实例缓存
+    
+    @classmethod
+    def get_agent(cls, agent_type: str, **kwargs) -> Agent:
+        """
+        获取智能体实例，优先从缓存获取，没有则创建新实例
+        
+        Args:
+            agent_type: 智能体类型，如coze、openai等
+            **kwargs: 附加参数
+            
+        Returns:
+            Agent: 智能体实例
+        """
+        if not agent_type:
+            logger.warning("未指定智能体类型，使用默认智能体")
+            agent_type = "coze"  # 默认使用coze
+            
+        agent_type = agent_type.lower()
+        
+        # 检查缓存
+        if agent_type in cls._instance_cache:
+            logger.debug(f"从缓存获取{agent_type}智能体")
+            return cls._instance_cache[agent_type]
+        
+        # 创建新实例
+        agent = create_agent(agent_type, **kwargs)
+        
+        # 缓存实例
+        cls._instance_cache[agent_type] = agent
+        
+        return agent
+    
+    @classmethod
+    def clear_cache(cls):
+        """清空智能体实例缓存"""
+        cls._instance_cache.clear()
+
 def create_agent(agent_type: str, **kwargs) -> Agent:
     """
     创建智能体实例
@@ -69,6 +110,10 @@ def create_agent(agent_type: str, **kwargs) -> Agent:
         elif agent_type == "xunfei":
             from core.agent.xunfei.xunfei_spark_agent import XunfeiSparkAgent
             return XunfeiSparkAgent()
+        elif agent_type == "flash" or agent_type == "rewriter":
+            # 查询改写和闪回智能体，默认使用coze实现
+            from core.agent.coze.coze_agent import CozeAgent
+            return CozeAgent()
         elif agent_type == "coze":
             from core.agent.coze.coze_agent import CozeAgent
             # 直接返回CozeAgent实例，CozeAgent自己会从config获取必要参数

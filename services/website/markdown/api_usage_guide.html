@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>nkuwiki API使用指南 | 南开WIKI</title>
+    <meta name="description" content="nkuwiki API服务是南开百科知识平台的后端服务接口，提供知识检索、智能问答等功能。本指南介绍如何使用这些API。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="nkuwiki-api">nkuwiki API使用指南</h1>
+<h2 id="_1">简介</h2>
+<p>nkuwiki API服务是南开百科知识平台的后端服务接口，提供知识检索、智能问答等功能。本指南介绍如何使用这些API。</p>
+<h2 id="api">API服务基本信息</h2>
+<ul>
+<li><strong>API基础URL</strong>: <code>http://服务器IP:8000</code></li>
+<li><strong>API版本</strong>: 1.0.0</li>
+<li><strong>描述</strong>: 南开百科知识平台API服务</li>
+</ul>
+<h2 id="api_1">启动API服务</h2>
+<p>API服务可通过以下命令启动：</p>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>app.py<span class="w"> </span>--api<span class="w"> </span>--host<span class="w"> </span><span class="m">0</span>.0.0.0<span class="w"> </span>--port<span class="w"> </span><span class="m">8000</span>
+</code></pre></div>
+
+<p>参数说明：</p>
+<ul>
+<li><code>--api</code>: 启动API服务</li>
+<li><code>--host</code>: 指定服务主机地址，默认为0.0.0.0</li>
+<li><code>--port</code>: 指定服务端口，默认为8000</li>
+</ul>
+<h2 id="api_2">可用API端点</h2>
+<h3 id="1">1. 根路径</h3>
+<ul>
+<li><strong>URL</strong>: <code>/</code></li>
+<li><strong>方法</strong>: GET</li>
+<li><strong>描述</strong>: 返回API服务基本信息</li>
+<li><strong>响应示例</strong>:</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;nkuwiki API&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0.0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;description&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开百科知识平台API服务&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="2">2. 健康检查</h3>
+<ul>
+<li><strong>URL</strong>: <code>/health</code></li>
+<li><strong>方法</strong>: GET</li>
+<li><strong>描述</strong>: 检查API服务运行状态</li>
+<li><strong>响应示例</strong>:</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;ok&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;timestamp&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01T12:00:00.000000&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;database&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;connected&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="3-mysql-api">3. MySQL API</h3>
+<p>访问MySQL数据库的相关API，详见<a href="../etl/api/mysql_api.md">MySQL API文档</a>。</p>
+<h3 id="4-agent-api">4. Agent API</h3>
+<p>访问智能体功能的相关API，详见<a href="../core/api/agent_api.md">Agent API文档</a>。</p>
+<h2 id="cors">跨域资源共享(CORS)</h2>
+<p>API服务配置了CORS中间件，允许来自所有源的请求访问API。在生产环境中，建议限制允许访问的源。</p>
+<h2 id="_2">错误处理</h2>
+<p>API返回标准HTTP状态码：</p>
+<ul>
+<li>200: 请求成功</li>
+<li>400: 请求参数有误</li>
+<li>401: 未授权</li>
+<li>403: 禁止访问</li>
+<li>404: 资源不存在</li>
+<li>500: 服务器内部错误</li>
+</ul>
+<p>错误响应将包含错误描述信息。</p>
+<h2 id="_3">日志与监控</h2>
+<p>API服务使用loguru进行日志记录，日志文件位于<code>logs/app.log</code>，每天轮换一次，保留7天的日志记录。</p>
+<h2 id="_4">问题排查</h2>
+<p>如遇到API服务问题，请：</p>
+<ol>
+<li>检查健康检查端点返回状态</li>
+<li>查看日志文件获取详细错误信息</li>
+<li>确认数据库连接状态</li>
+</ol>
+<h2 id="_5">注意事项</h2>
+<ol>
+<li>所有查询接口均会进行SQL注入防护</li>
+<li>自定义查询仅支持SELECT操作，不支持数据修改操作</li>
+<li>默认查询结果限制为100条记录，可通过limit参数调整</li>
+</ol>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

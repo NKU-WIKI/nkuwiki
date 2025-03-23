@@ -1,0 +1,3888 @@
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "nkuwiki API",
+        "description": "\u5357\u5f00\u767e\u79d1\u77e5\u8bc6\u5e73\u53f0API\u670d\u52a1",
+        "version": "1.0.0"
+    },
+    "paths": {
+        "/wxapp/users/me": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u5f53\u524d\u7528\u6237\u4fe1\u606f",
+                "description": "\u83b7\u53d6\u5f53\u524d\u767b\u5f55\u7528\u6237\u4fe1\u606f",
+                "operationId": "get_current_user_wxapp_users_me_get",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Current User Wxapp Users Me Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users/{openid}": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u7528\u6237\u4fe1\u606f",
+                "description": "\u83b7\u53d6\u6307\u5b9a\u7528\u6237\u4fe1\u606f",
+                "operationId": "get_user_wxapp_users__openid__get",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get User Wxapp Users  Openid  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u66f4\u65b0\u7528\u6237\u4fe1\u606f",
+                "description": "\u66f4\u65b0\u7528\u6237\u4fe1\u606f",
+                "operationId": "update_user_wxapp_users__openid__put",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UserUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/UserResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u5220\u9664\u7528\u6237",
+                "description": "\u5220\u9664\u7528\u6237\uff08\u6807\u8bb0\u5220\u9664\uff09",
+                "operationId": "delete_user_wxapp_users__openid__delete",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Delete User Wxapp Users  Openid  Delete"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u67e5\u8be2\u7528\u6237\u5217\u8868",
+                "description": "\u83b7\u53d6\u7528\u6237\u5217\u8868",
+                "operationId": "list_users_wxapp_users_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236",
+                            "default": 20,
+                            "title": "Limit"
+                        },
+                        "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236"
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "\u5206\u9875\u504f\u79fb\u91cf",
+                            "default": 0,
+                            "title": "Offset"
+                        },
+                        "description": "\u5206\u9875\u504f\u79fb\u91cf"
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u7528\u6237\u72b6\u6001: 1-\u6b63\u5e38, 0-\u7981\u7528",
+                            "title": "Status"
+                        },
+                        "description": "\u7528\u6237\u72b6\u6001: 1-\u6b63\u5e38, 0-\u7981\u7528"
+                    },
+                    {
+                        "name": "order_by",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u6392\u5e8f\u65b9\u5f0f",
+                            "default": "create_time DESC",
+                            "title": "Order By"
+                        },
+                        "description": "\u6392\u5e8f\u65b9\u5f0f"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response List Users Wxapp Users Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users/{openid}/follow-stats": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u7528\u6237\u5173\u6ce8\u7edf\u8ba1",
+                "description": "\u83b7\u53d6\u7528\u6237\u5173\u6ce8\u548c\u7c89\u4e1d\u6570\u91cf\u7edf\u8ba1\n- \u8fd4\u56de\u7528\u6237\u5173\u6ce8\u7684\u4eba\u6570\u548c\u7c89\u4e1d\u6570\u91cf",
+                "operationId": "get_user_follow_stats_wxapp_users__openid__follow_stats_get",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get User Follow Stats Wxapp Users  Openid  Follow Stats Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users/{openid}/token": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u7528\u6237Token\u6570\u91cf",
+                "description": "\u83b7\u53d6\u7528\u6237Token\u6570\u91cf\n- \u8fd4\u56de\u7528\u6237\u7684Token\u4f59\u989d",
+                "operationId": "get_user_token_wxapp_users__openid__token_get",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get User Token Wxapp Users  Openid  Token Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u66f4\u65b0\u7528\u6237Token\u6570\u91cf",
+                "description": "\u66f4\u65b0\u7528\u6237\u7684Token\u6570\u91cf\n\n- \u652f\u6301\u589e\u52a0\u6216\u8bbe\u7f6e\u5177\u4f53\u6570\u503c\n- \u53c2\u6570:\n  - action: \"add\"\u8868\u793a\u589e\u52a0\uff0c\"set\"\u8868\u793a\u8bbe\u7f6e\n  - amount: \u589e\u52a0\u6216\u8bbe\u7f6e\u7684\u6570\u91cf\n  \n\u8bf7\u6c42\u793a\u4f8b:\n```json\n{\n    \"action\": \"add\",\n    \"amount\": 10\n}\n```",
+                "operationId": "update_user_token_wxapp_users__openid__token_post",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "description": "Token\u66f4\u65b0\u6570\u636e",
+                                "title": "Token Data"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Update User Token Wxapp Users  Openid  Token Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users/sync": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u540c\u6b65\u5fae\u4fe1\u4e91\u7528\u6237",
+                "description": "\u540c\u6b65\u5fae\u4fe1\u4e91\u6570\u636e\u5e93\u7528\u6237\u5230\u4e3b\u670d\u52a1\u5668\n\n\u652f\u6301\u4f7f\u7528\u4e91\u6570\u636e\u5e93ID\u4f5c\u4e3a\u4e3b\u952e\uff0c\u800c\u4e0d\u518d\u4f7f\u7528\u670d\u52a1\u5668\u751f\u6210\u7684ID\n\n\u8bf7\u6c42\u5934:\n- X-Cloud-Source: \u53ef\u9009\uff0c\u6807\u8bb0\u6765\u6e90\n- X-Prefer-Cloud-ID: \u53ef\u9009\uff0c\u6807\u8bb0\u4f18\u5148\u4f7f\u7528\u4e91ID",
+                "operationId": "sync_wxapp_user_wxapp_users_sync_post",
+                "parameters": [
+                    {
+                        "name": "X-Cloud-Source",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "title": "X-Cloud-Source"
+                        }
+                    },
+                    {
+                        "name": "X-Prefer-Cloud-ID",
+                        "in": "header",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "boolean"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "default": false,
+                            "title": "X-Prefer-Cloud-Id"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/UserSyncRequest"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Sync Wxapp User Wxapp Users Sync Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/posts": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u521b\u5efa\u5e16\u5b50",
+                "description": "\u521b\u5efa\u65b0\u5e16\u5b50",
+                "operationId": "create_post_wxapp_posts_post",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PostCreate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Create Post Wxapp Posts Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u67e5\u8be2\u5e16\u5b50\u5217\u8868",
+                "description": "\u83b7\u53d6\u5e16\u5b50\u5217\u8868",
+                "operationId": "list_posts_wxapp_posts_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236",
+                            "default": 20,
+                            "title": "Limit"
+                        },
+                        "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236"
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "\u5206\u9875\u504f\u79fb\u91cf",
+                            "default": 0,
+                            "title": "Offset"
+                        },
+                        "description": "\u5206\u9875\u504f\u79fb\u91cf"
+                    },
+                    {
+                        "name": "openid",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u6309\u7528\u6237openid\u7b5b\u9009",
+                            "title": "Openid"
+                        },
+                        "description": "\u6309\u7528\u6237openid\u7b5b\u9009"
+                    },
+                    {
+                        "name": "category_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u6309\u5206\u7c7bID\u7b5b\u9009",
+                            "title": "Category Id"
+                        },
+                        "description": "\u6309\u5206\u7c7bID\u7b5b\u9009"
+                    },
+                    {
+                        "name": "tag",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u6309\u6807\u7b7e\u7b5b\u9009",
+                            "title": "Tag"
+                        },
+                        "description": "\u6309\u6807\u7b7e\u7b5b\u9009"
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u5e16\u5b50\u72b6\u6001: 1-\u6b63\u5e38, 0-\u7981\u7528",
+                            "default": 1,
+                            "title": "Status"
+                        },
+                        "description": "\u5e16\u5b50\u72b6\u6001: 1-\u6b63\u5e38, 0-\u7981\u7528"
+                    },
+                    {
+                        "name": "order_by",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u6392\u5e8f\u65b9\u5f0f",
+                            "default": "update_time DESC",
+                            "title": "Order By"
+                        },
+                        "description": "\u6392\u5e8f\u65b9\u5f0f"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response List Posts Wxapp Posts Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/posts/{post_id}": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u5e16\u5b50\u8be6\u60c5",
+                "description": "\u83b7\u53d6\u6307\u5b9a\u5e16\u5b50\u8be6\u60c5",
+                "operationId": "get_post_wxapp_posts__post_id__get",
+                "parameters": [
+                    {
+                        "name": "post_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u5e16\u5b50ID",
+                            "title": "Post Id"
+                        },
+                        "description": "\u5e16\u5b50ID"
+                    },
+                    {
+                        "name": "update_view",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "\u662f\u5426\u66f4\u65b0\u6d4f\u89c8\u91cf",
+                            "default": true,
+                            "title": "Update View"
+                        },
+                        "description": "\u662f\u5426\u66f4\u65b0\u6d4f\u89c8\u91cf"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Post Wxapp Posts  Post Id  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u66f4\u65b0\u5e16\u5b50",
+                "description": "\u66f4\u65b0\u5e16\u5b50\u4fe1\u606f",
+                "operationId": "update_post_wxapp_posts__post_id__put",
+                "parameters": [
+                    {
+                        "name": "post_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u5e16\u5b50ID",
+                            "title": "Post Id"
+                        },
+                        "description": "\u5e16\u5b50ID"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/PostUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Update Post Wxapp Posts  Post Id  Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u5220\u9664\u5e16\u5b50",
+                "description": "\u5220\u9664\u5e16\u5b50\uff08\u6807\u8bb0\u5220\u9664\uff09",
+                "operationId": "delete_post_wxapp_posts__post_id__delete",
+                "parameters": [
+                    {
+                        "name": "post_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u5e16\u5b50ID",
+                            "title": "Post Id"
+                        },
+                        "description": "\u5e16\u5b50ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Delete Post Wxapp Posts  Post Id  Delete"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/posts/{post_id}/like": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u70b9\u8d5e/\u53d6\u6d88\u70b9\u8d5e\u5e16\u5b50",
+                "description": "\u70b9\u8d5e\u6216\u53d6\u6d88\u70b9\u8d5e\u5e16\u5b50",
+                "operationId": "like_post_wxapp_posts__post_id__like_post",
+                "parameters": [
+                    {
+                        "name": "post_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u5e16\u5b50ID",
+                            "title": "Post Id"
+                        },
+                        "description": "\u5e16\u5b50ID"
+                    },
+                    {
+                        "name": "openid",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Like Post Wxapp Posts  Post Id  Like Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/posts/{post_id}/favorite": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u6536\u85cf/\u53d6\u6d88\u6536\u85cf\u5e16\u5b50",
+                "description": "\u6536\u85cf\u6216\u53d6\u6d88\u6536\u85cf\u5e16\u5b50",
+                "operationId": "favorite_post_wxapp_posts__post_id__favorite_post",
+                "parameters": [
+                    {
+                        "name": "post_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u5e16\u5b50ID",
+                            "title": "Post Id"
+                        },
+                        "description": "\u5e16\u5b50ID"
+                    },
+                    {
+                        "name": "openid",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    },
+                    {
+                        "name": "is_favorite",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "boolean",
+                            "description": "\u662f\u5426\u6536\u85cf\uff0c\u9ed8\u8ba4\u4e3a\u6536\u85cf\u64cd\u4f5c",
+                            "default": true,
+                            "title": "Is Favorite"
+                        },
+                        "description": "\u662f\u5426\u6536\u85cf\uff0c\u9ed8\u8ba4\u4e3a\u6536\u85cf\u64cd\u4f5c"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Favorite Post Wxapp Posts  Post Id  Favorite Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/comments": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u521b\u5efa\u8bc4\u8bba",
+                "description": "\u521b\u5efa\u65b0\u8bc4\u8bba\u6216\u56de\u590d\u5df2\u6709\u8bc4\u8bba",
+                "operationId": "create_comment_wxapp_comments_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CommentCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Create Comment Wxapp Comments Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/comments/{comment_id}": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u8bc4\u8bba\u8be6\u60c5",
+                "description": "\u83b7\u53d6\u6307\u5b9a\u8bc4\u8bba\u8be6\u60c5",
+                "operationId": "get_comment_wxapp_comments__comment_id__get",
+                "parameters": [
+                    {
+                        "name": "comment_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u8bc4\u8bbaID",
+                            "title": "Comment Id"
+                        },
+                        "description": "\u8bc4\u8bbaID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Comment Wxapp Comments  Comment Id  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u66f4\u65b0\u8bc4\u8bba",
+                "description": "\u66f4\u65b0\u8bc4\u8bba\u5185\u5bb9",
+                "operationId": "update_comment_wxapp_comments__comment_id__put",
+                "parameters": [
+                    {
+                        "name": "comment_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u8bc4\u8bbaID",
+                            "title": "Comment Id"
+                        },
+                        "description": "\u8bc4\u8bbaID"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/CommentUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Update Comment Wxapp Comments  Comment Id  Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u5220\u9664\u8bc4\u8bba",
+                "description": "\u5220\u9664\u8bc4\u8bba\uff08\u6807\u8bb0\u5220\u9664\uff09",
+                "operationId": "delete_comment_wxapp_comments__comment_id__delete",
+                "parameters": [
+                    {
+                        "name": "comment_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u8bc4\u8bbaID",
+                            "title": "Comment Id"
+                        },
+                        "description": "\u8bc4\u8bbaID"
+                    },
+                    {
+                        "name": "openid",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u7528\u6237openid\uff0c\u7528\u4e8e\u6743\u9650\u9a8c\u8bc1",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid\uff0c\u7528\u4e8e\u6743\u9650\u9a8c\u8bc1"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Delete Comment Wxapp Comments  Comment Id  Delete"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/posts/{post_id}/comments": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u5e16\u5b50\u8bc4\u8bba\u5217\u8868",
+                "description": "\u83b7\u53d6\u5e16\u5b50\u8bc4\u8bba\u5217\u8868\u6216\u7279\u5b9a\u8bc4\u8bba\u7684\u56de\u590d\u5217\u8868",
+                "operationId": "list_post_comments_wxapp_posts__post_id__comments_get",
+                "parameters": [
+                    {
+                        "name": "post_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u5e16\u5b50ID",
+                            "title": "Post Id"
+                        },
+                        "description": "\u5e16\u5b50ID"
+                    },
+                    {
+                        "name": "parent_id",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "integer"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u7236\u8bc4\u8bbaID\uff0c\u5982\u679c\u83b7\u53d6\u6307\u5b9a\u8bc4\u8bba\u7684\u56de\u590d",
+                            "title": "Parent Id"
+                        },
+                        "description": "\u7236\u8bc4\u8bbaID\uff0c\u5982\u679c\u83b7\u53d6\u6307\u5b9a\u8bc4\u8bba\u7684\u56de\u590d"
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236",
+                            "default": 20,
+                            "title": "Limit"
+                        },
+                        "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236"
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "\u5206\u9875\u504f\u79fb\u91cf",
+                            "default": 0,
+                            "title": "Offset"
+                        },
+                        "description": "\u5206\u9875\u504f\u79fb\u91cf"
+                    },
+                    {
+                        "name": "sort_by",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u6392\u5e8f\u65b9\u5f0f: latest-\u6700\u65b0, oldest-\u6700\u65e9, likes-\u6700\u591a\u70b9\u8d5e",
+                            "default": "latest",
+                            "title": "Sort By"
+                        },
+                        "description": "\u6392\u5e8f\u65b9\u5f0f: latest-\u6700\u65b0, oldest-\u6700\u65e9, likes-\u6700\u591a\u70b9\u8d5e"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response List Post Comments Wxapp Posts  Post Id  Comments Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/comments/{comment_id}/like": {
+            "put": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u70b9\u8d5e\u8bc4\u8bba",
+                "description": "\u70b9\u8d5e\u6216\u53d6\u6d88\u70b9\u8d5e\u8bc4\u8bba",
+                "operationId": "like_comment_wxapp_comments__comment_id__like_put",
+                "parameters": [
+                    {
+                        "name": "comment_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u8bc4\u8bbaID",
+                            "title": "Comment Id"
+                        },
+                        "description": "\u8bc4\u8bbaID"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_like_comment_wxapp_comments__comment_id__like_put"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Like Comment Wxapp Comments  Comment Id  Like Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/notifications": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u521b\u5efa\u901a\u77e5",
+                "description": "\u521b\u5efa\u65b0\u901a\u77e5",
+                "operationId": "create_notification_wxapp_notifications_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/NotificationCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Create Notification Wxapp Notifications Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/notifications/{notification_id}": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u901a\u77e5\u8be6\u60c5",
+                "description": "\u83b7\u53d6\u6307\u5b9a\u901a\u77e5\u8be6\u60c5",
+                "operationId": "get_notification_wxapp_notifications__notification_id__get",
+                "parameters": [
+                    {
+                        "name": "notification_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u901a\u77e5ID",
+                            "title": "Notification Id"
+                        },
+                        "description": "\u901a\u77e5ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Notification Wxapp Notifications  Notification Id  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u66f4\u65b0\u901a\u77e5",
+                "description": "\u66f4\u65b0\u901a\u77e5\u4fe1\u606f",
+                "operationId": "update_notification_wxapp_notifications__notification_id__put",
+                "parameters": [
+                    {
+                        "name": "notification_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u901a\u77e5ID",
+                            "title": "Notification Id"
+                        },
+                        "description": "\u901a\u77e5ID"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/NotificationUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Update Notification Wxapp Notifications  Notification Id  Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u5220\u9664\u901a\u77e5",
+                "description": "\u5220\u9664\u901a\u77e5\uff08\u6807\u8bb0\u5220\u9664\uff09",
+                "operationId": "delete_notification_wxapp_notifications__notification_id__delete",
+                "parameters": [
+                    {
+                        "name": "notification_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u901a\u77e5ID",
+                            "title": "Notification Id"
+                        },
+                        "description": "\u901a\u77e5ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Delete Notification Wxapp Notifications  Notification Id  Delete"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users/{openid}/notifications": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u7528\u6237\u901a\u77e5\u5217\u8868",
+                "description": "\u83b7\u53d6\u7528\u6237\u901a\u77e5\u5217\u8868",
+                "operationId": "list_user_notifications_wxapp_users__openid__notifications_get",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    },
+                    {
+                        "name": "type",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u901a\u77e5\u7c7b\u578b: system-\u7cfb\u7edf\u901a\u77e5, like-\u70b9\u8d5e, comment-\u8bc4\u8bba, follow-\u5173\u6ce8",
+                            "title": "Type"
+                        },
+                        "description": "\u901a\u77e5\u7c7b\u578b: system-\u7cfb\u7edf\u901a\u77e5, like-\u70b9\u8d5e, comment-\u8bc4\u8bba, follow-\u5173\u6ce8"
+                    },
+                    {
+                        "name": "is_read",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "boolean"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u662f\u5426\u5df2\u8bfb: true-\u5df2\u8bfb, false-\u672a\u8bfb",
+                            "title": "Is Read"
+                        },
+                        "description": "\u662f\u5426\u5df2\u8bfb: true-\u5df2\u8bfb, false-\u672a\u8bfb"
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236",
+                            "default": 20,
+                            "title": "Limit"
+                        },
+                        "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236"
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "\u5206\u9875\u504f\u79fb\u91cf",
+                            "default": 0,
+                            "title": "Offset"
+                        },
+                        "description": "\u5206\u9875\u504f\u79fb\u91cf"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response List User Notifications Wxapp Users  Openid  Notifications Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users/{openid}/notifications/read": {
+            "put": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u5c06\u7528\u6237\u901a\u77e5\u6807\u8bb0\u4e3a\u5df2\u8bfb",
+                "description": "\u5c06\u7528\u6237\u901a\u77e5\u6807\u8bb0\u4e3a\u5df2\u8bfb",
+                "operationId": "mark_notifications_as_read_wxapp_users__openid__notifications_read_put",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "anyOf": [
+                                    {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    {
+                                        "type": "null"
+                                    }
+                                ],
+                                "description": "\u901a\u77e5ID\u5217\u8868\uff0c\u5982\u679c\u4e3a\u7a7a\u5219\u6807\u8bb0\u6240\u6709\u672a\u8bfb\u901a\u77e5",
+                                "title": "Notification Ids"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Mark Notifications As Read Wxapp Users  Openid  Notifications Read Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/search": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "Search",
+                "description": "\u6267\u884c\u641c\u7d22\u67e5\u8be2\uff0c\u8fd4\u56de\u6700\u76f8\u5173\u7684\u7ed3\u679c",
+                "operationId": "search_wxapp_search_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SearchQuery"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/SearchResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/index-document": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "Index Document",
+                "description": "\u4e3a\u5fae\u4fe1\u4e91\u5b58\u50a8\u4e2d\u7684\u6587\u4ef6\u5efa\u7acb\u7d22\u5f15\uff0c\u652f\u6301\u591a\u79cd\u6587\u6863\u683c\u5f0f\n\n\u6b64API\u63a5\u6536\u5fae\u4fe1\u4e91\u5b58\u50a8\u7684fileID\uff0c\u4ece\u4e2d\u68c0\u7d22\u6587\u4ef6\u5185\u5bb9\uff0c\u7136\u540e\u5efa\u7acb\u68c0\u7d22\u7d22\u5f15\n\u652f\u6301\u7684\u6587\u4ef6\u683c\u5f0f: PDF, DOCX, TXT, MARKDOWN \u7b49",
+                "operationId": "index_document_wxapp_index_document_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/DocumentIndexRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DocumentIndexResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                },
+                "security": [
+                    {
+                        "HTTPBearer": []
+                    }
+                ]
+            }
+        },
+        "/wxapp/search_post": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u9ad8\u7ea7\u641c\u7d22\u5e16\u5b50",
+                "description": "\u9ad8\u7ea7\u641c\u7d22\u5e16\u5b50\u529f\u80fd\uff0c\u652f\u6301\u591a\u6761\u4ef6\u7075\u6d3b\u641c\u7d22\uff0c\u5305\u62ec\u5173\u952e\u8bcd\u3001\u6807\u9898\u3001\u5185\u5bb9\u3001\u53d1\u5e16\u4eba\u7b49",
+                "operationId": "search_post_wxapp_search_post_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/SearchPostRequest"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Search Post Wxapp Search Post Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/feedback": {
+            "post": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u63d0\u4ea4\u53cd\u9988",
+                "description": "\u63d0\u4ea4\u7528\u6237\u53cd\u9988",
+                "operationId": "create_feedback_wxapp_feedback_post",
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FeedbackCreate"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Create Feedback Wxapp Feedback Post"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/feedback/{feedback_id}": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u53cd\u9988\u8be6\u60c5",
+                "description": "\u83b7\u53d6\u6307\u5b9a\u53cd\u9988\u8be6\u60c5",
+                "operationId": "get_feedback_wxapp_feedback__feedback_id__get",
+                "parameters": [
+                    {
+                        "name": "feedback_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u53cd\u9988ID",
+                            "title": "Feedback Id"
+                        },
+                        "description": "\u53cd\u9988ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Feedback Wxapp Feedback  Feedback Id  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u66f4\u65b0\u53cd\u9988",
+                "description": "\u66f4\u65b0\u53cd\u9988\u4fe1\u606f",
+                "operationId": "update_feedback_wxapp_feedback__feedback_id__put",
+                "parameters": [
+                    {
+                        "name": "feedback_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u53cd\u9988ID",
+                            "title": "Feedback Id"
+                        },
+                        "description": "\u53cd\u9988ID"
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "$ref": "#/components/schemas/FeedbackUpdate"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Update Feedback Wxapp Feedback  Feedback Id  Put"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u5220\u9664\u53cd\u9988",
+                "description": "\u5220\u9664\u53cd\u9988\uff08\u6807\u8bb0\u5220\u9664\uff09",
+                "operationId": "delete_feedback_wxapp_feedback__feedback_id__delete",
+                "parameters": [
+                    {
+                        "name": "feedback_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "description": "\u53cd\u9988ID",
+                            "title": "Feedback Id"
+                        },
+                        "description": "\u53cd\u9988ID"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Delete Feedback Wxapp Feedback  Feedback Id  Delete"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/users/{openid}/feedback": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u7528\u6237\u53cd\u9988\u5217\u8868",
+                "description": "\u83b7\u53d6\u7528\u6237\u53cd\u9988\u5217\u8868",
+                "operationId": "list_user_feedback_wxapp_users__openid__feedback_get",
+                "parameters": [
+                    {
+                        "name": "openid",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u7528\u6237openid",
+                            "title": "Openid"
+                        },
+                        "description": "\u7528\u6237openid"
+                    },
+                    {
+                        "name": "type",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u53cd\u9988\u7c7b\u578b: bug-\u95ee\u9898\u53cd\u9988, suggestion-\u5efa\u8bae, other-\u5176\u4ed6",
+                            "title": "Type"
+                        },
+                        "description": "\u53cd\u9988\u7c7b\u578b: bug-\u95ee\u9898\u53cd\u9988, suggestion-\u5efa\u8bae, other-\u5176\u4ed6"
+                    },
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "null"
+                                }
+                            ],
+                            "description": "\u53cd\u9988\u72b6\u6001: pending-\u5f85\u5904\u7406, processing-\u5904\u7406\u4e2d, resolved-\u5df2\u89e3\u51b3, rejected-\u5df2\u62d2\u7edd",
+                            "title": "Status"
+                        },
+                        "description": "\u53cd\u9988\u72b6\u6001: pending-\u5f85\u5904\u7406, processing-\u5904\u7406\u4e2d, resolved-\u5df2\u89e3\u51b3, rejected-\u5df2\u62d2\u7edd"
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 100,
+                            "minimum": 1,
+                            "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236",
+                            "default": 20,
+                            "title": "Limit"
+                        },
+                        "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236"
+                    },
+                    {
+                        "name": "offset",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "\u5206\u9875\u504f\u79fb\u91cf",
+                            "default": 0,
+                            "title": "Offset"
+                        },
+                        "description": "\u5206\u9875\u504f\u79fb\u91cf"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response List User Feedback Wxapp Users  Openid  Feedback Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/about": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u5e73\u53f0\u4fe1\u606f",
+                "description": "\u83b7\u53d6\u5e73\u53f0\u57fa\u672c\u4fe1\u606f\uff0c\u5305\u62ec\u5e73\u53f0\u540d\u79f0\u3001\u63cf\u8ff0\u3001\u7248\u672c\u3001\u56e2\u961f\u7b49",
+                "operationId": "get_about_info_wxapp_about_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get About Info Wxapp About Get"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/versions": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u7248\u672c\u66f4\u65b0\u5386\u53f2",
+                "description": "\u83b7\u53d6\u5e73\u53f0\u7248\u672c\u66f4\u65b0\u5386\u53f2",
+                "operationId": "get_version_history_wxapp_versions_get",
+                "parameters": [
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "maximum": 50,
+                            "minimum": 1,
+                            "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236",
+                            "default": 10,
+                            "title": "Limit"
+                        },
+                        "description": "\u8fd4\u56de\u8bb0\u5f55\u6570\u91cf\u9650\u5236"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Version History Wxapp Versions Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wxapp/agreement/{type}": {
+            "get": {
+                "tags": [
+                    "wxapp"
+                ],
+                "summary": "\u83b7\u53d6\u7528\u6237\u534f\u8bae\u6216\u9690\u79c1\u653f\u7b56",
+                "description": "\u83b7\u53d6\u7528\u6237\u534f\u8bae\u6216\u9690\u79c1\u653f\u7b56",
+                "operationId": "get_agreement_wxapp_agreement__type__get",
+                "parameters": [
+                    {
+                        "name": "type",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "description": "\u534f\u8bae\u7c7b\u578b: user-\u7528\u6237\u534f\u8bae, privacy-\u9690\u79c1\u653f\u7b56",
+                            "title": "Type"
+                        },
+                        "description": "\u534f\u8bae\u7c7b\u578b: user-\u7528\u6237\u534f\u8bae, privacy-\u9690\u79c1\u653f\u7b56"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "title": "Response Get Agreement Wxapp Agreement  Type  Get"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/health": {
+            "get": {
+                "summary": "Health Check",
+                "description": "\u5065\u5eb7\u68c0\u67e5\u63a5\u53e3",
+                "operationId": "health_check_health_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/stats": {
+            "get": {
+                "tags": [
+                    "\u76d1\u63a7"
+                ],
+                "summary": "Get Stats",
+                "description": "\u83b7\u53d6API\u7edf\u8ba1\u4fe1\u606f",
+                "operationId": "get_stats_api_stats_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/stats/reset": {
+            "post": {
+                "tags": [
+                    "\u76d1\u63a7"
+                ],
+                "summary": "Reset Api Stats",
+                "description": "\u91cd\u7f6eAPI\u7edf\u8ba1\u4fe1\u606f",
+                "operationId": "reset_api_stats_api_stats_reset_post",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/monitor": {
+            "get": {
+                "tags": [
+                    "\u76d1\u63a7"
+                ],
+                "summary": "Monitor Dashboard",
+                "description": "API\u76d1\u63a7\u9762\u677f",
+                "operationId": "monitor_dashboard_api_monitor_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "text/html": {
+                                "schema": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Body_like_comment_wxapp_comments__comment_id__like_put": {
+                "properties": {
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u7528\u6237openid"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "openid"
+                ],
+                "title": "Body_like_comment_wxapp_comments__comment_id__like_put"
+            },
+            "CommentCreate": {
+                "properties": {
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u8bc4\u8bba\u7528\u6237openid"
+                    },
+                    "nick_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Nick Name",
+                        "description": "\u7528\u6237\u6635\u79f0"
+                    },
+                    "avatar": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avatar",
+                        "description": "\u7528\u6237\u5934\u50cfURL"
+                    },
+                    "post_id": {
+                        "type": "integer",
+                        "title": "Post Id",
+                        "description": "\u5e16\u5b50ID"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "\u8bc4\u8bba\u5185\u5bb9"
+                    },
+                    "parent_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Parent Id",
+                        "description": "\u7236\u8bc4\u8bbaID\uff0c\u5982\u679c\u662f\u56de\u590d\u53e6\u4e00\u6761\u8bc4\u8bba"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "openid",
+                    "post_id",
+                    "content"
+                ],
+                "title": "CommentCreate",
+                "description": "\u521b\u5efa\u8bc4\u8bba\u8bf7\u6c42"
+            },
+            "CommentUpdate": {
+                "properties": {
+                    "content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Content"
+                    },
+                    "extra": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Extra"
+                    }
+                },
+                "type": "object",
+                "title": "CommentUpdate",
+                "description": "\u66f4\u65b0\u8bc4\u8bba\u8bf7\u6c42"
+            },
+            "DocumentIndexRequest": {
+                "properties": {
+                    "file_id": {
+                        "type": "string",
+                        "title": "File Id",
+                        "description": "\u5fae\u4fe1\u4e91\u5b58\u50a8\u7684\u6587\u4ef6ID"
+                    },
+                    "file_name": {
+                        "type": "string",
+                        "title": "File Name",
+                        "description": "\u6587\u4ef6\u540d\u79f0"
+                    },
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u7528\u6237openid"
+                    },
+                    "custom_metadata": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Custom Metadata",
+                        "description": "\u81ea\u5b9a\u4e49\u5143\u6570\u636e"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "file_id",
+                    "file_name",
+                    "openid"
+                ],
+                "title": "DocumentIndexRequest"
+            },
+            "DocumentIndexResponse": {
+                "properties": {
+                    "success": {
+                        "type": "boolean",
+                        "title": "Success"
+                    },
+                    "message": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "document_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Document Id"
+                    },
+                    "suggested_keywords": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Suggested Keywords"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "success",
+                    "message"
+                ],
+                "title": "DocumentIndexResponse"
+            },
+            "FeedbackCreate": {
+                "properties": {
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u7528\u6237openid"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "\u53cd\u9988\u5185\u5bb9"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Type",
+                        "description": "\u53cd\u9988\u7c7b\u578b: bug-\u95ee\u9898\u53cd\u9988, suggestion-\u5efa\u8bae, other-\u5176\u4ed6"
+                    },
+                    "contact": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Contact",
+                        "description": "\u8054\u7cfb\u65b9\u5f0f"
+                    },
+                    "images": {
+                        "items": {
+                            "type": "string"
+                        },
+                        "type": "array",
+                        "title": "Images",
+                        "description": "\u56fe\u7247URL\u5217\u8868",
+                        "default": []
+                    },
+                    "device_info": {
+                        "type": "object",
+                        "title": "Device Info",
+                        "description": "\u8bbe\u5907\u4fe1\u606f",
+                        "default": {}
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "openid",
+                    "content",
+                    "type"
+                ],
+                "title": "FeedbackCreate",
+                "description": "\u521b\u5efa\u53cd\u9988\u8bf7\u6c42"
+            },
+            "FeedbackUpdate": {
+                "properties": {
+                    "content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Content"
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status"
+                    },
+                    "admin_reply": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Admin Reply"
+                    },
+                    "extra": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Extra"
+                    }
+                },
+                "type": "object",
+                "title": "FeedbackUpdate",
+                "description": "\u66f4\u65b0\u53cd\u9988\u8bf7\u6c42"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "NotificationCreate": {
+                "properties": {
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u63a5\u6536\u8005\u7528\u6237openid"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title",
+                        "description": "\u901a\u77e5\u6807\u9898"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "\u901a\u77e5\u5185\u5bb9"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Type",
+                        "description": "\u901a\u77e5\u7c7b\u578b: system-\u7cfb\u7edf\u901a\u77e5, like-\u70b9\u8d5e, comment-\u8bc4\u8bba, follow-\u5173\u6ce8"
+                    },
+                    "is_read": {
+                        "type": "integer",
+                        "title": "Is Read",
+                        "description": "\u662f\u5426\u5df2\u8bfb: 1-\u5df2\u8bfb, 0-\u672a\u8bfb",
+                        "default": 0
+                    },
+                    "sender_openid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Sender Openid",
+                        "description": "\u53d1\u9001\u8005openid\uff0c\u5982\u7cfb\u7edf\u901a\u77e5\u5219\u4e3anull"
+                    },
+                    "related_id": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Related Id",
+                        "description": "\u5173\u8054ID\uff0c\u6bd4\u5982\u5e16\u5b50ID\u6216\u8bc4\u8bbaID"
+                    },
+                    "related_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Related Type",
+                        "description": "\u5173\u8054\u7c7b\u578b\uff0c\u5982post, comment\u7b49"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "openid",
+                    "title",
+                    "content",
+                    "type"
+                ],
+                "title": "NotificationCreate",
+                "description": "\u521b\u5efa\u901a\u77e5\u8bf7\u6c42"
+            },
+            "NotificationUpdate": {
+                "properties": {
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title"
+                    },
+                    "content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Content"
+                    },
+                    "is_read": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Is Read"
+                    },
+                    "extra": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Extra"
+                    }
+                },
+                "type": "object",
+                "title": "NotificationUpdate",
+                "description": "\u66f4\u65b0\u901a\u77e5\u8bf7\u6c42"
+            },
+            "PostCreate": {
+                "properties": {
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u53d1\u5e03\u7528\u6237openid"
+                    },
+                    "title": {
+                        "type": "string",
+                        "maxLength": 100,
+                        "minLength": 1,
+                        "title": "Title",
+                        "description": "\u5e16\u5b50\u6807\u9898"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content",
+                        "description": "\u5e16\u5b50\u5185\u5bb9"
+                    },
+                    "images": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Images",
+                        "description": "\u56fe\u7247URL\u5217\u8868",
+                        "default": []
+                    },
+                    "tags": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tags",
+                        "description": "\u6807\u7b7e\u5217\u8868",
+                        "default": []
+                    },
+                    "category_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Category Id",
+                        "description": "\u5206\u7c7bID"
+                    },
+                    "location": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Location",
+                        "description": "\u4f4d\u7f6e\u4fe1\u606f"
+                    },
+                    "nick_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Nick Name",
+                        "description": "\u7528\u6237\u540d\u79f0"
+                    },
+                    "avatar": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avatar",
+                        "description": "\u7528\u6237\u5934\u50cfURL"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "openid",
+                    "title",
+                    "content"
+                ],
+                "title": "PostCreate",
+                "description": "\u521b\u5efa\u5e16\u5b50\u8bf7\u6c42"
+            },
+            "PostUpdate": {
+                "properties": {
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title"
+                    },
+                    "content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Content"
+                    },
+                    "images": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Images"
+                    },
+                    "tags": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tags"
+                    },
+                    "category_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Category Id"
+                    },
+                    "location": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Location"
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status"
+                    },
+                    "extra": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Extra"
+                    }
+                },
+                "type": "object",
+                "title": "PostUpdate",
+                "description": "\u66f4\u65b0\u5e16\u5b50\u8bf7\u6c42"
+            },
+            "SearchPostRequest": {
+                "properties": {
+                    "keyword": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Keyword",
+                        "description": "\u5173\u952e\u8bcd\uff0c\u641c\u7d22\u6807\u9898\u548c\u5185\u5bb9"
+                    },
+                    "title": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Title",
+                        "description": "\u6807\u9898\u5173\u952e\u8bcd"
+                    },
+                    "content": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Content",
+                        "description": "\u5185\u5bb9\u5173\u952e\u8bcd"
+                    },
+                    "openid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Openid",
+                        "description": "\u6309\u53d1\u5e16\u7528\u6237openid\u7b5b\u9009"
+                    },
+                    "nick_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Nick Name",
+                        "description": "\u6309\u7528\u6237\u6635\u79f0\u7b5b\u9009"
+                    },
+                    "tags": {
+                        "anyOf": [
+                            {
+                                "items": {
+                                    "type": "string"
+                                },
+                                "type": "array"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Tags",
+                        "description": "\u6309\u6807\u7b7e\u7b5b\u9009\uff0c\u652f\u6301\u591a\u4e2a\u6807\u7b7e"
+                    },
+                    "category_id": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Category Id",
+                        "description": "\u6309\u5206\u7c7bID\u7b5b\u9009"
+                    },
+                    "start_time": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Start Time",
+                        "description": "\u5f00\u59cb\u65f6\u95f4\uff0c\u683c\u5f0f\uff1aYYYY-MM-DD HH:MM:SS"
+                    },
+                    "end_time": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "End Time",
+                        "description": "\u7ed3\u675f\u65f6\u95f4\uff0c\u683c\u5f0f\uff1aYYYY-MM-DD HH:MM:SS"
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status",
+                        "description": "\u5e16\u5b50\u72b6\u6001: 1-\u6b63\u5e38, 0-\u7981\u7528",
+                        "default": 1
+                    },
+                    "include_deleted": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Include Deleted",
+                        "description": "\u662f\u5426\u5305\u542b\u5df2\u5220\u9664\u7684\u5e16\u5b50",
+                        "default": false
+                    },
+                    "sort_by": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Sort By",
+                        "description": "\u6392\u5e8f\u65b9\u5f0f\uff0c\u652f\u6301create_time/update_time/like_count/comment_count ASC/DESC",
+                        "default": "update_time DESC"
+                    },
+                    "page": {
+                        "type": "integer",
+                        "minimum": 1.0,
+                        "title": "Page",
+                        "description": "\u9875\u7801",
+                        "default": 1
+                    },
+                    "page_size": {
+                        "type": "integer",
+                        "maximum": 100.0,
+                        "minimum": 1.0,
+                        "title": "Page Size",
+                        "description": "\u6bcf\u9875\u8bb0\u5f55\u6570",
+                        "default": 20
+                    }
+                },
+                "type": "object",
+                "title": "SearchPostRequest",
+                "description": "\u5e16\u5b50\u641c\u7d22\u8bf7\u6c42"
+            },
+            "SearchQuery": {
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "title": "Query",
+                        "description": "\u641c\u7d22\u67e5\u8be2\u8bcd"
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "title": "Limit",
+                        "description": "\u8fd4\u56de\u7ed3\u679c\u6570\u91cf\u9650\u5236",
+                        "default": 10
+                    },
+                    "offset": {
+                        "type": "integer",
+                        "title": "Offset",
+                        "description": "\u8d77\u59cb\u504f\u79fb\u91cf",
+                        "default": 0
+                    },
+                    "filters": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Filters",
+                        "description": "\u8fc7\u6ee4\u6761\u4ef6"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "query"
+                ],
+                "title": "SearchQuery"
+            },
+            "SearchResponse": {
+                "properties": {
+                    "results": {
+                        "items": {
+                            "$ref": "#/components/schemas/SearchResult"
+                        },
+                        "type": "array",
+                        "title": "Results"
+                    },
+                    "total": {
+                        "type": "integer",
+                        "title": "Total"
+                    },
+                    "query": {
+                        "type": "string",
+                        "title": "Query"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "results",
+                    "total",
+                    "query"
+                ],
+                "title": "SearchResponse"
+            },
+            "SearchResult": {
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "title": "Id"
+                    },
+                    "title": {
+                        "type": "string",
+                        "title": "Title"
+                    },
+                    "content": {
+                        "type": "string",
+                        "title": "Content"
+                    },
+                    "score": {
+                        "type": "number",
+                        "title": "Score"
+                    },
+                    "source": {
+                        "type": "string",
+                        "title": "Source"
+                    },
+                    "url": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Url"
+                    },
+                    "metadata": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Metadata"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "id",
+                    "title",
+                    "content",
+                    "score",
+                    "source"
+                ],
+                "title": "SearchResult"
+            },
+            "UserResponse": {
+                "properties": {
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u5fae\u4fe1\u7528\u6237\u552f\u4e00\u6807\u8bc6"
+                    },
+                    "unionid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Unionid",
+                        "description": "\u5fae\u4fe1\u5f00\u653e\u5e73\u53f0\u552f\u4e00\u6807\u8bc6"
+                    },
+                    "nick_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Nick Name",
+                        "description": "\u7528\u6237\u6635\u79f0"
+                    },
+                    "avatar": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avatar",
+                        "description": "\u5934\u50cfURL"
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender",
+                        "description": "\u6027\u522b\uff1a0-\u672a\u77e5, 1-\u7537, 2-\u5973",
+                        "default": 0
+                    },
+                    "bio": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bio",
+                        "description": "\u7528\u6237\u4e2a\u4eba\u7b80\u4ecb"
+                    },
+                    "country": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Country",
+                        "description": "\u56fd\u5bb6"
+                    },
+                    "province": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Province",
+                        "description": "\u7701\u4efd"
+                    },
+                    "city": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "City",
+                        "description": "\u57ce\u5e02"
+                    },
+                    "language": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Language",
+                        "description": "\u8bed\u8a00"
+                    },
+                    "token_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Token Count",
+                        "description": "\u7528\u6237Token\u6570\u91cf",
+                        "default": 0
+                    },
+                    "likes_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Likes Count",
+                        "description": "\u83b7\u5f97\u7684\u70b9\u8d5e\u6570",
+                        "default": 0
+                    },
+                    "favorites_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Favorites Count",
+                        "description": "\u83b7\u5f97\u7684\u6536\u85cf\u6570",
+                        "default": 0
+                    },
+                    "followers_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Followers Count",
+                        "description": "\u5173\u6ce8\u8005\u6570\u91cf",
+                        "default": 0
+                    },
+                    "following_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Following Count",
+                        "description": "\u5173\u6ce8\u7684\u7528\u6237\u6570\u91cf",
+                        "default": 0
+                    },
+                    "id": {
+                        "type": "integer",
+                        "title": "Id"
+                    },
+                    "create_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Create Time"
+                    },
+                    "update_time": {
+                        "type": "string",
+                        "format": "date-time",
+                        "title": "Update Time"
+                    },
+                    "last_login": {
+                        "anyOf": [
+                            {
+                                "type": "string",
+                                "format": "date-time"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Last Login"
+                    },
+                    "platform": {
+                        "type": "string",
+                        "title": "Platform",
+                        "default": "wxapp"
+                    },
+                    "status": {
+                        "type": "integer",
+                        "title": "Status",
+                        "default": 1
+                    },
+                    "extra": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Extra"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "openid",
+                    "id",
+                    "create_time",
+                    "update_time"
+                ],
+                "title": "UserResponse",
+                "description": "\u7528\u6237\u54cd\u5e94"
+            },
+            "UserSyncRequest": {
+                "properties": {
+                    "openid": {
+                        "type": "string",
+                        "title": "Openid",
+                        "description": "\u5fae\u4fe1\u7528\u6237\u552f\u4e00\u6807\u8bc6"
+                    },
+                    "unionid": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Unionid",
+                        "description": "\u5fae\u4fe1\u5f00\u653e\u5e73\u53f0\u552f\u4e00\u6807\u8bc6"
+                    },
+                    "nick_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Nick Name",
+                        "description": "\u7528\u6237\u6635\u79f0"
+                    },
+                    "avatar": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avatar",
+                        "description": "\u5934\u50cfURL"
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender",
+                        "description": "\u6027\u522b",
+                        "default": 0
+                    },
+                    "bio": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bio",
+                        "description": "\u7528\u6237\u4e2a\u4eba\u7b80\u4ecb"
+                    },
+                    "country": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Country",
+                        "description": "\u56fd\u5bb6"
+                    },
+                    "province": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Province",
+                        "description": "\u7701\u4efd"
+                    },
+                    "city": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "City",
+                        "description": "\u57ce\u5e02"
+                    },
+                    "language": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Language",
+                        "description": "\u8bed\u8a00"
+                    },
+                    "university": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "University",
+                        "description": "\u7528\u6237\u5b66\u6821",
+                        "default": "\u5357\u5f00\u5927\u5b66"
+                    },
+                    "login_type": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Login Type",
+                        "description": "\u767b\u5f55\u7c7b\u578b",
+                        "default": "wechat"
+                    },
+                    "use_cloud_id": {
+                        "anyOf": [
+                            {
+                                "type": "boolean"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Use Cloud Id",
+                        "description": "\u662f\u5426\u4f7f\u7528\u4e91ID",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "openid"
+                ],
+                "title": "UserSyncRequest",
+                "description": "\u5fae\u4fe1\u7528\u6237\u540c\u6b65\u8bf7\u6c42"
+            },
+            "UserUpdate": {
+                "properties": {
+                    "nick_name": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Nick Name"
+                    },
+                    "avatar": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Avatar"
+                    },
+                    "gender": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Gender"
+                    },
+                    "bio": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bio"
+                    },
+                    "country": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Country"
+                    },
+                    "province": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Province"
+                    },
+                    "city": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "City"
+                    },
+                    "language": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Language"
+                    },
+                    "token_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Token Count"
+                    },
+                    "likes_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Likes Count"
+                    },
+                    "favorites_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Favorites Count"
+                    },
+                    "followers_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Followers Count"
+                    },
+                    "following_count": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Following Count"
+                    },
+                    "status": {
+                        "anyOf": [
+                            {
+                                "type": "integer"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Status"
+                    },
+                    "extra": {
+                        "anyOf": [
+                            {
+                                "type": "object"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Extra"
+                    }
+                },
+                "type": "object",
+                "title": "UserUpdate",
+                "description": "\u66f4\u65b0\u7528\u6237\u8bf7\u6c42"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        },
+        "securitySchemes": {
+            "HTTPBearer": {
+                "type": "http",
+                "scheme": "bearer"
+            }
+        }
+    }
+}
