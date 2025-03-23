@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 import logging
 
 from core.utils.auth import TokenManager
-from etl.retrieval.retrievers import HybridRetriever, QdrantRetriever, BM25Retriever
+from etl.retrieval.retrievers import QdrantRetriever, BM25Retriever, HybridRetriever
 from llama_index.core import QueryBundle
 from llama_index.core.schema import NodeWithScore
 

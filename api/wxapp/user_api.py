@@ -75,7 +75,19 @@ class UserResponse(UserBase):
     last_login: Optional[datetime] = None
     platform: str = "wxapp"
     status: int = 1
-    extra: Optional[Dict[str, Any]] = None
+    extra: Optional[Dict[str, Any]] = Field(default_factory=dict)
+    
+    @validator('extra', pre=True)
+    def parse_extra(cls, v):
+        """处理extra字段，确保它是一个字典"""
+        if v is None:
+            return {}
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except:
+                return {}
+        return v
 
 class UserSyncRequest(BaseModel):
     """微信用户同步请求"""
@@ -127,9 +139,12 @@ async def get_current_user(
             {'last_login': datetime.now()}
         )
         
+        # 转换为响应格式
+        user_response = UserResponse(**user)
+        
         # 返回用户信息
         api_logger.info(f"Response: 用户信息获取成功")
-        return create_standard_response(user)
+        return create_standard_response(user_response.dict())
     except Exception as e:
         if isinstance(e, HTTPException):
             raise e
@@ -138,38 +153,37 @@ async def get_current_user(
         api_logger.error(f"Error: 获取用户信息失败: {str(e)}\n{error_details}")
         raise HTTPException(status_code=500, detail=f"获取用户信息失败: {str(e)}")
 
-@router.get("/users/{user_id}", response_model=Dict[str, Any], summary="获取用户信息")
+@router.get("/users/{openid}", response_model=Dict[str, Any], summary="获取用户信息")
 @handle_api_errors("获取用户")
 async def get_user(
-    user_id: str = PathParam(..., description="用户ID"),
+    openid: str = PathParam(..., description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """获取指定用户信息"""
-    api_logger.info(f"Request: GET /users/{user_id}")
+    api_logger.info(f"Request: GET /users/{openid}")
     
-    # 首先尝试直接通过ID查询
-    user = get_record_by_id('wxapp_users', user_id)
+    # 直接通过openid查询
+    api_logger.debug(f"通过openid查询用户: {openid}")
+    openid_users = query_records(
+        'wxapp_users',
+        conditions={'openid': openid, 'is_deleted': 0}
+    )
     
-    # 如果找不到，尝试通过openid查询
-    if not user:
-        api_logger.debug(f"通过ID未找到用户 {user_id}，尝试通过openid查询")
-        openid_users = query_records(
-            'wxapp_users',
-            conditions={'openid': user_id, 'is_deleted': 0}
-        )
-        if openid_users and len(openid_users) > 0:
-            user = openid_users[0]
-            api_logger.debug(f"通过openid找到用户: {user['id']}")
-    
-    if not user:
-        api_logger.warning(f"用户不存在: {user_id}")
+    if not openid_users or len(openid_users) == 0:
+        api_logger.warning(f"用户不存在: openid={openid}")
         raise HTTPException(status_code=404, detail="用户不存在")
+    
+    user = openid_users[0]
+    api_logger.debug(f"通过openid找到用户: {user['id']}")
     
     # 处理用户信息中的JSON字段
     user = process_json_fields(user)
     
+    # 转换为响应格式
+    user_response = UserResponse(**user)
+    
     api_logger.info(f"Response: 用户信息获取成功")
-    return create_standard_response(user)
+    return create_standard_response(user_response.dict())
 
 @router.get("/users", response_model=Dict[str, Any], summary="查询用户列表")
 @handle_api_errors("查询用户列表")
@@ -205,17 +219,21 @@ async def list_users(
         )
         api_logger.debug(f"查询结果数量: {len(users)}")
         
-        # 处理所有用户的JSON字段
-        users = [process_json_fields(user) for user in users]
+        # 处理所有用户的JSON字段并转换为UserResponse模型
+        processed_users = []
+        for user in users:
+            processed_user = process_json_fields(user)
+            user_response = UserResponse(**processed_user)
+            processed_users.append(user_response.dict())
             
         # 获取总数
         total_count = count_records('wxapp_users', conditions)
         api_logger.debug(f"总记录数: {total_count}")
         
         # 返回用户列表
-        api_logger.info(f"Response: 用户列表查询成功，返回{len(users)}条记录")
+        api_logger.info(f"Response: 用户列表查询成功，返回{len(processed_users)}条记录")
         return create_standard_response({
-            "users": users,
+            "users": processed_users,
             "total": total_count,
             "limit": limit,
             "offset": offset
@@ -225,28 +243,46 @@ async def list_users(
         api_logger.error(f"Error: 查询用户列表失败: {str(e)}\n{error_details}")
         raise HTTPException(status_code=500, detail=f"查询用户列表失败: {str(e)}")
 
-@router.put("/users/{user_id}", response_model=UserResponse, summary="更新用户信息")
+@router.put("/users/{openid}", response_model=UserResponse, summary="更新用户信息")
 @handle_api_errors("更新用户")
 async def update_user(
     user_update: UserUpdate,
-    user_id: str = PathParam(..., description="用户ID"),
+    openid: str = PathParam(..., description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """更新用户信息"""
-    # 检查用户是否存在
-    user = get_record_by_id('wxapp_users', user_id)
-    if not user:
+    # 直接通过openid查询
+    api_logger.debug(f"通过openid查询用户: {openid}")
+    openid_users = query_records(
+        'wxapp_users',
+        conditions={'openid': openid, 'is_deleted': 0}
+    )
+    
+    if not openid_users or len(openid_users) == 0:
+        api_logger.warning(f"用户不存在: openid={openid}")
         raise HTTPException(status_code=404, detail="用户不存在")
+    
+    user = openid_users[0]
+    user_id = user['id']  # 数据库中的实际ID，仅用于更新操作
+    api_logger.debug(f"通过openid找到用户: {user_id}")
     
     # 过滤掉None值
     update_data = {k: v for k, v in user_update.dict().items() if v is not None}
     if not update_data:
-        return user
+        # 处理用户信息中的JSON字段
+        user = process_json_fields(user)
+        # 转换为UserResponse模型
+        return UserResponse(**user)
     
     # 处理微信云存储的fileID
     if "avatar" in update_data and update_data["avatar"] and update_data["avatar"].startswith("cloud://"):
         # 保存微信云存储的fileID，不进行额外处理
         api_logger.debug(f"检测到微信云存储fileID: {update_data['avatar']}")
+    
+    # 处理extra字段，确保它以JSON字符串形式存储
+    if "extra" in update_data and update_data["extra"] is not None:
+        if isinstance(update_data["extra"], dict):
+            update_data["extra"] = json.dumps(update_data["extra"])
     
     # 添加更新时间
     update_data['update_time'] = format_datetime(datetime.now())
@@ -258,19 +294,36 @@ async def update_user(
     
     # 获取更新后的用户
     updated_user = get_record_by_id('wxapp_users', user_id)
-    return updated_user
+    if not updated_user:
+        raise HTTPException(status_code=500, detail="获取更新后的用户失败")
+    
+    # 处理用户信息中的JSON字段
+    updated_user = process_json_fields(updated_user)
+    
+    # 转换为UserResponse模型
+    return UserResponse(**updated_user)
 
-@router.delete("/users/{user_id}", response_model=dict, summary="删除用户")
+@router.delete("/users/{openid}", response_model=dict, summary="删除用户")
 @handle_api_errors("删除用户")
 async def delete_user(
-    user_id: str = PathParam(..., description="用户ID"),
+    openid: str = PathParam(..., description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """删除用户（标记删除）"""
-    # 检查用户是否存在
-    user = get_record_by_id('wxapp_users', user_id)
-    if not user:
+    # 直接通过openid查询
+    api_logger.debug(f"通过openid查询用户: {openid}")
+    openid_users = query_records(
+        'wxapp_users',
+        conditions={'openid': openid, 'is_deleted': 0}
+    )
+    
+    if not openid_users or len(openid_users) == 0:
+        api_logger.warning(f"用户不存在: openid={openid}")
         raise HTTPException(status_code=404, detail="用户不存在")
+    
+    user = openid_users[0]
+    user_id = user['id']  # 数据库中的实际ID，仅用于更新操作
+    api_logger.debug(f"通过openid找到用户: {user_id}")
     
     # 标记删除
     success = update_record('wxapp_users', user_id, {
@@ -284,24 +337,39 @@ async def delete_user(
     
     return {"success": True, "message": "用户已删除"}
 
-@router.get("/users/{user_id}/follow-stats", response_model=Dict[str, Any], summary="获取用户关注统计")
+@router.get("/users/{openid}/follow-stats", response_model=Dict[str, Any], summary="获取用户关注统计")
 @handle_api_errors("获取用户关注统计")
 async def get_user_follow_stats(
-    user_id: str = PathParam(..., description="用户ID"),
+    openid: str = PathParam(..., description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """
     获取用户关注和粉丝数量统计
     - 返回用户关注的人数和粉丝数量
     """
-    api_logger.debug(f"获取用户ID={user_id}的关注统计")
+    api_logger.debug(f"获取用户openid={openid}的关注统计")
+    
+    # 直接通过openid查询
+    api_logger.debug(f"通过openid查询用户: {openid}")
+    openid_users = query_records(
+        'wxapp_users',
+        conditions={'openid': openid, 'is_deleted': 0}
+    )
+    
+    if not openid_users or len(openid_users) == 0:
+        api_logger.warning(f"用户不存在: openid={openid}")
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    user = openid_users[0]
+    user_id = user['id']  # 数据库中的实际ID，仅用于查询关系
+    api_logger.debug(f"通过openid找到用户: {user_id}")
     
     # 查询用户关注的人数
     try:
         # 使用适当的条件查询
         followed_result = query_records("wxapp_user_follows", {"follower_id": user_id})
         followed_count = len(followed_result) if followed_result else 0
-        api_logger.debug(f"用户ID={user_id}关注了{followed_count}人")
+        api_logger.debug(f"用户openid={openid}关注了{followed_count}人")
     except Exception as e:
         api_logger.error(f"查询用户关注数失败: {str(e)}")
         followed_count = 0
@@ -311,7 +379,7 @@ async def get_user_follow_stats(
         # 使用适当的条件查询
         follower_result = query_records("wxapp_user_follows", {"followed_id": user_id})
         follower_count = len(follower_result) if follower_result else 0
-        api_logger.debug(f"用户ID={user_id}有{follower_count}个粉丝")
+        api_logger.debug(f"用户openid={openid}有{follower_count}个粉丝")
     except Exception as e:
         api_logger.error(f"查询用户粉丝数失败: {str(e)}")
         follower_count = 0
@@ -322,29 +390,35 @@ async def get_user_follow_stats(
         "followerCount": follower_count
     })
 
-@router.get("/users/{user_id}/token", response_model=Dict[str, Any], summary="获取用户Token数量")
+@router.get("/users/{openid}/token", response_model=Dict[str, Any], summary="获取用户Token数量")
 @handle_api_errors("获取用户Token")
 async def get_user_token(
-    user_id: str = PathParam(..., description="用户ID"),
+    openid: str = PathParam(..., description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """
     获取用户Token数量
     - 返回用户的Token余额
     """
-    api_logger.debug(f"获取用户ID={user_id}的Token数量")
+    api_logger.debug(f"获取用户openid={openid}的Token数量")
     
     try:
-        # 查询用户Token数量
-        user_record = get_record_by_id("wxapp_users", user_id)
-        if not user_record:
+        # 直接查询openid
+        users = query_records(
+            'wxapp_users',
+            conditions={'openid': openid, 'is_deleted': 0}
+        )
+        
+        if not users or len(users) == 0:
             return create_standard_response({
                 "token": 0
             }, code=404, message="用户不存在")
         
+        user_record = users[0]
+        
         # 获取token字段，如果不存在则默认为0
         token = user_record.get("token", 0)
-        api_logger.debug(f"用户ID={user_id}的Token数量为{token}")
+        api_logger.debug(f"用户openid={openid}的Token数量为{token}")
         
         return create_standard_response({
             "token": token
@@ -353,11 +427,11 @@ async def get_user_token(
         api_logger.error(f"获取用户Token失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"获取用户Token失败: {str(e)}")
 
-@router.post("/users/{user_id}/token", response_model=Dict[str, Any], summary="更新用户Token数量")
+@router.post("/users/{openid}/token", response_model=Dict[str, Any], summary="更新用户Token数量")
 @handle_api_errors("更新用户Token")
 async def update_user_token(
     token_data: Dict[str, Any] = Body(..., description="Token更新数据"),
-    user_id: str = PathParam(..., description="用户ID"),
+    openid: str = PathParam(..., description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """
@@ -376,7 +450,7 @@ async def update_user_token(
     }
     ```
     """
-    api_logger.debug(f"更新用户ID={user_id}的Token数量: {token_data}")
+    api_logger.debug(f"更新用户openid={openid}的Token数量: {token_data}")
     
     # 验证参数
     action = token_data.get("action", "add")
@@ -397,15 +471,20 @@ async def update_user_token(
         )
     
     try:
-        # 查询用户当前Token
-        user_record = get_record_by_id("wxapp_users", user_id)
-        if not user_record:
+        # 直接查询openid
+        users = query_records(
+            'wxapp_users',
+            conditions={'openid': openid, 'is_deleted': 0}
+        )
+        
+        if not users or len(users) == 0:
             return create_standard_response(
                 code=404,
                 message="用户不存在",
                 data=None
             )
         
+        user_record = users[0]
         current_token = user_record.get("token", 0)
         
         # 根据操作类型计算新的Token数量
@@ -417,7 +496,13 @@ async def update_user_token(
             "update_time": format_datetime(datetime.now())
         }
         
-        success = update_record("wxapp_users", user_id, update_data)
+        # 使用ID进行更新
+        success = update_record(
+            "wxapp_users", 
+            user_record['id'],  # 仍需要使用ID进行更新
+            update_data
+        )
+        
         if not success:
             return create_standard_response(
                 code=500,
@@ -425,7 +510,7 @@ async def update_user_token(
                 data=None
             )
         
-        api_logger.debug(f"更新用户ID={user_id}的Token成功: {new_token}")
+        api_logger.debug(f"更新用户openid={openid}的Token成功: {new_token}")
         
         return create_standard_response(
             code=200,
@@ -440,9 +525,9 @@ async def update_user_token(
 @handle_api_errors("同步微信云用户")
 async def sync_wxapp_user(
     user_data: UserSyncRequest,
-    request: Request = Depends(),
+    request: Request,
     cloud_source: Optional[str] = Header(None, alias="X-Cloud-Source"),
-    prefer_cloud_id: Optional[str] = Header(None, alias="X-Prefer-Cloud-ID"),
+    prefer_cloud_id: Optional[bool] = Header(False, alias="X-Prefer-Cloud-ID"),
     api_logger=Depends(get_api_logger)
 ):
     """
@@ -454,19 +539,15 @@ async def sync_wxapp_user(
     - X-Cloud-Source: 可选，标记来源
     - X-Prefer-Cloud-ID: 可选，标记优先使用云ID
     """
-    api_logger.debug(f"同步微信云用户: {user_data.dict()}, 头信息: cloud_source={cloud_source}, prefer_cloud_id={prefer_cloud_id}")
+    api_logger.debug(f"同步微信云用户请求: {user_data.dict()}")
     
     try:
         # 直接使用openid作为唯一标识
         cloud_id = user_data.openid
         api_logger.debug(f"使用openid作为唯一标识: {cloud_id}")
         
-        # 确定是否要使用云ID
-        should_use_cloud_id = (
-            user_data.use_cloud_id or 
-            prefer_cloud_id == "true" or 
-            prefer_cloud_id == "True"
-        )
+        # 确定是否要使用云ID (简化逻辑)
+        should_use_cloud_id = user_data.use_cloud_id or prefer_cloud_id
         api_logger.debug(f"是否使用云ID: {should_use_cloud_id}")
         
         # 通过openid查询用户，这是最可靠的唯一标识
@@ -475,14 +556,6 @@ async def sync_wxapp_user(
             conditions={'openid': user_data.openid}
         )
         
-        # 如果通过openid找不到用户，再通过云ID查询
-        if not existing_users:
-            api_logger.debug(f"通过openid未找到用户，尝试使用云ID: {cloud_id}")
-            existing_users = query_records(
-                'wxapp_users',
-                conditions={'cloud_id': cloud_id}
-            )
-        
         # 准备用户数据
         user_update = {
             # 基本信息
@@ -490,10 +563,13 @@ async def sync_wxapp_user(
             'unionid': user_data.unionid,
             'nick_name': user_data.nick_name or f"用户{user_data.openid[-4:]}",
             'avatar': user_data.avatar or "/assets/icons/default-avatar.png",
+            'gender': user_data.gender,
+            'country': user_data.country,
+            'province': user_data.province,
+            'city': user_data.city,
+            'language': user_data.language,
             'status': 1,  # 激活状态
-            'cloud_id': cloud_id,  # 保存云ID
-            # 'university': user_data.university or "南开大学",  # 数据库中不存在此字段
-            # 'login_type': user_data.login_type or "wechat",    # 数据库中不存在此字段
+            'extra': json.dumps({'cloud_id': cloud_id}),  # 保存云ID到extra字段
             # 更新时间
             'update_time': format_datetime(datetime.now()),
             'last_login': format_datetime(datetime.now())
@@ -513,7 +589,10 @@ async def sync_wxapp_user(
             # 如果请求要求使用云ID，并且当前ID与云ID不同，则更新ID关联
             if should_use_cloud_id and str(user_id) != str(cloud_id):
                 api_logger.debug(f"更新用户ID关联: 服务器ID={user_id} -> 云ID={cloud_id}")
-                user_update['cloud_id'] = cloud_id  # 保存云ID以便映射
+                # 更新extra字段中的cloud_id
+                extra_data = json.loads(existing_user.get('extra', '{}') or '{}')
+                extra_data['cloud_id'] = cloud_id
+                user_update['extra'] = json.dumps(extra_data)
             
             api_logger.debug(f"更新用户: ID={user_id}, 数据={user_update}")
             success = update_record('wxapp_users', user_id, user_update)
@@ -567,18 +646,22 @@ async def sync_wxapp_user(
         # 处理用户数据中的JSON字段
         updated_user = process_json_fields(updated_user)
         
+        # 从extra字段中提取cloud_id，如果不存在则使用openid
+        user_extra = updated_user.get('extra', {}) or {}
+        response_cloud_id = user_extra.get('cloud_id', updated_user['openid'])
+        
         # 添加映射信息，确保客户端知道云ID和服务器ID的对应关系
         response_data = {
             "data": updated_user,
-            "cloud_id": cloud_id,
+            "cloud_id": response_cloud_id,
             "server_id": updated_user['id'],
             "id_mapping": {
-                "cloud_to_server": {cloud_id: updated_user['id']},
-                "server_to_cloud": {str(updated_user['id']): cloud_id}
+                "cloud_to_server": {response_cloud_id: updated_user['id']},
+                "server_to_cloud": {str(updated_user['id']): response_cloud_id}
             }
         }
         
-        api_logger.info(f"同步用户成功: ID={user_id}, 云ID={cloud_id}")
+        api_logger.info(f"同步用户成功: ID={user_id}, 云ID={response_cloud_id}")
         return create_standard_response(response_data)
         
     except Exception as e:

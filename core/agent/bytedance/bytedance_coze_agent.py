@@ -6,8 +6,8 @@ import time  # noqa: F401
 import requests
 from typing import List, Tuple  # noqa: F401
 from requests import Response
-from core.utils.logger import get_module_logger
-logger = get_module_logger('core.agent.bytedance')
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.bytedance")
 from config import Config
 from core.bridge.reply import Reply, ReplyType
 from core.bridge.context import Context

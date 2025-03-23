@@ -208,7 +208,7 @@ async def get_post(
 async def list_posts(
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
     offset: int = Query(0, description="分页偏移量", ge=0),
-    user_id: Optional[str] = Query(None, description="按用户ID筛选"),
+    openid: Optional[str] = Query(None, description="按用户openid筛选"),
     category_id: Optional[int] = Query(None, description="按分类ID筛选"),
     tag: Optional[str] = Query(None, description="按标签筛选"),
     status: Optional[int] = Query(1, description="帖子状态: 1-正常, 0-禁用"),
@@ -217,14 +217,13 @@ async def list_posts(
 ):
     """获取帖子列表"""
     # 详细记录请求参数
-    api_logger.info(f"Request: GET /posts with params: limit={limit}, offset={offset}, user_id={user_id}, category_id={category_id}, tag={tag}, status={status}, order_by={order_by}")
+    api_logger.info(f"Request: GET /posts with params: limit={limit}, offset={offset}, openid={openid}, category_id={category_id}, tag={tag}, status={status}, order_by={order_by}")
     
     try:
         # 构建查询条件
         conditions = {}
-        if user_id is not None:
-            # user_id现在是字符串类型，不需要转换
-            conditions['openid'] = user_id
+        if openid is not None:
+            conditions['openid'] = openid
                 
         if category_id is not None:
             conditions['category_id'] = category_id
@@ -351,7 +350,7 @@ async def delete_post(
 @handle_api_errors("点赞帖子")
 async def like_post(
     post_id: int = PathParam(..., description="帖子ID"),
-    user_id: str = Query(..., description="用户ID"),
+    openid: str = Query(..., description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """点赞或取消点赞帖子"""
@@ -367,42 +366,46 @@ async def like_post(
     liked_users = post.get('liked_users', [])
     
     # 判断是点赞还是取消点赞
-    if user_id in liked_users:
+    if openid in liked_users:
         # 取消点赞
-        liked_users.remove(user_id)
+        liked_users.remove(openid)
         like_count = max(0, post.get('like_count', 0) - 1)
         action = "取消点赞"
     else:
         # 点赞
-        liked_users.append(user_id)
+        liked_users.append(openid)
         like_count = post.get('like_count', 0) + 1
         action = "点赞"
         
         # 如果是点赞操作，给帖子作者发送通知
         try:
-            # 获取帖子作者ID
-            author_id = post.get('openid')
+            # 获取帖子作者openid
+            author_openid = post.get('openid')
             # 如果点赞用户不是作者本人，才发送通知
-            if author_id and author_id != user_id:
+            if author_openid and author_openid != openid:
                 # 获取点赞用户信息
-                liker_info = get_record_by_id('wxapp_users', user_id)
-                if liker_info:
-                    liker_name = liker_info.get('nickname', '用户')
+                openid_users = query_records(
+                    'wxapp_users',
+                    conditions={'openid': openid, 'is_deleted': 0}
+                )
+                if openid_users and len(openid_users) > 0:
+                    liker_info = openid_users[0]
+                    liker_name = liker_info.get('nick_name', '用户')
                     # 创建通知数据
                     notification_data = {
-                        'user_id': author_id,  # 通知接收者是帖子作者
+                        'user_id': author_openid,  # 通知接收者是帖子作者
                         'title': '收到新点赞',
                         'content': f"{liker_name} 点赞了你的帖子「{post.get('title', '无标题')}」",
                         'type': 'like',
                         'is_read': 0,
-                        'sender_id': user_id,  # 发送者是点赞用户
+                        'sender_id': openid,  # 发送者是点赞用户
                         'related_id': str(post_id)  # 关联ID是帖子ID
                     }
                     # 准备数据
                     notification_data = prepare_db_data(notification_data, is_create=True)
                     # 插入通知记录
                     insert_record('wxapp_notifications', notification_data)
-                    api_logger.debug(f"已为用户{author_id}创建点赞通知")
+                    api_logger.debug(f"已为用户{author_openid}创建点赞通知")
         except Exception as e:
             # 通知创建失败不影响点赞功能
             api_logger.error(f"创建点赞通知失败: {str(e)}")
@@ -423,7 +426,7 @@ async def like_post(
     return create_standard_response({
         "success": True,
         "message": f"{action}成功",
-        "liked": user_id in liked_users,
+        "liked": openid in liked_users,
         "like_count": like_count
     })
 
@@ -431,7 +434,7 @@ async def like_post(
 @handle_api_errors("收藏帖子")
 async def favorite_post(
     post_id: int = PathParam(..., description="帖子ID"),
-    user_id: str = Query(..., description="用户ID"),
+    openid: str = Query(..., description="用户openid"),
     is_favorite: bool = Query(True, description="是否收藏，默认为收藏操作"),
     api_logger=Depends(get_api_logger)
 ):
@@ -448,44 +451,48 @@ async def favorite_post(
     favorite_users = post.get('favorite_users', [])
     
     # 根据is_favorite参数决定是收藏还是取消收藏
-    is_already_favorited = user_id in favorite_users
+    is_already_favorited = openid in favorite_users
     
     if is_already_favorited and not is_favorite:
         # 取消收藏
-        favorite_users.remove(user_id)
+        favorite_users.remove(openid)
         action = "取消收藏"
         favorite_count = max(0, post.get('favorite_count', 0) - 1)  # 计算新的收藏数
     elif not is_already_favorited and is_favorite:
         # 收藏
-        favorite_users.append(user_id)
+        favorite_users.append(openid)
         action = "收藏"
         favorite_count = post.get('favorite_count', 0) + 1  # 计算新的收藏数
         
         # 如果是收藏操作，给帖子作者发送通知
         try:
-            # 获取帖子作者ID
-            author_id = post.get('openid')
+            # 获取帖子作者openid
+            author_openid = post.get('openid')
             # 如果收藏用户不是作者本人，才发送通知
-            if author_id and author_id != user_id:
+            if author_openid and author_openid != openid:
                 # 获取收藏用户信息
-                favoriter_info = get_record_by_id('wxapp_users', user_id)
-                if favoriter_info:
-                    favoriter_name = favoriter_info.get('nickname', '用户')
+                openid_users = query_records(
+                    'wxapp_users',
+                    conditions={'openid': openid, 'is_deleted': 0}
+                )
+                if openid_users and len(openid_users) > 0:
+                    favoriter_info = openid_users[0]
+                    favoriter_name = favoriter_info.get('nick_name', '用户')
                     # 创建通知数据
                     notification_data = {
-                        'user_id': author_id,  # 通知接收者是帖子作者
+                        'user_id': author_openid,  # 通知接收者是帖子作者
                         'title': '收到新收藏',
                         'content': f"{favoriter_name} 收藏了你的帖子「{post.get('title', '无标题')}」",
                         'type': 'like',  # 使用like类型，因为UI上可能没有专门的收藏类型
                         'is_read': 0,
-                        'sender_id': user_id,  # 发送者是收藏用户
+                        'sender_id': openid,  # 发送者是收藏用户
                         'related_id': str(post_id)  # 关联ID是帖子ID
                     }
                     # 准备数据
                     notification_data = prepare_db_data(notification_data, is_create=True)
                     # 插入通知记录
                     insert_record('wxapp_notifications', notification_data)
-                    api_logger.debug(f"已为用户{author_id}创建收藏通知")
+                    api_logger.debug(f"已为用户{author_openid}创建收藏通知")
         except Exception as e:
             # 通知创建失败不影响收藏功能
             api_logger.error(f"创建收藏通知失败: {str(e)}")

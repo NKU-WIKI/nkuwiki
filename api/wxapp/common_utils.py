@@ -71,8 +71,14 @@ def process_json_fields(data_dict, json_fields=None):
                 try:
                     parsed_value = json.loads(value)
                     result[field] = parsed_value
-                except:
+                except json.JSONDecodeError:
                     # 如果解析失败，设置为空列表或空字典
+                    if field in ['device_info', 'extra']:
+                        result[field] = {}
+                    else:
+                        result[field] = []
+                except Exception as e:
+                    # 其他错误也设置为空对象
                     if field in ['device_info', 'extra']:
                         result[field] = {}
                     else:
@@ -82,5 +88,17 @@ def process_json_fields(data_dict, json_fields=None):
                     result[field] = {}
                 else:
                     result[field] = []
+            # 确保字典类型保持不变
+            elif isinstance(value, (dict, list)):
+                result[field] = value
+            # 其他类型转换为字符串
+            else:
+                try:
+                    result[field] = str(value)
+                except:
+                    if field in ['device_info', 'extra']:
+                        result[field] = {}
+                    else:
+                        result[field] = []
     
     return result 

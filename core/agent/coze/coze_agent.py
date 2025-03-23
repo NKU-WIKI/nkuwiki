@@ -8,9 +8,9 @@ from core.agent import *
 import sys
 import os
 import requests
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 
-logger = get_module_logger("core.agent.coze")
+logger = register_logger("core.agent.coze")
 
 import json
 import time

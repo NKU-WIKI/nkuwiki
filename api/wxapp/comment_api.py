@@ -23,8 +23,8 @@ from etl.load.py_mysql import (
 class CommentBase(BaseModel):
     """评论基础信息"""
     openid: str = Field(..., description="评论用户openid")
-    nick_name: str = Field(..., description="用户昵称")
-    avatar: str = Field(..., description="用户头像URL")
+    nick_name: Optional[str] = Field(None, description="用户昵称")
+    avatar: Optional[str] = Field(None, description="用户头像URL")
     post_id: int = Field(..., description="帖子ID")
     content: str = Field(..., description="评论内容")
     parent_id: Optional[int] = Field(None, description="父评论ID，如果是回复另一条评论")
@@ -49,12 +49,45 @@ class CommentResponse(CommentBase):
     id: int
     create_time: datetime
     update_time: datetime
-    likes: int = 0
+    like_count: int = 0
     liked_users: List[str] = []
     replies: Optional[List[Dict[str, Any]]] = None
     platform: str = "wxapp"
     is_deleted: int = 0
     extra: Optional[Dict[str, Any]] = None
+
+# 辅助函数，根据openid获取用户信息
+def get_user_info_by_openid(openid, api_logger):
+    """
+    根据openid获取用户信息
+    如果用户不存在，将返回带有默认值的用户信息
+    """
+    try:
+        # 通过openid查询用户
+        users = query_records(
+            'wxapp_users',
+            conditions={'openid': openid, 'is_deleted': 0}
+        )
+        
+        if users and len(users) > 0:
+            user = users[0]
+            return {
+                'nick_name': user.get('nick_name', f"用户{openid[-4:]}"),
+                'avatar': user.get('avatar', "/assets/icons/default-avatar.png")
+            }
+        else:
+            # 用户不存在，返回默认值
+            return {
+                'nick_name': f"用户{openid[-4:]}",
+                'avatar': "/assets/icons/default-avatar.png"
+            }
+    except Exception as e:
+        api_logger.error(f"获取用户信息失败: {str(e)}")
+        # 出错时也返回默认值
+        return {
+            'nick_name': f"用户{openid[-4:]}",
+            'avatar': "/assets/icons/default-avatar.png"
+        }
 
 # API端点
 @router.post("/comments", response_model=Dict[str, Any], summary="创建评论")
@@ -67,8 +100,17 @@ async def create_comment(
     # 准备数据
     comment_data = comment.dict()
     
+    # 检查用户信息，如果缺少昵称或头像则自动获取
+    if not comment_data.get('nick_name') or not comment_data.get('avatar'):
+        api_logger.debug(f"评论缺少用户信息，自动获取: openid={comment_data['openid']}")
+        user_info = get_user_info_by_openid(comment_data['openid'], api_logger)
+        if not comment_data.get('nick_name'):
+            comment_data['nick_name'] = user_info['nick_name']
+        if not comment_data.get('avatar'):
+            comment_data['avatar'] = user_info['avatar']
+    
     # 添加默认值
-    comment_data['likes'] = 0
+    comment_data['like_count'] = 0
     comment_data['liked_users'] = json.dumps([])
     comment_data['platform'] = 'wxapp'
     comment_data['is_deleted'] = 0
@@ -95,7 +137,7 @@ async def create_comment(
     
     # 更新帖子评论数
     try:
-        post_update = {'comments_count': post.get('comments_count', 0) + 1}
+        post_update = {'comment_count': post.get('comment_count', 0) + 1}
         update_record('wxapp_posts', comment_data['post_id'], post_update)
     except Exception as e:
         api_logger.error(f"更新帖子评论计数失败: {str(e)}")
@@ -337,7 +379,7 @@ async def update_comment(
 @handle_api_errors("点赞评论")
 async def like_comment(
     comment_id: int = PathParam(..., description="评论ID"),
-    user_id: str = Body(..., embed=True, description="用户openid"),
+    openid: str = Body(..., embed=True, description="用户openid"),
     api_logger=Depends(get_api_logger)
 ):
     """点赞或取消点赞评论"""
@@ -355,23 +397,23 @@ async def like_comment(
             liked_users = []
     
     # 判断用户是否已点赞
-    user_liked = user_id in liked_users
+    user_liked = openid in liked_users
     
     # 更新点赞状态
     if user_liked:
         # 如果已点赞，则取消点赞
-        liked_users.remove(user_id)
-        likes = max(0, comment.get('likes', 0) - 1)
+        liked_users.remove(openid)
+        like_count = max(0, comment.get('like_count', 0) - 1)
         action = "取消点赞"
     else:
         # 如果未点赞，则添加点赞
-        liked_users.append(user_id)
-        likes = comment.get('likes', 0) + 1
+        liked_users.append(openid)
+        like_count = comment.get('like_count', 0) + 1
         action = "点赞"
     
     # 更新评论
     update_data = {
-        'likes': likes,
+        'like_count': like_count,
         'liked_users': json.dumps(liked_users)
     }
     success = update_record('wxapp_comments', comment_id, prepare_db_data(update_data, is_create=False))
@@ -380,10 +422,10 @@ async def like_comment(
         raise HTTPException(status_code=500, detail=f"{action}评论失败")
     
     # 如果是新增点赞，创建通知
-    if action == "点赞" and comment.get('openid') != user_id:
+    if action == "点赞" and comment.get('openid') != openid:
         try:
             # 获取用户信息
-            user = query_records('wxapp_users', conditions={"openid": user_id})
+            user = query_records('wxapp_users', conditions={"openid": openid})
             nick_name = user[0].get('nick_name', '用户') if user and len(user) > 0 else '用户'
             
             notification_data = {
@@ -391,7 +433,7 @@ async def like_comment(
                 'title': '收到新点赞',
                 'content': f"{nick_name}点赞了您的评论",
                 'type': 'like',
-                'sender_openid': user_id,
+                'sender_openid': openid,
                 'related_id': str(comment_id),
                 'related_type': 'comment',
                 'platform': 'wxapp',
@@ -418,7 +460,7 @@ async def like_comment(
 @handle_api_errors("删除评论")
 async def delete_comment(
     comment_id: int = PathParam(..., description="评论ID"),
-    user_id: Optional[str] = Query(None, description="用户openid，用于权限验证"),
+    openid: Optional[str] = Query(None, description="用户openid，用于权限验证"),
     api_logger=Depends(get_api_logger)
 ):
     """删除评论（标记删除）"""
@@ -428,52 +470,31 @@ async def delete_comment(
         raise HTTPException(status_code=404, detail="评论不存在")
     
     # 如果指定了用户ID，检查权限
-    if user_id and comment.get('openid') != user_id:
+    if openid and comment.get('openid') != openid:
         # 检查是否为管理员权限
         try:
-            user = query_records('wxapp_users', conditions={"openid": user_id})
+            user = query_records('wxapp_users', conditions={"openid": openid})
             is_admin = user[0].get('is_admin', 0) if user and len(user) > 0 else 0
             
             if not is_admin:
-                raise HTTPException(status_code=403, detail="没有权限删除此评论")
+                raise HTTPException(status_code=403, detail="您无权删除该评论")
         except Exception as e:
-            api_logger.error(f"检查用户权限失败: {str(e)}")
-            raise HTTPException(status_code=500, detail="检查权限失败")
+            if isinstance(e, HTTPException):
+                raise e
+            raise HTTPException(status_code=403, detail="权限验证失败")
     
     # 标记删除
-    success = update_record('wxapp_comments', comment_id, {
+    update_data = {
         'is_deleted': 1,
         'update_time': format_datetime(None)
-    })
+    }
+    
+    success = update_record('wxapp_comments', comment_id, update_data)
     
     if not success:
         raise HTTPException(status_code=500, detail="删除评论失败")
     
-    # 如果存在回复，也标记删除
-    try:
-        replies = query_records('wxapp_comments', conditions={"parent_id": comment_id})
-        for reply in replies:
-            update_record('wxapp_comments', reply['id'], {
-                'is_deleted': 1,
-                'update_time': format_datetime(None)
-            })
-    except Exception as e:
-        api_logger.error(f"删除回复失败: {str(e)}")
-    
-    # 更新帖子评论计数
-    try:
-        if comment.get('post_id'):
-            post = get_record_by_id('wxapp_posts', comment.get('post_id'))
-            if post:
-                comments_count = max(0, post.get('comments_count', 0) - 1)
-                update_record('wxapp_posts', post['id'], {
-                    'comments_count': comments_count,
-                    'update_time': format_datetime(None)
-                })
-    except Exception as e:
-        api_logger.error(f"更新帖子评论计数失败: {str(e)}")
-    
     return create_standard_response({
-        'success': True,
-        'message': '评论已删除'
+        "success": True,
+        "message": "评论已删除"
     }) 

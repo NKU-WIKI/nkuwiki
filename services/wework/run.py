@@ -3,9 +3,9 @@
 import os
 import sys
 import threading
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 
-logger = get_module_logger("services.wework.run")
+logger = register_logger("services.wework.run")
 
 # 设置ntwork的日志级别为ERROR，避免过多日志输出
 os.environ['ntwork_LOG'] = "ERROR"

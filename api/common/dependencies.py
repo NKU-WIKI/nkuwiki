@@ -4,7 +4,7 @@ API依赖项模块
 """
 from loguru import logger
 from fastapi import Request, Depends
-from core.utils.logger import get_api_logger
+from core.utils.logger import register_logger
 
 def get_module_name(request: Request) -> str:
     """
@@ -37,11 +37,11 @@ def get_request_logger(request: Request):
     client_ip = request.client.host if request.client else "unknown"
     path = request.url.path
     
-    # 创建包含请求上下文的日志记录器
+    # 获取模块日志记录器并绑定请求上下文
+    logger = register_logger(f"api.{module}")
     return logger.bind(
         client_ip=client_ip,
-        path=path,
-        module=f"{module}_api"
+        path=path
     )
 
 def get_api_logger_dep(request: Request):

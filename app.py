@@ -2,30 +2,25 @@
 
 import sys
 import threading
+import uvicorn
 from pathlib import Path
 from contextvars import ContextVar
-from fastapi import FastAPI, Depends, Request, HTTPException
+from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import uvicorn
 from config import Config
 from api import register_routers
 from api.common import create_standard_response
 from api.common.monitor import setup_api_monitor
 from singleton_decorator import singleton
-from core.utils.logger import setup_logger, logger
+from core.utils.logger import register_logger, logger
 from api.common.middleware import NotFoundMiddleware, APILoggingMiddleware
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
-import time
-import traceback
-import os
-import json
-import signal
 import atexit
 import warnings
+from fastapi.middleware.gzip import GZipMiddleware
 
 # 过滤pydub的ffmpeg警告
 warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", category=RuntimeWarning)
@@ -34,7 +29,7 @@ warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", cate
 config = Config()
 
 # 初始化日志系统
-logger = setup_logger("nkuwiki")
+logger = register_logger("nkuwiki")
 logger.info("日志系统初始化完成")
 
 # 定义全局App单例类
@@ -58,11 +53,46 @@ class App:
 # 创建应用上下文
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
+# 应用启动和关闭事件
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动前执行
+    logger.info("应用正在启动...")
+    
+    # 预热资源
+    logger.info("正在预热应用资源...")
+    try:
+        # 可以在这里预加载模型、建立连接池等
+        pass
+    except Exception as e:
+        logger.error(f"资源预热失败: {str(e)}")
+        
+    logger.info("应用启动完成，准备接收请求")
+    yield
+    # 关闭时执行
+    logger.info("应用正在关闭...")
+    
+    # 清理资源
+    try:
+        cleanup_resources()
+    except Exception as e:
+        logger.error(f"资源清理失败: {str(e)}")
+    
+    logger.info("应用已安全关闭")
+
 # 创建FastAPI应用
 app = FastAPI(
     title="nkuwiki API",
     description="南开百科知识平台API服务",
     version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/api/docs",  # 自定义文档URL
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    default_response_class=JSONResponse,
+    # 性能优化设置
+    openapi_cache_max_age=3600,  # OpenAPI文档缓存1小时
 )
 
 # 添加CORS中间件
@@ -74,6 +104,9 @@ app.add_middleware(
     allow_headers=["*"],  # 允许所有HTTP头
     expose_headers=["*"]  # 暴露所有响应头
 )
+
+# 添加GZip压缩中间件
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # 大于1KB的响应将被压缩
 
 # 添加API日志中间件
 app.add_middleware(APILoggingMiddleware)
@@ -161,42 +194,66 @@ def get_config():
     """提供配置对象的依赖注入"""
     return config
 
-# 根路由重定向
-# 不需要重定向了，下面的app.mount('/')定义了静态网页地址
-# @app.get("/")
-# async def redirect_to_web():
-#     return RedirectResponse(url="/nkuwiki_web")
-
 # 网站路由
 website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
 app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
-
-# 额外的静态文件挂载点
 app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
 app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
 
 # 健康检查端点
 @app.get("/health")
 async def health_check(logger=Depends(get_logger)):
-    """健康检查"""
-    from datetime import datetime
-    from etl.load import get_conn
+    """健康检查接口"""
+    import datetime
+    logger.debug("执行健康检查")
+    
+    health_info = {
+        "status": "ok",
+        "version": "1.0.0",
+        "timestamp": datetime.datetime.now().isoformat(),
+        "services": {}
+    }
     
     # 检查数据库连接
     try:
-        with get_conn() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT 1")
-                db_status = "connected"
+        from etl.load import get_connection_stats
+        db_stats = get_connection_stats()
+        
+        # 数据库状态判断
+        pool_exists = db_stats["local"]["pool_exists"] if "local" in db_stats else False
+        
+        health_info["services"]["database"] = {
+            "status": "ok" if pool_exists else "fail",
+            "connection_pool": db_stats
+        }
     except Exception as e:
-        logger.error(f"数据库连接失败: {str(e)}")
-        db_status = f"error: {str(e)}"
+        logger.error(f"数据库健康检查失败: {str(e)}")
+        health_info["services"]["database"] = {
+            "status": "fail",
+            "error": str(e)
+        }
     
-    return create_standard_response({
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "database": db_status
-    })
+    # 检查文件系统
+    try:
+        import os
+        import shutil
+        
+        disk = shutil.disk_usage("/")
+        health_info["services"]["disk"] = {
+            "status": "ok",
+            "total_gb": disk.total / (1024**3),
+            "used_gb": disk.used / (1024**3),
+            "free_gb": disk.free / (1024**3),
+            "percent_used": disk.used / disk.total * 100
+        }
+    except Exception as e:
+        logger.error(f"磁盘健康检查失败: {str(e)}")
+        health_info["services"]["disk"] = {
+            "status": "fail",
+            "error": str(e)
+        }
+    
+    return create_standard_response(health_info)
 
 # 信号处理函数
 def setup_signal_handlers():
@@ -276,149 +333,39 @@ def run_qa_service():
         sys.exit(1)
 
 # 启动API服务
-def run_api_service():
-    """启动API服务，同时支持HTTP和HTTPS双模式"""
+def run_api_service(port):
+    """启动API服务，通过Nginx反向代理实现HTTP/HTTPS访问"""
     # 设置信号处理
     setup_signal_handlers()
     
-    host = "0.0.0.0"  # 固定监听所有网络接口
-    
-    # 获取SSL证书配置
-    ssl_key_path = config.get("services.website.ssl_key_path", None)
-    ssl_cert_path = config.get("services.website.ssl_cert_path", None)
-    
-    # 检查SSL证书配置
-    has_ssl = ssl_key_path and ssl_cert_path and Path(ssl_key_path).exists() and Path(ssl_cert_path).exists()
-    
-    # 增加调试信息
-    if has_ssl:
-        logger.debug(f"SSL证书路径: 私钥={ssl_key_path}, 证书={ssl_cert_path}")
-        logger.debug(f"证书文件存在: 私钥={Path(ssl_key_path).exists()}, 证书={Path(ssl_cert_path).exists()}")
-    else:
-        logger.warning("SSL证书配置不完整或文件不存在，将尝试使用HTTP模式启动")
-    
-    # 端口配置
-    http_port = config.get("services.website.http_port", 80)
-    https_port = config.get("services.website.https_port", 443)  # 回归使用标准HTTPS端口
-    
-    # 确定生产/调试模式
-    debug_mode = config.get("services.website.debug_mode", False)
-    if debug_mode:
-        # 调试模式 - 使用调试端口
-        debug_port = config.get("services.website.debug_port", 8443)
-        logger.info(f"检测到调试模式，使用调试端口: {debug_port}")
-        https_port = debug_port
-    else:
-        # 生产模式 - 使用标准端口
-        logger.info(f"以生产模式启动，使用标准端口: {https_port}")
-    
-    # 检查是否使用Cloudflare
-    use_cloudflare = config.get("services.website.use_cloudflare", True)
-    if use_cloudflare:
-        logger.info("检测到Cloudflare模式，优化配置用于Cloudflare反向代理")
-    
-    # 检查端口是否被占用
-    def is_port_in_use(port):
-        import socket
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            result = s.connect_ex((host, port)) == 0
-            logger.debug(f"端口 {port} 占用状态: {'已占用' if result else '未占用'}")
-            return result
-    
-    # 计算worker数量
-    def calculate_workers(manual_workers=None):
-        """计算合适的worker数量，考虑CPU核心数和手动指定数量"""
-        import os, multiprocessing
-        
-        # 如果手动指定了worker数量，优先使用
-        if manual_workers is not None and manual_workers > 0:
-            logger.info(f"使用手动指定的worker数量: {manual_workers}")
-            return manual_workers
-            
-        # 否则基于CPU核心数计算
-        try:
-            cpu_count = multiprocessing.cpu_count()
-            # 使用 (2 * CPU核心数 + 1) 的通用公式，但最大限制为8
-            recommended = min(2 * cpu_count + 1, 8)
-            logger.info(f"基于CPU核心数({cpu_count})计算的推荐worker数量: {recommended}")
-            return recommended
-        except:
-            # 如果无法获取CPU核心数，使用安全默认值
-            logger.warning("无法确定CPU核心数，使用默认worker数量: 4")
-            return 4
-    
-    # 获取worker数量设置
-    worker_arg = config.get("services.website.worker_count", None)
+    # 固定参数配置
+    host = "127.0.0.1"  # 只监听本地接口，由Nginx转发请求
     
     # 尝试启动服务
     try:
         # 导入uvicorn
         import uvicorn
         
-        # 确定最优启动方案 - 通过配置和环境决定
-        use_http = False  # 默认不使用HTTP
-        use_https = has_ssl  # 有SSL证书才启用HTTPS
-        worker_count = calculate_workers(worker_arg)  # 根据CPU和配置计算worker
-        
-        # Cloudflare优先使用HTTP (灵活模式)
-        if use_cloudflare:
-            use_http = True
-            logger.info("Cloudflare灵活模式: 使用HTTP连接提供服务")
-            
-            # 检查HTTP端口是否可用
-            if is_port_in_use(http_port):
-                logger.warning(f"HTTP端口 {http_port} 已被占用，尝试切换到HTTPS端口 {https_port}")
-                use_http = False
-                
-                # 如果有SSL证书，就切换到HTTPS端口
-                if has_ssl:
-                    use_https = True
-                    logger.info(f"已自动切换到HTTPS端口 {https_port}")
-                else:
-                    logger.error("无法切换到HTTPS模式：未配置SSL证书")
-        
-        # 检查是否为特权端口（需要root权限）
-        def is_privileged_port(port):
-            return port < 1024
-            
-        # 准备启动参数
+        # 准备启动参数 - 单进程稳定模式
         common_params = {
             "reload": False,
-            "workers": worker_count,
-            "log_level": "debug" if debug_mode else "info",
-            "limit_concurrency": 2000,  # 增加并发限制
-            "timeout_keep_alive": 75,  # 增加保活时间
-            "backlog": 4096,  # 增加队列长度
+            "workers": 1,            # 只使用1个worker
+            "log_level": "info",
+            "limit_concurrency": 500, # 降低并发限制
+            "timeout_keep_alive": 30, # 降低保活时间
+            "backlog": 1024,         # 降低队列长度
             "proxy_headers": True,
             "forwarded_allow_ips": "*"
         }
         
-        # 为特权端口提供警告
-        if (use_http and is_privileged_port(http_port)) or (use_https and is_privileged_port(https_port)):
-            logger.warning(f"使用特权端口 (HTTP:{http_port} 或 HTTPS:{https_port})，如果不是root用户可能无法绑定")
-            logger.warning("请确保应用有足够权限，或考虑使用 setcap 设置权限: sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3")
-            
-        # 确定使用哪种协议启动
-        if use_http:
-            logger.info(f"以HTTP模式启动 ({host}:{http_port})，worker数量: {worker_count}")
-            uvicorn.run(
-                "app:app", 
-                host=host, 
-                port=http_port,
-                **common_params
-            )
-        elif use_https:
-            logger.info(f"以HTTPS模式启动 ({host}:{https_port})，worker数量: {worker_count}")
-            uvicorn.run(
-                "app:app", 
-                host=host, 
-                port=https_port,
-                ssl_keyfile=ssl_key_path,
-                ssl_certfile=ssl_cert_path,
-                **common_params
-            )
-        else:
-            logger.error("无法启动服务：既没有可用的HTTP端口，也没有配置SSL证书")
+        # 启动HTTP服务
+        logger.info(f"以单进程稳定模式启动 ({host}:{port})，worker数量: 1")
+        uvicorn.run(
+            "app:app", 
+            host=host, 
+            port=port,
+            **common_params
+        )
     except Exception as e:
         logger.error(f"服务启动失败: {str(e)}", exc_info=True)
     finally:
@@ -429,6 +376,7 @@ def run_api_service():
 if __name__ == "__main__":
     import argparse
     import atexit
+    import datetime
     
     # 注册退出时的清理函数
     atexit.register(cleanup_resources)
@@ -437,85 +385,15 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="nkuwiki服务启动工具")
     parser.add_argument("--qa", action="store_true", help="启动问答服务")
     parser.add_argument("--api", action="store_true", help="启动API服务")
-    parser.add_argument("--http-only", action="store_true", help="仅启动HTTP服务，适用于Cloudflare灵活模式")
-    parser.add_argument("--worker", type=int, help="指定worker数量，不指定则根据CPU核心数自动计算")
+    parser.add_argument("--port", type=int, default=8000, help="API服务监听端口")
     
     args = parser.parse_args()
     
-    # 把worker数量参数传入配置
-    if args.worker is not None:
-        config.set("services.website.worker_count", args.worker)
-        logger.info(f"从命令行指定worker数量: {args.worker}")
-    
-    # 如果指定了HTTP-only模式
-    if args.http_only:
-        logger.info("使用HTTP-only模式启动，适用于Cloudflare灵活模式")
-        try:
-            # 检查端口
-            http_port = config.get("services.website.http_port", 80)
-            https_port = config.get("services.website.https_port", 443)
-            host = "0.0.0.0"
-            
-            # 检查HTTP端口是否被占用
-            def is_port_in_use(port):
-                import socket
-                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                    return s.connect_ex((host, port)) == 0
-            
-            # 如果HTTP端口被占用，尝试使用HTTPS端口
-            if is_port_in_use(http_port):
-                logger.warning(f"HTTP端口 {http_port} 已被占用，尝试切换到HTTPS端口 {https_port}")
-                
-                # 检查HTTPS端口是否也被占用
-                if is_port_in_use(https_port):
-                    logger.error(f"HTTPS端口 {https_port} 也被占用，无法启动服务")
-                    sys.exit(1)
-                else:
-                    http_port = https_port
-                    logger.info(f"已自动切换到端口 {http_port}")
-            
-            # 计算worker数量
-            import os, multiprocessing
-            worker_arg = config.get("services.website.worker_count", None)
-            
-            if worker_arg is not None:
-                worker_count = worker_arg
-            else:
-                try:
-                    cpu_count = multiprocessing.cpu_count()
-                    worker_count = min(2 * cpu_count + 1, 8)  # 使用标准公式，但最大限制为8
-                except:
-                    worker_count = 4  # 默认安全值
-            
-            logger.info(f"使用 {worker_count} 个worker启动HTTP服务")
-            
-            # 检查是否为特权端口
-            if http_port < 1024:
-                logger.warning(f"使用特权端口 {http_port}，如果不是root用户可能无法绑定")
-                logger.warning("请确保应用有足够权限，或考虑使用 setcap 设置权限: sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3")
-            
-            import uvicorn
-            uvicorn.run(
-                "app:app", 
-                host=host, 
-                port=http_port,
-                reload=False,
-                workers=worker_count,
-                log_level="info",
-                limit_concurrency=2000,
-                timeout_keep_alive=75,  # 增加保活时间
-                backlog=4096,  # 增加队列长度
-                proxy_headers=True,
-                forwarded_allow_ips="*"
-            )
-            sys.exit(0)
-        except Exception as e:
-            logger.error(f"HTTP-only模式启动失败: {str(e)}", exc_info=True)
-            sys.exit(1)
-    
-    # 如果没有指定任何服务，默认只启动问答服务
+    # 修改默认行为：如果没有指定任何服务，默认启动API服务
     if not (args.qa or args.api):
-        args.qa = True
+        args.api = True
+        # 记录日志，提醒用户未指定服务类型，默认启动API服务
+        logger.warning("未指定服务类型，默认启动API服务。请明确使用--api或--qa参数。")
     
     # 启动指定的服务
     if args.qa:
@@ -526,8 +404,8 @@ if __name__ == "__main__":
         logger.info("问答服务已在后台启动")
     
     if args.api:
-        # 主线程启动API服务
-        run_api_service()
+        # 修改run_api_service函数参数，传入端口
+        run_api_service(args.port)
     elif args.qa:
         # 如果只启动了问答服务，则等待问答服务线程结束
         qa_thread.join()

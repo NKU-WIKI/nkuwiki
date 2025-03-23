@@ -354,9 +354,9 @@ available_setting = {
                 "path": "/mysql",                            # MySQL数据路径
                 "host": "127.0.0.1",                         # 数据库主机地址
                 "port": 3306,                                # 数据库端口
-                "user": "root",                              # 数据库用户名
-                "password": "",                              # 数据库密码
-                "name": "mysql"                              # 数据库名称
+                "user": "your_username",                     # 数据库用户名
+                "password": "your_password",                 # 数据库密码
+                "name": "your_database_name"                # 数据库名称
             },
             "nltk": {
                 "path": "/nltk"                         # NLTK数据路径
@@ -379,9 +379,9 @@ class Config(dict):
         """初始化配置实例"""
         super().__init__()
         # 延迟导入logger，避免循环导入
-        from core.utils.logger import get_module_logger
+        from core.utils.logger import register_logger
         global logger
-        logger = get_module_logger('config')
+        logger = register_logger('config')
         
         self.update(available_setting)  # 先加载默认配置
         if d is None:

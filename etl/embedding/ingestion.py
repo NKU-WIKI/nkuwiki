@@ -1,7 +1,15 @@
 import sys
 from pathlib import Path
+from typing import List, Any, Optional, Tuple
+import asyncio
+
+# 添加项目根目录到系统路径
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from etl import *
+
+# 替换通配符导入为明确导入
+from etl import BASE_PATH, DATA_PATH
+from etl.embedding import embedding_logger
+
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
 from llama_index.core.schema import TransformComponent, TextNode, NodeRelationship, MetadataMode, Document

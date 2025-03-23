@@ -8,8 +8,8 @@ from core.bridge.context import Context
 from core.agent.agent import Agent
 from core.agent.gemini.google_gemini_session import GoogleGeminiSessionManager
 from core.utils import singleton_decorator
-from core.utils.logger import get_module_logger
-logger = get_module_logger('core.agent.gemini')
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.gemini")
 
 @singleton_decorator
 class GoogleGeminiAgent(Agent):

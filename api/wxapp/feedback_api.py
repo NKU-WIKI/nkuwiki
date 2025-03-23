@@ -115,10 +115,10 @@ async def get_feedback(
     
     return create_standard_response(feedback)
 
-@router.get("/users/{user_id}/feedback", response_model=Dict[str, Any], summary="获取用户反馈列表")
+@router.get("/users/{openid}/feedback", response_model=Dict[str, Any], summary="获取用户反馈列表")
 @handle_api_errors("获取用户反馈列表")
 async def list_user_feedback(
-    user_id: str = PathParam(..., description="用户openid"),
+    openid: str = PathParam(..., description="用户openid"),
     type: Optional[str] = Query(None, description="反馈类型: bug-问题反馈, suggestion-建议, other-其他"),
     status: Optional[str] = Query(None, description="反馈状态: pending-待处理, processing-处理中, resolved-已解决, rejected-已拒绝"),
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
@@ -126,10 +126,10 @@ async def list_user_feedback(
     api_logger=Depends(get_api_logger)
 ):
     """获取用户反馈列表"""
-    api_logger.debug(f"获取用户ID={user_id}的反馈列表, 类型={type}, 状态={status}")
+    api_logger.debug(f"获取用户openid={openid}的反馈列表")
     
     # 构建查询条件
-    conditions = {"openid": user_id, "is_deleted": 0}
+    conditions = {"openid": openid, "is_deleted": 0}
     if type:
         conditions["type"] = type
     if status:
@@ -145,23 +145,22 @@ async def list_user_feedback(
             offset=offset
         )
         
-        # 查询总反馈数量
-        total_count = count_records('wxapp_feedback', conditions)
-        
         # 处理反馈数据
         for feedback in feedback_list:
-            # 处理JSON字段
             feedback = process_json_fields(feedback)
         
+        # 查询总数
+        total_count = count_records('wxapp_feedback', conditions)
+        
         return create_standard_response({
-            'feedback_list': feedback_list,
-            'total': total_count,
-            'limit': limit,
-            'offset': offset
+            "feedback": feedback_list,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
         })
     except Exception as e:
-        api_logger.error(f"获取反馈列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取反馈列表失败: {str(e)}")
+        api_logger.error(f"获取用户反馈列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取用户反馈列表失败: {str(e)}")
 
 @router.put("/feedback/{feedback_id}", response_model=Dict[str, Any], summary="更新反馈")
 @handle_api_errors("更新反馈")

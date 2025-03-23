@@ -31,8 +31,9 @@ for path in [LOG_PATH]:
     path.mkdir(parents=True, exist_ok=True)
 
 # 初始化核心日志
-from core.utils.logger import init_logger, logger
-init_logger(LOG_PATH / "core.log", rotation="1 day", retention="3 months", level="DEBUG")
+from core.utils.logger import register_logger, logger
+# 注册core模块的日志记录器
+core_logger = register_logger("core")
 
 # 在初始化日志后再导入Config，避免循环导入
 from config import Config
@@ -45,7 +46,8 @@ __version__ = "1.0.0"
 # 定义导出的符号列表 
 __all__ = [
     # 基础库和工具
-    'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests','asyncio',
+    'os', 'sys', 'Path', 'logger', 'core_logger', 'config', 're', 'json', 'time', 'datetime', 
+    'Dict', 'List', 'Optional', 'Any', 'Set', 'datetime', 'timedelta', 'Union', 'requests', 'asyncio',
     # 路径配置
     'LOG_PATH'    
 ]

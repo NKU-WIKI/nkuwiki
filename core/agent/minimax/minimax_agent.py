@@ -3,8 +3,8 @@ MiniMax AI智能体实现
 """
 import time
 import requests
-from core.utils.logger import get_module_logger
-logger = get_module_logger('core.agent.minimax')
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.minimax")
 from config import Config
 from core.bridge.reply import Reply, ReplyType
 from core.bridge.context import Context

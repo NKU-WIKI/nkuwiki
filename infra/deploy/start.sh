@@ -3,16 +3,34 @@
 
 
 sudo tee /etc/systemd/system/nkuwiki.service <<EOF
+[Unit]
+Description=NKU Wiki API Service
+After=network.target nginx.service mysql.service
+
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
-Environment=PYTHONPATH=/home/nkuwiki/nkuwiki-shell/nkuwiki
-Environment=PYTHONUNBUFFERED=1
-ExecStart=/opt/venvs/nkuwiki/bin/python /home/nkuwiki/nkuwiki-shell/nkuwiki/app.py --api
+ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api
 Restart=always
-RestartSec=3
-StandardOutput=file:/var/log/nkuwiki.log
-StandardError=file:/var/log/nkuwiki-error.log
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+# 性能优化环境变量
+Environment=PYTHONOPTIMIZE=1
+Environment=PYTHONHASHSEED=random
+
+# 资源限制 - 高性能配置
+CPUQuota=90%
+MemoryLimit=6G
+TasksMax=256
+TimeoutStopSec=60
+
+# OOM配置
+OOMScoreAdjust=-500  # 降低被OOM杀死的可能性
+
+# 日志设置
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target

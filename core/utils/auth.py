@@ -1,20 +1,20 @@
 import jwt
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
-import logging
 from fastapi import HTTPException, status, Depends, Security
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from core.utils.config_manager import ConfigManager
+from config import Config
+from core.utils.logger import register_logger
 
 # 获取配置
-config = ConfigManager().get_config()
-logger = logging.getLogger(__name__)
+config = Config()
+logger = register_logger("auth")
 
 # JWT 配置
-SECRET_KEY = config.get("jwt", {}).get("secret_key", "your-256-bit-secret")
-ALGORITHM = config.get("jwt", {}).get("algorithm", "HS256")
-ACCESS_TOKEN_EXPIRE_MINUTES = config.get("jwt", {}).get("access_token_expire_minutes", 30 * 24 * 60)  # 默认30天
+SECRET_KEY = config.get("jwt.secret_key", "your-256-bit-secret")
+ALGORITHM = config.get("jwt.algorithm", "HS256")
+ACCESS_TOKEN_EXPIRE_MINUTES = config.get("jwt.access_token_expire_minutes", 30 * 24 * 60)  # 默认30天
 
 security = HTTPBearer()
 
