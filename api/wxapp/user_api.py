@@ -90,6 +90,7 @@ class UserSyncRequest(BaseModel):
     language: Optional[str] = Field(None, description="语言")
     university: Optional[str] = Field("南开大学", description="用户学校")
     login_type: Optional[str] = Field("wechat", description="登录类型")
+    use_cloud_id: Optional[bool] = Field(False, description="是否使用云ID")
 
 # API端点
 @router.get("/users/me", response_model=Dict[str, Any], summary="获取当前用户信息")
@@ -456,13 +457,9 @@ async def sync_wxapp_user(
     api_logger.debug(f"同步微信云用户: {user_data.dict()}, 头信息: cloud_source={cloud_source}, prefer_cloud_id={prefer_cloud_id}")
     
     try:
-        # 确保ID字段一致性（使用id作为主键）
-        cloud_id = user_data.id
-        if not cloud_id:
-            api_logger.warning("同步请求中没有提供云ID，使用随机生成ID")
-            raise HTTPException(status_code=400, detail="云ID不能为空")
-        
-        api_logger.debug(f"使用云ID: {cloud_id}")
+        # 直接使用openid作为唯一标识
+        cloud_id = user_data.openid
+        api_logger.debug(f"使用openid作为唯一标识: {cloud_id}")
         
         # 确定是否要使用云ID
         should_use_cloud_id = (
@@ -472,7 +469,7 @@ async def sync_wxapp_user(
         )
         api_logger.debug(f"是否使用云ID: {should_use_cloud_id}")
         
-        # 首先通过openid查询用户，这是最可靠的唯一标识
+        # 通过openid查询用户，这是最可靠的唯一标识
         existing_users = query_records(
             'wxapp_users',
             conditions={'openid': user_data.openid}
