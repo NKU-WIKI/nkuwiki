@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     `nick_name` VARCHAR(100) DEFAULT NULL COMMENT '用户昵称',
     `avatar` VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
     `gender` TINYINT DEFAULT 0 COMMENT '性别：0-未知, 1-男, 2-女',
+    `bio` VARCHAR(500) DEFAULT NULL COMMENT '用户个人简介',
     `country` VARCHAR(50) DEFAULT NULL COMMENT '国家',
     `province` VARCHAR(50) DEFAULT NULL COMMENT '省份',
     `city` VARCHAR(50) DEFAULT NULL COMMENT '城市',

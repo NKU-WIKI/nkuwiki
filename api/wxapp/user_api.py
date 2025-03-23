@@ -30,6 +30,7 @@ class UserBase(BaseModel):
     nick_name: Optional[str] = Field(None, description="用户昵称")
     avatar: Optional[str] = Field(None, description="头像URL")
     gender: Optional[int] = Field(0, description="性别：0-未知, 1-男, 2-女")
+    bio: Optional[str] = Field(None, description="用户个人简介")
     country: Optional[str] = Field(None, description="国家")
     province: Optional[str] = Field(None, description="省份")
     city: Optional[str] = Field(None, description="城市")
@@ -55,6 +56,7 @@ class UserUpdate(BaseModel):
     nick_name: Optional[str] = None
     avatar: Optional[str] = None
     gender: Optional[int] = None
+    bio: Optional[str] = None
     country: Optional[str] = None
     province: Optional[str] = None
     city: Optional[str] = None
@@ -96,6 +98,7 @@ class UserSyncRequest(BaseModel):
     nick_name: Optional[str] = Field(None, description="用户昵称")
     avatar: Optional[str] = Field(None, description="头像URL")
     gender: Optional[int] = Field(0, description="性别")
+    bio: Optional[str] = Field(None, description="用户个人简介")
     country: Optional[str] = Field(None, description="国家")
     province: Optional[str] = Field(None, description="省份")
     city: Optional[str] = Field(None, description="城市")
@@ -564,6 +567,7 @@ async def sync_wxapp_user(
             'nick_name': user_data.nick_name or f"用户{user_data.openid[-4:]}",
             'avatar': user_data.avatar or "/assets/icons/default-avatar.png",
             'gender': user_data.gender,
+            'bio': user_data.bio,
             'country': user_data.country,
             'province': user_data.province,
             'city': user_data.city,
