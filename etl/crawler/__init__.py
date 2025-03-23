@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
+from core.utils.logger import get_module_logger
 
 # crawler模块专用配置
 import tempfile  
@@ -54,15 +55,7 @@ DEFAULT_TIMEZONE = "Asia/Shanghai"
 DEFAULT_LOCALE = "zh-CN"
 
 # 创建crawler模块专用logger
-crawler_logger = logger.bind(module="crawler")
-log_path = LOG_PATH / 'crawler.log'
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
-)
+crawler_logger = get_module_logger("etl.crawler")
 
 def clean_filename(filename):
     """清理文件名，使其符合Windows和Linux文件系统规范，只保留汉字和字母"""

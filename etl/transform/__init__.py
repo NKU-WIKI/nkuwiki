@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
+from core.utils.logger import get_module_logger
 
 # 转换配置
 HTML_TAGS_PATTERN = r'<.*?>'
@@ -13,15 +14,7 @@ MAX_TEXT_LENGTH = config.get('etl.transform.max_text_length', 1000000)
 MIN_TEXT_LENGTH = config.get('etl.transform.min_text_length', 10)
 
 # 创建转换模块专用logger
-transform_logger = logger.bind(module="transform")
-log_path = LOG_PATH / "transform.log"
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
-)
+transform_logger = get_module_logger("etl.transform")
 
 # 定义导出的变量和函数
 __all__ = [

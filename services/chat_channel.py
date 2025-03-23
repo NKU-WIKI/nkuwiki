@@ -13,16 +13,18 @@ import time
 from typing import Optional, List
 from asyncio import CancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
-from loguru import logger
+from core.utils.logger import get_module_logger
+
+logger = get_module_logger("services.chat")
 
 from core.bridge.context import *
 from core.bridge.reply import *
 from services.channel import Channel
-from core.utils.common.dequeue import Dequeue
-from core.utils.common import memory
-from core.utils.plugins import *
-from core.utils.plugins.plugin_manager import PluginManager
-from core.utils.plugins.event import Event, EventContext
+from core.utils.data_structures import Dequeue
+from core.utils import tmp_resources as memory
+from core.plugins import *
+from core.plugins.plugin_manager import PluginManager
+from core.plugins.event import Event, EventContext
 from core.utils.voice.audio_convert import any_to_wav
 from config import Config
 # 替换App类导入

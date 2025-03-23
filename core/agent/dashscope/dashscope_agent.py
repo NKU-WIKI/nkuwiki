@@ -4,13 +4,14 @@
 import json  # noqa: F401
 import time  # noqa: F401
 import requests
-from loguru import logger  # noqa: F401
+from core.utils.logger import get_module_logger
+logger = get_module_logger('core.agent.dashscope')
 from config import Config
 from core.bridge.reply import Reply
 from core.bridge.context import Context
 from core.agent.agent import Agent
 from core.agent.dashscope.dashscope_session import DashscopeSessionManager
-from core.utils.common import singleton_decorator
+from core.utils import singleton_decorator
 from typing import Generator, AsyncGenerator
 
 

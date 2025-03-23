@@ -9,16 +9,25 @@ import os
 import re
 import time
 import threading
-
-from core.bridge.context import ContextType
+import html
+import tempfile
+import uuid
+from typing import Optional, List, Dict, Union, Any
+import requests
+import base64
+from pathlib import Path
+from PIL import Image
+import ntwork
+from core.utils.logger import get_module_logger
 from services.chat_message import ChatMessage
-from loguru import logger
+from core.bridge.context import Context, ContextType
 
 try:
     import pilk  # 用于SILK编码的语音文件转WAV
 except ImportError:
     logger.warning("未安装pilk库，语音转写功能不可用。请执行: pip install pilk")
 
+logger = get_module_logger("services.wework.message")
 
 def get_with_retry(get_func, max_retries=5, delay=5):
     """带有重试机制的函数执行器

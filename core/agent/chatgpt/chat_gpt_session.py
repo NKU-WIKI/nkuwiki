@@ -1,7 +1,7 @@
 from core.agent.session_manager import Session
 from app import App 
 from config import Config
-from core.utils.common import const
+from core.utils import const
 
 """
     e.g.  [

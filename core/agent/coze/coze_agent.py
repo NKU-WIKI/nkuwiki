@@ -8,7 +8,10 @@ from core.agent import *
 import sys
 import os
 import requests
-from loguru import logger
+from core.utils.logger import get_module_logger
+
+logger = get_module_logger("core.agent.coze")
+
 import json
 import time
 from typing import List, Dict, AsyncGenerator, Generator
@@ -150,7 +153,8 @@ class CozeAgent(Agent):
             logger.debug(f"[COZE] 输出格式: {format_type}")
             
             # 检查是否需要流式输出
-            if context.get("stream", False):
+            stream_output = context.get("stream_output", False) or context.get("stream", False)
+            if stream_output:
                 logger.info("[COZE] 使用流式输出")
                 logger.info("开始流式请求: {}...".format(query))
                 

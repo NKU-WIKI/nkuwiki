@@ -1,12 +1,13 @@
 from core.agent.agent_factory import create_agent
 from core.bridge.context import Context
 from core.bridge.reply import Reply
-from core.utils.common import const
-# from app import App
-from core.utils.common.singleton import singleton
+from core.utils import const
+from singleton_decorator import singleton
 from config import Config
-from core.utils.translate.factory import create_translator
+from core.utils.translator import create_translator
 from core.utils.voice.factory import create_voice
+from typing import Optional, List, Any
+from app import App
 
 
 @singleton

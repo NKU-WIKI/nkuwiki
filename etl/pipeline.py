@@ -1,10 +1,10 @@
 import os
-import logging
 import tempfile
 import requests
 import json
 from typing import Dict, Any, List, Optional
 import datetime
+from core.utils.logger import get_module_logger
 
 from etl.embedding.ingestion import embed_document
 from etl.embedding.hierarchical import create_document_hierarchy
@@ -12,7 +12,7 @@ from etl.load.json2mysql import store_document_metadata
 from etl.utils.wx_cloud import wx_cloud
 
 # 设置日志记录器
-logger = logging.getLogger(__name__)
+etl_logger = get_module_logger("etl.pipeline")
 
 def index_document(file_path: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
     """
@@ -50,7 +50,7 @@ def index_document(file_path: str, metadata: Dict[str, Any] = None) -> Dict[str,
             metadata["created_at"] = datetime.datetime.now().isoformat()
         
         # 处理文档
-        logger.debug(f"开始处理文档: {filename}")
+        etl_logger.debug(f"开始处理文档: {filename}")
         
         # 建立文档层次结构
         doc_hierarchy = create_document_hierarchy(file_path)
@@ -73,7 +73,7 @@ def index_document(file_path: str, metadata: Dict[str, Any] = None) -> Dict[str,
         }
         
     except Exception as e:
-        logger.error(f"索引文档失败: {str(e)}")
+        etl_logger.error(f"索引文档失败: {str(e)}")
         return {
             "success": False,
             "message": f"索引失败: {str(e)}"
@@ -115,7 +115,7 @@ def index_cloud_document(cloud_file_id: str, file_name: str, user_id: str,
             metadata["created_at"] = datetime.datetime.now().isoformat()
         
         # 使用wx_cloud工具类下载云存储文件
-        logger.debug(f"开始下载云存储文件: {cloud_file_id}")
+        etl_logger.debug(f"开始下载云存储文件: {cloud_file_id}")
         temp_file = wx_cloud.download_file(cloud_file_id)
         
         if not temp_file:
@@ -128,7 +128,7 @@ def index_cloud_document(cloud_file_id: str, file_name: str, user_id: str,
         return index_document(temp_file, metadata)
         
     except Exception as e:
-        logger.error(f"处理云存储文件失败: {str(e)}")
+        etl_logger.error(f"处理云存储文件失败: {str(e)}")
         return {
             "success": False,
             "message": f"处理失败: {str(e)}"
@@ -138,9 +138,9 @@ def index_cloud_document(cloud_file_id: str, file_name: str, user_id: str,
         if temp_file and os.path.exists(temp_file):
             try:
                 os.remove(temp_file)
-                logger.debug(f"已删除临时文件: {temp_file}")
+                etl_logger.debug(f"已删除临时文件: {temp_file}")
             except Exception as e:
-                logger.error(f"删除临时文件失败: {str(e)}")
+                etl_logger.error(f"删除临时文件失败: {str(e)}")
 
 def extract_keywords(text: str, max_keywords: int = 5) -> List[str]:
     """
@@ -184,5 +184,5 @@ def extract_keywords(text: str, max_keywords: int = 5) -> List[str]:
         
         return keywords
     except Exception as e:
-        logger.error(f"提取关键词失败: {str(e)}")
+        etl_logger.error(f"提取关键词失败: {str(e)}")
         return [] 

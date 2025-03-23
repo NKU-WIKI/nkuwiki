@@ -6,11 +6,11 @@ import json
 import openai
 
 from bridge.reply import Reply, ReplyType
-from common.log import logger
+from core.utils.logger import logger
 from app import conf
 from voice.voice import Voice
 import requests
-from common import const
+from core.utils import const
 import datetime, random
 
 class OpenaiVoice(Voice):

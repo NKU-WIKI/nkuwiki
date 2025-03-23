@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
+from core.utils.logger import get_module_logger
 
 import numpy as np
 import torch
@@ -45,16 +46,8 @@ QDRANT_TIMEOUT = config.get('etl.data.qdrant.timeout', 30.0)
 COLLECTION_NAME = config.get('etl.data.qdrant.collection', 'main_index')
 VECTOR_SIZE = config.get('etl.data.qdrant.vector_size', 1024)
 
-# 创建检索模块专用logger
-retrieval_logger = logger.bind(module="retrieval")
-log_path = LOG_PATH / "retrieval.log"
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
-)
+# 创建retrieval模块专用logger
+retrieval_logger = get_module_logger("etl.retrieval")
 
 # 定义导出的变量和函数
 __all__ = [

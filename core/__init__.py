@@ -20,12 +20,8 @@ import requests
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
-from loguru import logger
 from typing import Dict, List, Any, Set, Union, Optional
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from config import Config
-# 导入配置
-config = Config()
 
 # ---------- 全局共享配置项 ----------
 # 基础路径配置
@@ -34,9 +30,15 @@ LOG_PATH = Path(__file__).resolve().parent / "logs"
 for path in [LOG_PATH]:
     path.mkdir(parents=True, exist_ok=True)
 
-# 设置日志目录
-LOG_PATH.mkdir(exist_ok=True, parents=True)
-logger.add(LOG_PATH / "core.log", rotation="1 day", retention="3 months", level="DEBUG")
+# 初始化核心日志
+from core.utils.logger import init_logger, logger
+init_logger(LOG_PATH / "core.log", rotation="1 day", retention="3 months", level="DEBUG")
+
+# 在初始化日志后再导入Config，避免循环导入
+from config import Config
+# 导入配置
+config = Config()
+
 # 版本信息
 __version__ = "1.0.0"
 

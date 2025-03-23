@@ -1,4 +1,4 @@
-from core.utils.common.expired_dict import ExpiredDict
+from core.utils.data_structures import ExpiredDict
 from app import App
 from config import Config   
 

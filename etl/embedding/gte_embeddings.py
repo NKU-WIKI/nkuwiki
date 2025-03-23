@@ -1,4 +1,3 @@
-import logging
 from typing import Any, List
 import torch
 import torch.nn.functional as F
@@ -12,8 +11,9 @@ from torch import Tensor
 from transformers import AutoTokenizer
 from etl.utils.modeling_qwen import Qwen2Model
 from etl.embedding.ingestion import get_node_content
+from core.utils.logger import get_module_logger
 
-logger = logging.getLogger(__name__)
+logger = get_module_logger("etl.embedding.gte")
 
 
 class GTEEmbedding(BaseEmbedding):

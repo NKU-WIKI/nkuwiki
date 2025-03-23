@@ -4,13 +4,14 @@ Claude API聊天机器人
 import json  # noqa: F401
 import time  # noqa: F401
 import requests
-from loguru import logger  # noqa: F401
+from core.utils.logger import get_module_logger
+logger = get_module_logger('core.agent.claudeapi')
 from config import Config
 from core.bridge.reply import Reply
 from core.bridge.context import Context
 from core.agent.agent import Agent
 from core.agent.claudeapi.claude_api_session import ClaudeAPISessionManager
-from core.utils.common import singleton_decorator
+from core.utils import singleton_decorator
 from typing import Generator, AsyncGenerator, Any
 
 

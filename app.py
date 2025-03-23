@@ -3,26 +3,32 @@
 import sys
 import threading
 from pathlib import Path
-from loguru import logger
 from contextvars import ContextVar
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 from config import Config
-# 导入新的API注册函数
-from core.api import register_routers
-from core.api.common import create_standard_response
-from core.api.common.monitor import setup_api_monitor
-from core.utils.common.singleton import singleton
-from core.utils.logger import setup_logger
-from core.api.common.middleware import NotFoundMiddleware, APILoggingMiddleware
+from api import register_routers
+from api.common import create_standard_response
+from api.common.monitor import setup_api_monitor
+from singleton_decorator import singleton
+from core.utils.logger import setup_logger, logger
+from api.common.middleware import NotFoundMiddleware, APILoggingMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 from contextlib import asynccontextmanager
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 import time
 import traceback
+import os
+import json
+import signal
+import atexit
+import warnings
+
+# 过滤pydub的ffmpeg警告
+warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", category=RuntimeWarning)
 
 # 创建配置对象
 config = Config()

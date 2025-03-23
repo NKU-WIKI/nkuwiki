@@ -5,10 +5,10 @@ import random
 import requests
 from voice import audio_convert
 from bridge.reply import Reply, ReplyType
-from common.log import logger
+from core.utils.logger import logger
 from app import conf
 from voice.voice import Voice
-from common import const
+from core.utils import const
 import os
 import datetime
 

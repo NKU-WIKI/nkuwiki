@@ -1,77 +1,75 @@
 """处理JSON字段的工具函数"""
 import json
-from loguru import logger
+from core.utils.logger import logger, get_module_logger
+import os
 from typing import Dict, Any, List, Optional
 
+# 获取etl专用日志记录器
+etl_logger = get_module_logger("etl.load")
+
 def process_post_json_fields(post_data: Dict[str, Any]) -> Dict[str, Any]:
-    """处理帖子数据中的JSON字段，确保格式正确并计算相关计数
+    """处理帖子数据中的JSON字段，确保它们是字典或列表类型"""
+    if not post_data:
+        return {}
     
-    Args:
-        post_data: 帖子数据字典
-        
-    Returns:
-        处理后的帖子数据字典
-    """
-    try:
-        post_copy = post_data.copy()
-        
-        # 处理images字段
-        if 'images' in post_copy:
-            try:
-                if isinstance(post_copy['images'], str) and post_copy['images'].strip():
-                    post_copy['images'] = json.loads(post_copy['images'])
-                elif post_copy['images'] is None or post_copy['images'] == '':
-                    post_copy['images'] = []
-            except Exception as e:
-                logger.error(f"解析帖子images字段失败: {str(e)}, 原值: {post_copy.get('images')}")
+    post_copy = post_data.copy()
+    
+    # 处理images字段
+    if 'images' in post_copy and post_copy['images']:
+        try:
+            if isinstance(post_copy['images'], str):
+                post_copy['images'] = json.loads(post_copy['images'])
+            elif not isinstance(post_copy['images'], list):
                 post_copy['images'] = []
-        
-        # 处理tags字段
-        if 'tags' in post_copy:
-            try:
-                if isinstance(post_copy['tags'], str) and post_copy['tags'].strip():
-                    post_copy['tags'] = json.loads(post_copy['tags'])
-                elif post_copy['tags'] is None or post_copy['tags'] == '':
-                    post_copy['tags'] = []
-            except Exception as e:
-                logger.error(f"解析帖子tags字段失败: {str(e)}, 原值: {post_copy.get('tags')}")
+        except Exception as e:
+            etl_logger.error(f"解析帖子images字段失败: {str(e)}, 原值: {post_copy.get('images')}")
+            post_copy['images'] = []
+    
+    # 处理tags字段
+    if 'tags' in post_copy and post_copy['tags']:
+        try:
+            if isinstance(post_copy['tags'], str):
+                post_copy['tags'] = json.loads(post_copy['tags'])
+            elif not isinstance(post_copy['tags'], list):
                 post_copy['tags'] = []
-        
-        # 处理liked_users字段
-        if 'liked_users' in post_copy:
-            try:
-                if isinstance(post_copy['liked_users'], str) and post_copy['liked_users'].strip():
-                    post_copy['liked_users'] = json.loads(post_copy['liked_users'])
-                elif post_copy['liked_users'] is None or post_copy['liked_users'] == '':
-                    post_copy['liked_users'] = []
-            except Exception as e:
-                logger.error(f"解析帖子liked_users字段失败: {str(e)}, 原值: {post_copy.get('liked_users')}")
+        except Exception as e:
+            etl_logger.error(f"解析帖子tags字段失败: {str(e)}, 原值: {post_copy.get('tags')}")
+            post_copy['tags'] = []
+    
+    # 处理liked_users字段
+    if 'liked_users' in post_copy and post_copy['liked_users']:
+        try:
+            if isinstance(post_copy['liked_users'], str):
+                post_copy['liked_users'] = json.loads(post_copy['liked_users'])
+            elif not isinstance(post_copy['liked_users'], list):
                 post_copy['liked_users'] = []
-                
-        # 处理favorite_users字段
-        if 'favorite_users' in post_copy:
-            try:
-                if isinstance(post_copy['favorite_users'], str) and post_copy['favorite_users'].strip():
-                    post_copy['favorite_users'] = json.loads(post_copy['favorite_users'])
-                elif post_copy['favorite_users'] is None or post_copy['favorite_users'] == '':
-                    post_copy['favorite_users'] = []
-            except Exception as e:
-                logger.error(f"解析帖子favorite_users字段失败: {str(e)}, 原值: {post_copy.get('favorite_users')}")
+        except Exception as e:
+            etl_logger.error(f"解析帖子liked_users字段失败: {str(e)}, 原值: {post_copy.get('liked_users')}")
+            post_copy['liked_users'] = []
+    
+    # 处理favorite_users字段
+    if 'favorite_users' in post_copy and post_copy['favorite_users']:
+        try:
+            if isinstance(post_copy['favorite_users'], str):
+                post_copy['favorite_users'] = json.loads(post_copy['favorite_users'])
+            elif not isinstance(post_copy['favorite_users'], list):
                 post_copy['favorite_users'] = []
-        
-        # 确保likes和favorite_count计数正确
-        if 'liked_users' in post_copy and isinstance(post_copy['liked_users'], list):
-            # 如果存在liked_users，确保likes字段与点赞用户数量一致
-            post_copy['likes'] = len(post_copy['liked_users'])
-            
-        if 'favorite_users' in post_copy and isinstance(post_copy['favorite_users'], list):
-            # 如果存在favorite_users，确保favorite_count字段与收藏用户数量一致
-            post_copy['favorite_count'] = len(post_copy['favorite_users'])
-        
-        return post_copy
+        except Exception as e:
+            etl_logger.error(f"解析帖子favorite_users字段失败: {str(e)}, 原值: {post_copy.get('favorite_users')}")
+            post_copy['favorite_users'] = []
+    
+    try:
+        # 处理其他可能的JSON字段
+        for key, value in post_copy.items():
+            if isinstance(value, str) and (value.startswith('[') or value.startswith('{')):
+                try:
+                    post_copy[key] = json.loads(value)
+                except:
+                    pass
     except Exception as e:
-        logger.error(f"处理JSON字段失败: {str(e)}")
-        return post_data  # 如果处理失败，返回原始数据
+        etl_logger.error(f"处理JSON字段失败: {str(e)}")
+    
+    return post_copy
 
 def process_post_create_data(post_data: Dict[str, Any]) -> Dict[str, Any]:
     """处理创建帖子时的数据，确保所有字段格式正确
@@ -100,5 +98,5 @@ def process_post_create_data(post_data: Dict[str, Any]) -> Dict[str, Any]:
         
         return post_copy
     except Exception as e:
-        logger.error(f"处理创建帖子数据失败: {str(e)}")
+        etl_logger.error(f"处理创建帖子数据失败: {str(e)}")
         return post_data 

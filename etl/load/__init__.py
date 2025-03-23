@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
-
+from core.utils.logger import get_module_logger
 
 import mysql.connector
 from mysql.connector import pooling
@@ -15,16 +15,7 @@ from mysql.connector import pooling
 conn_pool = None
 
 # 创建加载模块专用logger
-load_logger = logger.bind(module="load")
-log_path = LOG_PATH / "load.log"
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
-)
-
+load_logger = get_module_logger("etl.load")
 
 def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
     """获取MySQL数据库连接

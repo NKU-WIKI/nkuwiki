@@ -24,11 +24,15 @@ import asyncio
 from tqdm.auto import tqdm
 from datetime import datetime, timedelta
 from pathlib import Path
-from loguru import logger
 from typing import Dict, List, Any, Set, Tuple, Union, Optional
 from collections import defaultdict
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from config import Config
+from core.utils.logger import logger, get_module_logger
+
+# 获取etl专用日志记录器
+etl_logger = get_module_logger("etl")
+
 # 导入配置
 config = Config()
 
@@ -59,7 +63,6 @@ os.environ["NLTK_DATA"] = str(NLTK_PATH.absolute())
 
 # 设置日志目录
 LOG_PATH.mkdir(exist_ok=True, parents=True)
-logger.add(LOG_PATH / "etl.log", rotation="1 day", retention="3 months", level="DEBUG")
 
 # 导入nltk并设置下载路径
 import nltk
@@ -72,16 +75,16 @@ try:
         try:
             nltk.data.find(f'corpora/{resource}')
         except LookupError:
-            logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
+            etl_logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
             try:
                 nltk.download(resource, download_dir=str(NLTK_PATH.absolute()), quiet=False)
-                logger.debug(f"NLTK资源 {resource} 下载成功")
+                etl_logger.debug(f"NLTK资源 {resource} 下载成功")
             except Exception as e:
-                logger.error(f"NLTK资源 {resource} 下载失败: {e}")
-                logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
+                etl_logger.error(f"NLTK资源 {resource} 下载失败: {e}")
+                etl_logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
 except Exception as e:
-    logger.error(f"NLTK资源检查失败: {e}")
-    logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
+    etl_logger.error(f"NLTK资源检查失败: {e}")
+    etl_logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
 
 # 数据库配置
 DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')

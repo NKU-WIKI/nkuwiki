@@ -4,7 +4,9 @@
 import json
 import time
 import requests
-from loguru import logger
+from core.utils.logger import get_module_logger
+
+logger = get_module_logger("services.weworktop.api")
 
 class WeworkApiClient:
     """企业微信API客户端"""

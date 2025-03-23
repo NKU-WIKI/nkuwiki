@@ -3,13 +3,14 @@ MiniMax AI智能体实现
 """
 import time
 import requests
-from loguru import logger
+from core.utils.logger import get_module_logger
+logger = get_module_logger('core.agent.minimax')
 from config import Config
 from core.bridge.reply import Reply, ReplyType
 from core.bridge.context import Context
 from core.agent.agent import Agent
 from core.agent.session_manager import Session, SessionManager
-from core.utils.common import singleton_decorator
+from core.utils.decorators import singleton_decorator
 
 
 class MinimaxSession(Session):

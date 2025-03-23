@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
+from core.utils.logger import get_module_logger
 
 import torch
 import numpy as np
@@ -30,16 +31,8 @@ CHUNK_SIZE = config.get('chunk_size', 1024)
 CHUNK_OVERLAP = config.get('chunk_overlap', 50)
 SPLIT_TYPE = config.get('split_type', 0)  # 0-->Sentence 1-->Hierarchical
 
-# 创建嵌入模块专用logger
-embedding_logger = logger.bind(module="embedding")
-log_path = LOG_PATH / "embedding.log"
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
-)
+# 创建embedding模块专用logger
+embedding_logger = get_module_logger("etl.embedding")
 
 # 常用嵌入函数
 def normalize_embedding(embedding):
