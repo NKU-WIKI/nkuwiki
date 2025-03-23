@@ -4,9 +4,9 @@ Agent工厂模块，负责创建不同类型的智能体实例
 
 import importlib
 import sys
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 
-logger = get_module_logger("core.agent.factory")
+logger = register_logger("core.agent.factory")
 
 from core.agent.agent import Agent
 from config import Config

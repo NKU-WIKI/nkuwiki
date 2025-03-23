@@ -1,11 +1,11 @@
 """处理JSON字段的工具函数"""
 import json
-from core.utils.logger import logger, get_module_logger
+from core.utils.logger import logger, register_logger
 import os
 from typing import Dict, Any, List, Optional
 
 # 获取etl专用日志记录器
-etl_logger = get_module_logger("etl.load")
+etl_logger = register_logger("etl.load")
 
 def process_post_json_fields(post_data: Dict[str, Any]) -> Dict[str, Any]:
     """处理帖子数据中的JSON字段，确保它们是字典或列表类型"""

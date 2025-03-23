@@ -25,11 +25,22 @@ def register_routers(app):
     Args:
         app: FastAPI应用实例
     """
+    # 注意：健康检查端点已在app.py中定义
+    # 不再重复注册/health端点
+        
     app.include_router(wxapp_router)
     app.include_router(mysql_router)
     app.include_router(agent_router)
 
-# 导入各子模块的路由
-from api.wxapp import *
-from api.mysql import *
-from api.agent import * 
+# 导入各子模块的路由，这会触发子模块中的路由注册
+# 使用明确的导入代替通配符导入
+import api.wxapp.user_api
+import api.wxapp.post_api
+import api.wxapp.comment_api
+import api.wxapp.notification_api
+import api.wxapp.search_api
+import api.wxapp.feedback_api
+import api.wxapp.about_api
+
+import api.mysql
+import api.agent 

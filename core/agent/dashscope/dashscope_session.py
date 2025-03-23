@@ -2,8 +2,8 @@
 DashScope会话管理
 """
 import time
-from core.utils.logger import get_module_logger
-logger = get_module_logger('core.agent.dashscope')
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.dashscope")
 from config import Config
 from core.agent.session_manager import Session, SessionManager
 

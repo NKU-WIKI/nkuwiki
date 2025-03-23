@@ -13,9 +13,9 @@ from core.utils.data_structures import SortedDict
 from config import Config
 from core.plugins.plugin import Plugin
 from core.plugins.event import EventContext, EventAction, Event
-from core.utils.logger import get_module_logger   
+from core.utils.logger import register_logger   
 
-logger = get_module_logger('core.plugins')
+logger = register_logger("core.plugins")
 
 @singleton
 class PluginManager:

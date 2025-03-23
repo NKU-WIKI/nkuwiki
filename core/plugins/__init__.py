@@ -1,5 +1,5 @@
-from .event import *
-from .plugin import *
+from .event import Event, EventAction, EventContext
+from .plugin import Plugin
 from .plugin_manager import PluginManager
 
 

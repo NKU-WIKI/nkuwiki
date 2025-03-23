@@ -16,9 +16,11 @@ from api.common.response import create_standard_response, StandardResponse
 from api.common.exceptions import setup_exception_handlers
 from api.common.decorators import handle_api_errors
 from api.common.dependencies import get_api_logger_dep as get_api_logger
-from core.utils.logger import get_api_logger as core_get_api_logger
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 from core.utils.request import get_client_ip, extract_request_info
+
+# 初始化API通用日志记录器
+api_logger = register_logger("api")
 
 __all__ = [
     'create_standard_response',
@@ -42,15 +44,15 @@ def get_api_logger():
 # 获取不同模块的日志器
 def get_mysql_logger():
     """获取MySQL日志器"""
-    return core_get_api_logger('mysql')
+    return register_logger('api.mysql')
 
 def get_wxapp_logger():
     """获取微信小程序日志器"""
-    return core_get_api_logger('wxapp')
+    return register_logger('api.wxapp')
 
 def get_agent_logger():
     """获取智能体日志器"""
-    return core_get_api_logger('agent')
+    return register_logger('api.agent')
 
 # 标准响应创建函数
 def create_standard_response(data: Any = None, code: int = 200, message: str = "success") -> Dict[str, Any]:

@@ -1,62 +1,77 @@
 """Hierarchical node parser."""
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+import uuid
+import sys
+from pathlib import Path
+
+# 添加项目根目录到系统路径
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+
+# 明确导入
+from etl.embedding import embedding_logger
+from etl import DATA_PATH, BASE_PATH
 
 from llama_index.core.bridge.pydantic import Field
 from llama_index.core.callbacks.base import CallbackManager
 from llama_index.core.callbacks.schema import CBEventType, EventPayload
 from llama_index.core.node_parser.interface import NodeParser
 from etl.transform.splitter import SentenceSplitter
-from llama_index.core.schema import BaseNode, Document, NodeRelationship
+from llama_index.core.schema import BaseNode, Document, NodeRelationship, TextNode, RelatedNodeInfo
 from llama_index.core.utils import get_tqdm_iterable
+from llama_index.core.node_parser import TextSplitter
 
 
-def _add_parent_child_relationship(parent_node: BaseNode, child_node: BaseNode) -> None:
+def _add_parent_child_relationship(parent_node: TextNode, child_node: TextNode) -> None:
     """Add parent/child relationship between nodes."""
-    child_list = parent_node.relationships.get(NodeRelationship.CHILD, [])
-    child_list.append(child_node.as_related_node_info())
-    parent_node.relationships[NodeRelationship.CHILD] = child_list
-
-    child_node.relationships[
-        NodeRelationship.PARENT
-    ] = parent_node.as_related_node_info()
-
-
-def get_leaf_nodes(nodes: List[BaseNode]) -> List[BaseNode]:
-    """Get leaf nodes."""
-    leaf_nodes = []
-    for node in nodes:
-        if NodeRelationship.CHILD not in node.relationships:
-            leaf_nodes.append(node)
-    return leaf_nodes
-
-
-def get_root_nodes(nodes: List[BaseNode]) -> List[BaseNode]:
-    """Get root nodes."""
-    root_nodes = []
-    for node in nodes:
-        if NodeRelationship.PARENT not in node.relationships:
-            root_nodes.append(node)
-    return root_nodes
-
-
-def get_child_nodes(nodes: List[BaseNode], all_nodes: List[BaseNode]) -> List[BaseNode]:
-    """Get child nodes of nodes from given all_nodes."""
-    children_ids = []
-    for node in nodes:
-        if NodeRelationship.CHILD not in node.relationships:
-            continue
-
-        children_ids.extend(
-            [r.node_id for r in node.relationships[NodeRelationship.CHILD]]
+    if parent_node.id != child_node.id:
+        parent_node.relationships[NodeRelationship.CHILD] = RelatedNodeInfo(
+            node_id=child_node.id, metadata={}
+        )
+        child_node.relationships[NodeRelationship.PARENT] = RelatedNodeInfo(
+            node_id=parent_node.id, metadata={}
         )
 
-    child_nodes = []
-    for candidate_node in all_nodes:
-        if candidate_node.node_id not in children_ids:
-            continue
-        child_nodes.append(candidate_node)
 
+def get_leaf_nodes(nodes_dict: Dict[str, TextNode]) -> List[TextNode]:
+    """Get leaf nodes."""
+    leaf_nodes = set(nodes_dict.values())
+    
+    for node in nodes_dict.values():
+        if NodeRelationship.CHILD in node.relationships:
+            child_id = node.relationships[NodeRelationship.CHILD].node_id
+            child_node = nodes_dict.get(child_id)
+            if child_node in leaf_nodes:
+                leaf_nodes.remove(node)
+    
+    return list(leaf_nodes)
+
+
+def get_root_nodes(nodes_dict: Dict[str, TextNode]) -> List[TextNode]:
+    """Get root nodes."""
+    root_nodes = set(nodes_dict.values())
+    
+    for node in nodes_dict.values():
+        if NodeRelationship.PARENT in node.relationships:
+            parent_id = node.relationships[NodeRelationship.PARENT].node_id
+            parent_node = nodes_dict.get(parent_id)
+            if parent_node in root_nodes:
+                root_nodes.remove(node)
+    
+    return list(root_nodes)
+
+
+def get_child_nodes(node: TextNode, nodes_dict: Dict[str, TextNode]) -> List[TextNode]:
+    """Get child nodes of nodes from given all_nodes."""
+    child_nodes = []
+    
+    if NodeRelationship.CHILD in node.relationships:
+        child_id = node.relationships[NodeRelationship.CHILD].node_id
+        child_node = nodes_dict.get(child_id)
+        if child_node:
+            child_nodes.append(child_node)
+            child_nodes.extend(get_child_nodes(child_node, nodes_dict))
+    
     return child_nodes
 
 

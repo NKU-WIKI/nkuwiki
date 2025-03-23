@@ -114,10 +114,10 @@ async def get_notification(
     
     return create_standard_response(notification)
 
-@router.get("/users/{user_id}/notifications", response_model=Dict[str, Any], summary="获取用户通知列表")
+@router.get("/users/{openid}/notifications", response_model=Dict[str, Any], summary="获取用户通知列表")
 @handle_api_errors("获取用户通知列表")
 async def list_user_notifications(
-    user_id: str = PathParam(..., description="用户openid"),
+    openid: str = PathParam(..., description="用户openid"),
     type: Optional[str] = Query(None, description="通知类型: system-系统通知, like-点赞, comment-评论, follow-关注"),
     is_read: Optional[bool] = Query(None, description="是否已读: true-已读, false-未读"),
     limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
@@ -125,10 +125,10 @@ async def list_user_notifications(
     api_logger=Depends(get_api_logger)
 ):
     """获取用户通知列表"""
-    api_logger.debug(f"获取用户ID={user_id}的通知列表, 类型={type}, 已读状态={is_read}")
+    api_logger.debug(f"获取用户openid={openid}的通知列表, 类型={type}, 已读状态={is_read}")
     
     # 构建查询条件
-    conditions = {"openid": user_id, "is_deleted": 0}
+    conditions = {"openid": openid, "is_deleted": 0}
     if type:
         conditions["type"] = type
     if is_read is not None:
@@ -145,11 +145,11 @@ async def list_user_notifications(
         )
         
         # 查询未读通知数量
-        unread_conditions = {"openid": user_id, "is_read": 0, "is_deleted": 0}
+        unread_conditions = {"openid": openid, "is_read": 0, "is_deleted": 0}
         unread_count = count_records('wxapp_notifications', unread_conditions)
         
         # 查询总通知数量
-        total_conditions = {"openid": user_id, "is_deleted": 0}
+        total_conditions = {"openid": openid, "is_deleted": 0}
         total_count = count_records('wxapp_notifications', total_conditions)
         
         # 处理通知数据
@@ -157,34 +157,33 @@ async def list_user_notifications(
             # 处理JSON字段
             notification = process_json_fields(notification)
             
-            # 处理发送者信息
+            # 如果有发送者ID，尝试获取发送者信息
             if notification.get('sender_openid'):
                 try:
-                    # 查询发送者信息
                     sender = query_records(
                         'wxapp_users',
-                        conditions={"openid": notification.get('sender_openid')}
+                        conditions={"openid": notification['sender_openid']}
                     )
                     if sender and len(sender) > 0:
                         notification['sender'] = {
-                            'id': sender[0].get('id'),
-                            'openid': sender[0].get('openid'),
-                            'nick_name': sender[0].get('nick_name'),
-                            'avatar': sender[0].get('avatar')
+                            "openid": sender[0]['openid'],
+                            "nick_name": sender[0]['nick_name'],
+                            "avatar": sender[0]['avatar']
                         }
                 except Exception as e:
-                    api_logger.error(f"获取发送者信息失败: {str(e)}")
+                    api_logger.error(f"获取通知发送者信息失败: {str(e)}")
         
+        # 返回通知列表
         return create_standard_response({
-            'notifications': notifications,
-            'total': total_count,
-            'unread': unread_count,
-            'limit': limit,
-            'offset': offset
+            "notifications": notifications,
+            "unread_count": unread_count,
+            "total": total_count,
+            "limit": limit,
+            "offset": offset
         })
     except Exception as e:
-        api_logger.error(f"获取通知列表失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"获取通知列表失败: {str(e)}")
+        api_logger.error(f"获取用户通知列表失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"获取用户通知列表失败: {str(e)}")
 
 @router.put("/notifications/{notification_id}", response_model=Dict[str, Any], summary="更新通知")
 @handle_api_errors("更新通知")
@@ -225,47 +224,61 @@ async def update_notification(
     
     return create_standard_response(updated_notification)
 
-@router.put("/users/{user_id}/notifications/read", response_model=Dict[str, Any], summary="将用户通知标记为已读")
+@router.put("/users/{openid}/notifications/read", response_model=Dict[str, Any], summary="将用户通知标记为已读")
 @handle_api_errors("标记通知已读")
 async def mark_notifications_as_read(
-    user_id: str = PathParam(..., description="用户openid"),
+    openid: str = PathParam(..., description="用户openid"),
     notification_ids: Optional[List[int]] = Body(None, description="通知ID列表，如果为空则标记所有未读通知"),
     api_logger=Depends(get_api_logger)
 ):
     """将用户通知标记为已读"""
-    api_logger.debug(f"标记用户ID={user_id}的通知为已读, 通知IDs={notification_ids}")
+    api_logger.debug(f"标记用户openid={openid}的通知为已读, 通知IDs={notification_ids}")
     
     try:
-        update_count = 0
-        
+        success = False
         if notification_ids:
-            # 标记指定ID的通知为已读
+            # 标记指定通知为已读
             for notification_id in notification_ids:
+                # 首先检查通知是否属于该用户
                 notification = get_record_by_id('wxapp_notifications', notification_id)
-                if notification and notification.get('openid') == user_id and notification.get('is_read') == 0:
-                    success = update_record('wxapp_notifications', notification_id, {
-                        'is_read': 1,
-                        'update_time': format_datetime(None)
-                    })
-                    if success:
-                        update_count += 1
+                if notification and notification.get('openid') == openid:
+                    success = update_record(
+                        'wxapp_notifications',
+                        notification_id,
+                        {'is_read': 1, 'update_time': format_datetime(None)}
+                    )
+                    api_logger.debug(f"标记通知ID={notification_id}为已读: {'成功' if success else '失败'}")
+                else:
+                    api_logger.warning(f"通知ID={notification_id}不存在或不属于用户openid={openid}")
         else:
             # 标记所有未读通知为已读
-            conditions = {"openid": user_id, "is_read": 0, "is_deleted": 0}
-            unread_notifications = query_records('wxapp_notifications', conditions)
+            # 先获取用户所有未读通知
+            unread_notifications = query_records(
+                'wxapp_notifications',
+                conditions={"openid": openid, "is_read": 0, "is_deleted": 0}
+            )
             
-            for notification in unread_notifications:
-                success = update_record('wxapp_notifications', notification['id'], {
-                    'is_read': 1,
-                    'update_time': format_datetime(None)
-                })
-                if success:
-                    update_count += 1
+            if unread_notifications:
+                for notification in unread_notifications:
+                    success = update_record(
+                        'wxapp_notifications',
+                        notification['id'],
+                        {'is_read': 1, 'update_time': format_datetime(None)}
+                    )
+                    api_logger.debug(f"标记通知ID={notification['id']}为已读: {'成功' if success else '失败'}")
+            
+            api_logger.debug(f"标记用户openid={openid}的所有未读通知为已读: {'成功' if success else '无未读通知'}")
+        
+        # 查询未读通知数量
+        unread_count = count_records(
+            'wxapp_notifications',
+            {"openid": openid, "is_read": 0, "is_deleted": 0}
+        )
         
         return create_standard_response({
-            'success': True,
-            'message': f"已将{update_count}条通知标记为已读",
-            'count': update_count
+            "success": True,
+            "message": "标记通知已读成功",
+            "unread_count": unread_count
         })
     except Exception as e:
         api_logger.error(f"标记通知已读失败: {str(e)}")

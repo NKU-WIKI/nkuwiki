@@ -6,7 +6,7 @@ from llama_index.core.callbacks import CallbackManager, LlamaDebugHandler, Token
 from llama_index.core import StorageContext, QueryBundle, PromptTemplate
 from llama_index.core.retrievers import AutoMergingRetriever
 from llama_index.core.storage.docstore import SimpleDocumentStore
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 import nest_asyncio
 # 初始化回调管理器和全局设置
 callback_manager = CallbackManager([
@@ -69,7 +69,7 @@ class EasyRAGPipeline:
 
     def __init__(self):
         # 使用__init__.py中的配置
-        self.logger = get_module_logger("etl.rag_pipeline")
+        self.logger = register_logger("etl.rag_pipeline")
         self.re_only = RE_ONLY
         self.rerank_fusion_type = RERANK_FUSION_TYPE
         self.ans_refine_type = ANS_REFINE_TYPE

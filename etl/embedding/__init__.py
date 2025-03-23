@@ -1,69 +1,66 @@
 """
-嵌入模块，负责文本向量化
+嵌入模块，负责文档嵌入处理
 """
 import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from etl import *
-from core.utils.logger import get_module_logger
-
 import torch
 import numpy as np
-from sentence_transformers import SentenceTransformer
-from llama_index.core.base.embeddings.base import DEFAULT_EMBED_BATCH_SIZE, BaseEmbedding
-from llama_index.core.bridge.pydantic import Field, ConfigDict
-from llama_index.core.schema import BaseNode, Document, MetadataMode, TextNode, NodeWithScore
-from llama_index.core import SimpleDirectoryReader
-from llama_index.core.schema import TransformComponent
-from etl.transform.splitter import SentenceSplitter
+from pathlib import Path
+from typing import Union, Dict, List, Any
+# 明确导入需要的内容
+from etl import config, DATA_PATH, MODELS_PATH, etl_logger
+
+from core.utils.logger import register_logger
+
+# 创建模块专用日志记录器
+embedding_logger = register_logger("etl.embedding")
 
 # 嵌入配置
-EMBEDDING_NAME = config.get('etl.embedding.name', 'BAAI/bge-large-zh-v1.5')
-VECTOR_SIZE = config.get('etl.embedding.vector_size', 1024)
-EMBED_DIM = config.get('etl.embedding.embed_dim', 1024)
-F_EMBED_TYPE_1 = config.get('etl.embedding.f_embed_type_1', 1)
-F_EMBED_TYPE_2 = config.get('etl.embedding.f_embed_type_2', 2)
-R_EMBED_TYPE = config.get('etl.embedding.r_embed_type', 1)
-LLM_EMBED_TYPE = config.get('etl.embedding.llm_embed_type', 3)
+EMBEDDING_NAME = config.get("embedding.name", "bge-large-zh-v1.5")
+VECTOR_SIZE = config.get("embedding.vector_size", 1024)
+EMBED_DIM = config.get("embedding.dim", 1024)
+# 嵌入类型
+ASYMMETRIC_TYPE = "asymmetric"  # 非对称嵌入（查询和文档使用不同模型）
+SYMMETRIC_TYPE = "symmetric"    # 对称嵌入（查询和文档使用相同模型）
 
 # 分块配置
-CHUNK_SIZE = config.get('chunk_size', 1024)
-CHUNK_OVERLAP = config.get('chunk_overlap', 50)
-SPLIT_TYPE = config.get('split_type', 0)  # 0-->Sentence 1-->Hierarchical
+CHUNK_SIZE = config.get("embedding.chunk_size", 512)
+CHUNK_OVERLAP = config.get("embedding.chunk_overlap", 50)
+SPLIT_TYPE = config.get("embedding.split_type", "sentence")  # 按句子分割
 
-# 创建embedding模块专用logger
-embedding_logger = get_module_logger("etl.embedding")
-
-# 常用嵌入函数
 def normalize_embedding(embedding):
-    """标准化嵌入向量"""
+    """标准化嵌入向量
+    
+    支持numpy数组和PyTorch张量
+    
+    Args:
+        embedding: 嵌入向量，numpy数组或PyTorch张量
+        
+    Returns:
+        标准化后的向量（L2范数为1）
+    """
     if isinstance(embedding, np.ndarray):
+        # 使用numpy标准化
         norm = np.linalg.norm(embedding)
         if norm > 0:
             return embedding / norm
         return embedding
     elif isinstance(embedding, torch.Tensor):
+        # 使用PyTorch标准化
         return torch.nn.functional.normalize(embedding, p=2, dim=-1)
-    else:
-        raise TypeError("Embedding must be either numpy.ndarray or torch.Tensor")
+    return embedding
 
-# 定义导出
+# 从子模块导入类 
+from etl.embedding.hf_embeddings import HFEmbeddings
+from etl.embedding.ingestion import build_pipeline as Ingestion
+from etl.embedding.hierarchical import HierarchicalNodeParser
+
+# 导出API
 __all__ = [
-    'os', 'sys', 'torch', 'np', 'asyncio', 'Path', 'Dict', 'List', 'Optional',
-    'Any', 'Union', 'Tuple', 'embedding_logger', 'SentenceTransformer', 'normalize_embedding',
-    'DEFAULT_EMBED_BATCH_SIZE', 'BaseEmbedding', 'Field', 'ConfigDict', 'BaseNode', 
-    'Document', 'MetadataMode', 'TextNode', 'NodeWithScore', 'SimpleDirectoryReader', 
-    'SentenceSplitter', 'TransformComponent',
-    # 路径配置
-    'BASE_PATH', 'CACHE_PATH', 'INDEX_PATH', 'RAW_PATH', 'LOG_PATH', 'NLTK_PATH',
-    
-    # 环境变量配置
-    'HF_ENDPOINT', 'HF_HOME', 'SENTENCE_TRANSFORMERS_HOME',
-    
-    # 嵌入配置
-    'EMBEDDING_NAME', 'VECTOR_SIZE', 'EMBED_DIM', 'F_EMBED_TYPE_1', 'F_EMBED_TYPE_2',
-    'R_EMBED_TYPE', 'LLM_EMBED_TYPE',
-    
-    # 分块配置
-    'CHUNK_SIZE', 'CHUNK_OVERLAP', 'SPLIT_TYPE'
+    'embedding_logger', 
+    'EMBEDDING_NAME', 'VECTOR_SIZE', 'EMBED_DIM',
+    'ASYMMETRIC_TYPE', 'SYMMETRIC_TYPE',
+    'CHUNK_SIZE', 'CHUNK_OVERLAP', 'SPLIT_TYPE',
+    'normalize_embedding',
+    'HFEmbeddings', 'Ingestion', 'HierarchicalNodeParser',
+    'DATA_PATH', 'MODELS_PATH'
 ]

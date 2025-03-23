@@ -348,6 +348,10 @@ def insert_record(table_name: str, data: Dict[str, Any]) -> int:
     Returns:
         int: 插入记录的ID，失败返回-1
     """
+    conn = None
+    max_retries = 3
+    retry_count = 0
+    
     try:
         # 验证表名
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
@@ -357,17 +361,38 @@ def insert_record(table_name: str, data: Dict[str, Any]) -> int:
         values = list(data.values())
         placeholders = ', '.join(['%s'] * len(fields))
         
-        with get_conn() as conn:
-            with conn.cursor() as cursor:
-                query = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({placeholders})"
-                cursor.execute(query, values)
-                conn.commit()
-                last_id = cursor.lastrowid
-                load_logger.debug(f"向表 {table_name} 插入记录成功，ID: {last_id}")
-                return last_id
-    except mysql.connector.Error as e:
-        load_logger.error(f"插入记录失败: {str(e)}")
+        while retry_count < max_retries:
+            try:
+                conn = get_conn()
+                with conn.cursor() as cursor:
+                    query = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({placeholders})"
+                    cursor.execute(query, values)
+                    conn.commit()
+                    last_id = cursor.lastrowid
+                    load_logger.debug(f"向表 {table_name} 插入记录成功，ID: {last_id}")
+                    return last_id
+            except mysql.connector.Error as e:
+                retry_count += 1
+                error_msg = str(e)
+                if "queue is full" in error_msg and retry_count < max_retries:
+                    load_logger.warning(f"连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
+                    # 短暂等待后重试
+                    import time
+                    time.sleep(0.5)
+                    continue
+                else:
+                    load_logger.error(f"插入记录失败: {error_msg}")
+                    return -1
+    except Exception as e:
+        load_logger.error(f"插入记录异常: {str(e)}")
         return -1
+    finally:
+        # 确保关闭连接，归还到连接池
+        if conn and hasattr(conn, 'close'):
+            try:
+                close_conn()
+            except:
+                pass
 
 def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool:
     """更新表中指定ID的记录
@@ -380,6 +405,10 @@ def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool
     Returns:
         bool: 更新是否成功
     """
+    conn = None
+    max_retries = 3
+    retry_count = 0
+    
     try:
         # 验证表名
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
@@ -392,17 +421,38 @@ def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool
         set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
         values = list(data.values())
         
-        with get_conn() as conn:
-            with conn.cursor() as cursor:
-                query = f"UPDATE {table_name} SET {set_clause} WHERE id = %s"
-                cursor.execute(query, [*values, record_id])
-                conn.commit()
-                affected_rows = cursor.rowcount
-                # load_logger.debug(f"更新表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
-                return affected_rows > 0
-    except mysql.connector.Error as e:
-        load_logger.error(f"更新记录失败: {str(e)}")
+        while retry_count < max_retries:
+            try:
+                conn = get_conn()
+                with conn.cursor() as cursor:
+                    query = f"UPDATE {table_name} SET {set_clause} WHERE id = %s"
+                    cursor.execute(query, [*values, record_id])
+                    conn.commit()
+                    affected_rows = cursor.rowcount
+                    # load_logger.debug(f"更新表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
+                    return affected_rows > 0
+            except mysql.connector.Error as e:
+                retry_count += 1
+                error_msg = str(e)
+                if "queue is full" in error_msg and retry_count < max_retries:
+                    load_logger.warning(f"更新记录时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
+                    # 短暂等待后重试
+                    import time
+                    time.sleep(0.5)
+                    continue
+                else:
+                    load_logger.error(f"更新记录失败: {error_msg}")
+                    return False
+    except Exception as e:
+        load_logger.error(f"更新记录异常: {str(e)}")
         return False
+    finally:
+        # 确保关闭连接，归还到连接池
+        if conn and hasattr(conn, 'close'):
+            try:
+                close_conn()
+            except:
+                pass
 
 def delete_record(table_name: str, record_id: int) -> bool:
     """删除表中指定ID的记录
@@ -414,22 +464,47 @@ def delete_record(table_name: str, record_id: int) -> bool:
     Returns:
         bool: 删除是否成功
     """
+    conn = None
+    max_retries = 3
+    retry_count = 0
+    
     try:
         # 验证表名
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"非法表名: {table_name}")
             
-        with get_conn() as conn:
-            with conn.cursor() as cursor:
-                query = f"DELETE FROM {table_name} WHERE id = %s"
-                cursor.execute(query, (record_id,))
-                conn.commit()
-                affected_rows = cursor.rowcount
-                load_logger.debug(f"删除表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
-                return affected_rows > 0
-    except mysql.connector.Error as e:
-        load_logger.error(f"删除记录失败: {str(e)}")
+        while retry_count < max_retries:
+            try:
+                conn = get_conn()
+                with conn.cursor() as cursor:
+                    query = f"DELETE FROM {table_name} WHERE id = %s"
+                    cursor.execute(query, (record_id,))
+                    conn.commit()
+                    affected_rows = cursor.rowcount
+                    load_logger.debug(f"删除表 {table_name} 记录成功，ID: {record_id}, 影响行数: {affected_rows}")
+                    return affected_rows > 0
+            except mysql.connector.Error as e:
+                retry_count += 1
+                error_msg = str(e)
+                if "queue is full" in error_msg and retry_count < max_retries:
+                    load_logger.warning(f"删除记录时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
+                    # 短暂等待后重试
+                    import time
+                    time.sleep(0.5)
+                    continue
+                else:
+                    load_logger.error(f"删除记录失败: {error_msg}")
+                    return False
+    except Exception as e:
+        load_logger.error(f"删除记录异常: {str(e)}")
         return False
+    finally:
+        # 确保关闭连接，归还到连接池
+        if conn and hasattr(conn, 'close'):
+            try:
+                close_conn()
+            except:
+                pass
 
 def get_record_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
     """根据ID获取单条记录
@@ -441,24 +516,49 @@ def get_record_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]
     Returns:
         Optional[Dict]: 记录字典，未找到返回None
     """
+    conn = None
+    max_retries = 3
+    retry_count = 0
+    
     try:
         # 验证表名
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
             raise ValueError(f"非法表名: {table_name}")
             
-        with get_conn() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                query = f"SELECT * FROM {table_name} WHERE id = %s"
-                cursor.execute(query, (record_id,))
-                result = cursor.fetchone()
-                if result:
-                    # 直接返回字典结果，因为我们使用了dictionary=True
-                    load_logger.debug(f"查询表 {table_name} 记录成功，ID: {record_id}")
-                    return result
-                return None
-    except mysql.connector.Error as e:
-        load_logger.error(f"查询记录失败: {str(e)}")
+        while retry_count < max_retries:
+            try:
+                conn = get_conn()
+                with conn.cursor(dictionary=True) as cursor:
+                    query = f"SELECT * FROM {table_name} WHERE id = %s"
+                    cursor.execute(query, (record_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        # 直接返回字典结果，因为我们使用了dictionary=True
+                        load_logger.debug(f"查询表 {table_name} 记录成功，ID: {record_id}")
+                        return result
+                    return None
+            except mysql.connector.Error as e:
+                retry_count += 1
+                error_msg = str(e)
+                if "queue is full" in error_msg and retry_count < max_retries:
+                    load_logger.warning(f"查询记录时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
+                    # 短暂等待后重试
+                    import time
+                    time.sleep(0.5)
+                    continue
+                else:
+                    load_logger.error(f"查询记录失败: {error_msg}")
+                    return None
+    except Exception as e:
+        load_logger.error(f"查询记录异常: {str(e)}")
         return None
+    finally:
+        # 确保关闭连接，归还到连接池
+        if conn and hasattr(conn, 'close'):
+            try:
+                close_conn()
+            except:
+                pass
 
 def query_records(table_name: str, conditions: Dict[str, Any] = None, order_by: str = None, 
                 limit: int = 1000, offset: int = 0) -> List[Dict[str, Any]]:
@@ -474,6 +574,10 @@ def query_records(table_name: str, conditions: Dict[str, Any] = None, order_by: 
     Returns:
         List[Dict]: 查询结果列表
     """
+    conn = None
+    max_retries = 3
+    retry_count = 0
+    
     try:
         # 验证表名
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
@@ -492,18 +596,39 @@ def query_records(table_name: str, conditions: Dict[str, Any] = None, order_by: 
         order_clause = f"ORDER BY {order_by}" if order_by else ""
         limit_clause = f"LIMIT {limit} OFFSET {offset}"
         
-        with get_conn() as conn:
-            with conn.cursor(dictionary=True) as cursor:
-                query = f"SELECT * FROM {table_name} {where_clause} {order_clause} {limit_clause}"
-                cursor.execute(query, values)
-                
-                # 获取结果集
-                result = cursor.fetchall()
-                load_logger.debug(f"条件查询表 {table_name} 成功，获取 {len(result)} 条记录")
-                return result
-    except mysql.connector.Error as e:
-        load_logger.error(f"条件查询失败: {str(e)}")
+        while retry_count < max_retries:
+            try:
+                conn = get_conn()
+                with conn.cursor(dictionary=True) as cursor:
+                    query = f"SELECT * FROM {table_name} {where_clause} {order_clause} {limit_clause}"
+                    cursor.execute(query, values)
+                    
+                    # 获取结果集
+                    result = cursor.fetchall()
+                    load_logger.debug(f"条件查询表 {table_name} 成功，获取 {len(result)} 条记录")
+                    return result
+            except mysql.connector.Error as e:
+                retry_count += 1
+                error_msg = str(e)
+                if "queue is full" in error_msg and retry_count < max_retries:
+                    load_logger.warning(f"条件查询时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
+                    # 短暂等待后重试
+                    import time
+                    time.sleep(0.5)
+                    continue
+                else:
+                    load_logger.error(f"条件查询失败: {error_msg}")
+                    return []
+    except Exception as e:
+        load_logger.error(f"条件查询异常: {str(e)}")
         return []
+    finally:
+        # 确保关闭连接，归还到连接池
+        if conn and hasattr(conn, 'close'):
+            try:
+                close_conn()
+            except:
+                pass
 
 def count_records(table_name: str, conditions: Dict[str, Any] = None) -> int:
     """统计记录数量
@@ -515,6 +640,10 @@ def count_records(table_name: str, conditions: Dict[str, Any] = None) -> int:
     Returns:
         int: 记录数量，失败返回-1
     """
+    conn = None
+    max_retries = 3
+    retry_count = 0
+    
     try:
         # 验证表名
         if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
@@ -530,16 +659,37 @@ def count_records(table_name: str, conditions: Dict[str, Any] = None) -> int:
                 values.append(value)
             where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         
-        with get_conn() as conn:
-            with conn.cursor() as cursor:
-                query = f"SELECT COUNT(*) FROM {table_name} {where_clause}"
-                cursor.execute(query, values)
-                count = cursor.fetchone()[0]
-                load_logger.debug(f"统计表 {table_name} 记录数: {count}")
-                return count
-    except mysql.connector.Error as e:
-        load_logger.error(f"统计记录数失败: {str(e)}")
+        while retry_count < max_retries:
+            try:
+                conn = get_conn()
+                with conn.cursor() as cursor:
+                    query = f"SELECT COUNT(*) FROM {table_name} {where_clause}"
+                    cursor.execute(query, values)
+                    count = cursor.fetchone()[0]
+                    load_logger.debug(f"统计表 {table_name} 记录数: {count}")
+                    return count
+            except mysql.connector.Error as e:
+                retry_count += 1
+                error_msg = str(e)
+                if "queue is full" in error_msg and retry_count < max_retries:
+                    load_logger.warning(f"统计记录时连接池队列已满，正在重试 ({retry_count}/{max_retries})...")
+                    # 短暂等待后重试
+                    import time
+                    time.sleep(0.5)
+                    continue
+                else:
+                    load_logger.error(f"统计记录数失败: {error_msg}")
+                    return -1
+    except Exception as e:
+        load_logger.error(f"统计记录异常: {str(e)}")
         return -1
+    finally:
+        # 确保关闭连接，归还到连接池
+        if conn and hasattr(conn, 'close'):
+            try:
+                close_conn()
+            except:
+                pass
 
 def batch_insert(table_name: str, records: List[Dict[str, Any]], batch_size: int = 100) -> int:
     """批量插入记录

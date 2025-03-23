@@ -2,9 +2,9 @@ import sys
 import time
 import os
 from typing import Optional, Union
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 
-logger = get_module_logger("services.terminal")
+logger = register_logger("services.terminal")
 
 from core.bridge.context import *
 from core.bridge.reply import Reply, ReplyType

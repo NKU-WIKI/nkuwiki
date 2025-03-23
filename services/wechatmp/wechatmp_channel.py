@@ -12,7 +12,7 @@ from wechatpy.exceptions import WeChatClientException
 from collections import defaultdict
 from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 import config
 from core.agent.agent_factory import create_agent
 from core.bridge.context import Context
@@ -24,7 +24,7 @@ from services.chat_channel import ChatChannel
 from services.wechatmp.common import *
 from services.wechatmp.wechatmp_client import WechatMPClient
 
-logger = get_module_logger('services.wechatmp')
+logger = register_logger("services.wechatmp")
 
 # If using SSL, uncomment the following lines, and modify the certificate path.
 # from cheroot.server import HTTPServer

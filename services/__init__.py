@@ -19,16 +19,11 @@ from config import Config
 # 导入配置
 config = Config()
 
-# 创建日志目录并初始化日志
-LOG_PATH = Path(__file__).resolve().parent / "logs"
-LOG_PATH.mkdir(exist_ok=True, parents=True)
-
 # 使用core中的日志模块
-from core.utils.logger import init_logger, logger, get_module_logger
+from core.utils.logger import logger, register_logger
 
 # 初始化服务模块日志
-init_logger(LOG_PATH / "services.log", rotation="1 day", retention="3 months", level="DEBUG")
-services_logger = get_module_logger("services")
+services_logger = register_logger("services")
 
 # 版本信息
 __version__ = "1.0.0"

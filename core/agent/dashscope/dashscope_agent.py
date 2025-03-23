@@ -4,8 +4,8 @@
 import json  # noqa: F401
 import time  # noqa: F401
 import requests
-from core.utils.logger import get_module_logger
-logger = get_module_logger('core.agent.dashscope')
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.dashscope")
 from config import Config
 from core.bridge.reply import Reply
 from core.bridge.context import Context

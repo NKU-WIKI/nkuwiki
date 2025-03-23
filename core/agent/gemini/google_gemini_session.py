@@ -2,8 +2,8 @@
 Google Gemini会话管理
 """
 import time  # noqa: F401
-from core.utils.logger import get_module_logger
-logger = get_module_logger('core.agent.gemini')
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.gemini")
 from config import Config
 from core.agent.session_manager import Session, SessionManager
 

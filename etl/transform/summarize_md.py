@@ -1,7 +1,7 @@
 from etl.transform import *
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 
-transform_logger = get_module_logger("etl.transform")
+transform_logger = register_logger("etl.transform")
 from etl.crawler import clean_filename
 def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 'summarize', header_text: str = '', requerment_keywords: list = None):
     """

@@ -18,7 +18,7 @@ import base64
 from pathlib import Path
 from PIL import Image
 import ntwork
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 from services.chat_message import ChatMessage
 from core.bridge.context import Context, ContextType
 
@@ -27,7 +27,7 @@ try:
 except ImportError:
     logger.warning("未安装pilk库，语音转写功能不可用。请执行: pip install pilk")
 
-logger = get_module_logger("services.wework.message")
+logger = register_logger("services.wework.message")
 
 def get_with_retry(get_func, max_retries=5, delay=5):
     """带有重试机制的函数执行器

@@ -6,196 +6,94 @@ import os
 import sys
 from pathlib import Path
 from loguru import logger
-import logging
+
+# 移除默认处理器
+logger.remove()
 
 # 定义导出的符号列表
 __all__ = [
     'logger',
-    'init_logger',
-    'setup_logger',
-    'get_module_logger',
-    'get_api_logger',
-    'get_core_logger',
-    'get_request_logger'
+    'register_logger'
 ]
 
-def init_logger(log_file=None, rotation="10 MB", retention="1 week", level="DEBUG"):
-    """
-    初始化日志记录器配置
-    
-    Args:
-        log_file: 日志文件路径
-        rotation: 日志轮转策略
-        retention: 日志保留策略
-        level: 日志级别
-    """
-    # 如果提供了日志文件路径，添加文件处理器
-    if log_file:
-        # 确保日志目录存在
-        os.makedirs(os.path.dirname(log_file), exist_ok=True)
-        
-        # 添加文件处理器
-        logger.add(
-            log_file,
-            rotation=rotation,
-            retention=retention,
-            level=level,
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
-            enqueue=True
-        )
-        
-        logger.debug(f"已添加日志处理器: {log_file}")
-    return logger
+# 配置项
+LOG_ROOT_DIR = Path("logs")
+LOG_FORMAT = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}"
+LOG_CONSOLE_FORMAT = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
 
-def setup_logger(app_name: str = "nkuwiki"):
+# 确保日志根目录存在
+LOG_ROOT_DIR.mkdir(exist_ok=True)
+
+# 添加控制台处理器（警告及以上级别）
+logger.add(
+    sys.stderr,
+    level="WARNING",
+    format=LOG_CONSOLE_FORMAT
+)
+
+# 添加全局文件处理器
+logger.add(
+    LOG_ROOT_DIR / "nkuwiki.log",
+    rotation="10 MB",
+    retention="1 week",
+    level="DEBUG",
+    format=LOG_FORMAT,
+    enqueue=True
+)
+
+def register_logger(module_name: str):
     """
-    设置日志记录器配置
+    为指定模块注册专用的日志记录器
     
     Args:
-        app_name: 应用名称，用于日志文件命名
+        module_name: 模块名称，例如'api.wxapp'，'core.agent'等
+        
+    Returns:
+        专用的日志记录器实例
     """
-    # 创建日志目录
-    log_dir = Path("logs")
-    api_log_dir = log_dir / "api"
-    core_log_dir = log_dir / "core"
+    # 根据模块名创建日志目录路径
+    module_parts = module_name.split('.')
+    module_log_dir = LOG_ROOT_DIR
     
-    # 确保日志目录存在
-    os.makedirs(log_dir, exist_ok=True)
-    os.makedirs(api_log_dir, exist_ok=True)
-    os.makedirs(core_log_dir, exist_ok=True)
+    # 如果是多级模块，创建相应的目录结构
+    if len(module_parts) > 1:
+        # 创建一级模块目录，例如'api'、'core'等
+        main_module = module_parts[0]
+        module_log_dir = LOG_ROOT_DIR / main_module
+        module_log_dir.mkdir(exist_ok=True)
     
-    # 移除默认处理器
-    logger.remove()
+    # 创建模块日志文件路径
+    log_filename = f"{module_name.replace('.', '_')}.log"
+    module_log_file = module_log_dir / log_filename
     
-    # 禁用httpx的INFO级别日志（HTTP请求和响应日志）
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("httpcore").setLevel(logging.WARNING)
+    # 创建绑定了模块名的日志记录器
+    module_logger = logger.bind(name=module_name)
     
-    # 添加控制台处理器
+    # 为该模块添加文件处理器
     logger.add(
-        sys.stderr,
-        level="WARNING",
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
-    )
-    
-    # 添加文件处理器 - 通用日志
-    logger.add(
-        log_dir / f"{app_name}.log",
-        rotation="10 MB",
+        module_log_file,
+        rotation="5 MB",
         retention="1 week",
         level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
+        format=LOG_FORMAT,
+        filter=lambda record: record["extra"].get("name") == module_name,
         enqueue=True
     )
     
-    # 添加API请求日志文件
-    logger.add(
-        api_log_dir / "api.log",
-        rotation="10 MB",
-        retention="1 week",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
-        filter=lambda record: "api" in record["name"],
-        enqueue=True
-    )
+    # 记录模块日志初始化信息
+    module_logger.debug(f"{module_name} 日志记录器初始化完成，日志文件: {module_log_file}")
     
-    # 添加API请求-响应日志文件
-    logger.add(
-        api_log_dir / "api_requests.log",
-        rotation="10 MB",
-        retention="1 week",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}",
-        filter=lambda record: "api.request" in record["name"],
-        enqueue=True
-    )
-    
-    # 添加Core模块日志文件
-    logger.add(
-        core_log_dir / "core.log",
-        rotation="10 MB",
-        retention="1 week",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
-        filter=lambda record: "core" in record["name"],
-        enqueue=True
-    )
-    
-    # 创建各API模块独立日志
-    for module in ["wxapp", "mysql", "agent"]:
-        module_log_dir = api_log_dir / module
-        os.makedirs(module_log_dir, exist_ok=True)
-        
-        logger.add(
-            module_log_dir / f"{module}.log",
-            rotation="10 MB",
-            retention="1 week",
-            level="DEBUG",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
-            filter=lambda record, m=module: f"api.{m}" in record["name"],
-            enqueue=True
-        )
-    
-    # 创建各Core模块独立日志
-    for module in ["agent", "auth", "bridge"]:
-        module_log_dir = core_log_dir / module
-        os.makedirs(module_log_dir, exist_ok=True)
-        
-        logger.add(
-            module_log_dir / f"{module}.log",
-            rotation="10 MB",
-            retention="1 week",
-            level="DEBUG",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {name}:{function}:{line} - {message}",
-            filter=lambda record, m=module: f"core.{m}" in record["name"],
-            enqueue=True
-        )
-    
-    logger.info(f"{app_name} 日志系统初始化完成")
-    return logger
+    return module_logger
 
-# 提供快速访问特定模块日志记录器的函数
-def get_module_logger(module_name: str):
-    """
-    获取特定模块的日志记录器
-    
-    Args:
-        module_name: 模块名称
-        
-    Returns:
-        模块专用的日志记录器
-    """
-    return logger.bind(name=module_name)
+# 初始化常用模块的日志目录
+for module in ["api", "core", "etl", "services"]:
+    module_dir = LOG_ROOT_DIR / module
+    module_dir.mkdir(exist_ok=True)
 
-def get_api_logger(module: str = "api"):
-    """
-    获取API模块专用日志记录器
-    
-    Args:
-        module: API子模块名称
-        
-    Returns:
-        API模块专用的日志记录器
-    """
-    return logger.bind(name=f"api.{module}")
+# 禁用某些库的冗余日志
+import logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
-def get_core_logger(module: str = "core"):
-    """
-    获取Core模块专用日志记录器
-    
-    Args:
-        module: Core子模块名称
-        
-    Returns:
-        Core模块专用的日志记录器
-    """
-    return logger.bind(name=f"core.{module}")
-
-def get_request_logger():
-    """
-    获取请求日志记录器
-    
-    Returns:
-        请求专用的日志记录器
-    """
-    return logger.bind(name="api.request") 
+# 记录日志系统初始化完成信息
+logger.info("nkuwiki 日志系统初始化完成")

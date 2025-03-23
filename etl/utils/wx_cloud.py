@@ -7,14 +7,14 @@ import string
 import requests
 from pathlib import Path
 from typing import Dict, Optional, Tuple, Union, List
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 
 # 添加项目根目录到系统路径
 sys.path.append(str(Path(__file__).parent.parent.parent))
 from config import config
 
 # 初始化日志
-logger = get_module_logger("etl.utils.wx_cloud")
+logger = register_logger("etl.utils.wx_cloud")
 
 class WxCloudStorage:
     """

@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
-from core.utils.logger import get_module_logger
+from core.utils.logger import register_logger
 
 # 转换配置
 HTML_TAGS_PATTERN = r'<.*?>'
@@ -14,7 +14,7 @@ MAX_TEXT_LENGTH = config.get('etl.transform.max_text_length', 1000000)
 MIN_TEXT_LENGTH = config.get('etl.transform.min_text_length', 10)
 
 # 创建转换模块专用logger
-transform_logger = get_module_logger("etl.transform")
+transform_logger = register_logger("etl.transform")
 
 # 定义导出的变量和函数
 __all__ = [
