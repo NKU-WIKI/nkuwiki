@@ -1,22 +1,17 @@
 # 南开Wiki API文档
 
-## 更新记录
 
-- **2023-03-26**: 增加RAG（检索增强生成）相关接口（8.4-8.5），添加suggested_questions字段到返回结果
-
-本文档包含南开Wiki平台的所有API接口，主要分为三类：
+本文档包含南开Wiki平台的所有API接口，主要分为两类：
 1. 微信小程序API：提供给微信小程序客户端使用的API
-2. MySQL查询API：提供对数据库的查询功能
-3. Agent智能体API：提供AI聊天和知识检索功能
+2. Agent智能体API：提供AI聊天和知识检索功能
 
 ## 接口前缀
 
 所有API都有对应的前缀路径：
-- 微信小程序API：`/wxapp/*`
-- MySQL查询API：`/mysql/*`
-- Agent智能体API：`/agent/*`
+- 微信小程序API：`/api/wxapp/*`
+- Agent智能体API：`/api/agent/*`
 
-如，用户接口的完整路径为 `/wxapp/users/me`
+如，用户接口的完整路径为 `/api/wxapp/users/me`
 
 
 ## 后端响应标准格式：
@@ -26,7 +21,36 @@
   "message": "success",
   "data": {
     "key1": value1
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+响应字段说明：
+- `code` - 状态码：200表示成功，4xx表示客户端错误，5xx表示服务器错误
+- `message` - 响应消息，成功或错误描述
+- `data` - 响应数据，可能是对象、数组或null
+- `details` - 额外详情，通常在发生错误时提供更详细的信息
+- `timestamp` - 响应时间戳
+
+## 错误响应格式：
+
+```json
+{
+  "code": 400,
+  "message": "请求参数错误",
+  "data": null,
+  "details": {
+    "errors": [
+      {
+        "loc": ["body", "field_name"],
+        "msg": "错误描述",
+        "type": "错误类型"
+      }
+    ]
+  },
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
@@ -35,7 +59,7 @@
 
 ### 1.1 同步微信云用户
 
-**接口**：`POST /wxapp/users/sync`  
+**接口**：`POST /api/wxapp/users/sync`  
 **描述**：同步微信用户信息到服务器数据库  
 **请求头**：
 - `X-Cloud-Source` - 可选，标记来源
@@ -87,13 +111,15 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 1.2 获取用户信息
 
-**接口**：`GET /wxapp/users/{openid}`  
+**接口**：`GET /api/wxapp/users/{openid}`  
 **描述**：获取指定用户的信息  
 **参数**：
 - `openid` - 路径参数，用户openid
@@ -126,13 +152,15 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 1.3 获取当前用户信息
 
-**接口**：`GET /wxapp/users/me`  
+**接口**：`GET /api/wxapp/users/me`  
 **描述**：获取当前登录用户的信息  
 **参数**：
 - `openid` - 查询参数，用户openid
@@ -165,13 +193,15 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 1.4 查询用户列表
 
-**接口**：`GET /wxapp/users`  
+**接口**：`GET /api/wxapp/users`  
 **描述**：获取用户列表  
 **参数**：
 - `limit` - 查询参数，返回记录数量限制，默认20，最大100
@@ -214,13 +244,15 @@
     "total": 100,
     "limit": 20,
     "offset": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 1.5 更新用户信息
 
-**接口**：`PUT /wxapp/users/{openid}`  
+**接口**：`PUT /api/wxapp/users/{openid}`  
 **描述**：更新用户信息  
 **参数**：
 - `openid` - 路径参数，用户openid
@@ -270,13 +302,15 @@
     "status": 1,
     "is_deleted": 0,
     "extra": {}
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:30:00"
 }
 ```
 
 ### 1.6 删除用户
 
-**接口**：`DELETE /wxapp/users/{openid}`  
+**接口**：`DELETE /api/wxapp/users/{openid}`  
 **描述**：删除用户（标记删除）  
 **参数**：
 - `openid` - 路径参数，用户openid
@@ -290,7 +324,9 @@
   "data": {
     "success": true,
     "message": "用户已删除"
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
@@ -298,7 +334,7 @@
 
 ### 2.1 创建帖子
 
-**接口**：`POST /wxapp/posts`  
+**接口**：`POST /api/wxapp/posts`  
 **描述**：创建新帖子  
 **请求体**：
 
@@ -344,13 +380,15 @@
     "status": 1,
     "platform": "wxapp",
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 2.2 获取帖子详情
 
-**接口**：`GET /wxapp/posts/{post_id}`  
+**接口**：`GET /api/wxapp/posts/{post_id}`  
 **描述**：获取指定帖子的详情  
 **参数**：
 - `post_id` - 路径参数，帖子ID
@@ -384,13 +422,15 @@
     "status": 1,
     "platform": "wxapp",
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 2.3 查询帖子列表
 
-**接口**：`GET /wxapp/posts`  
+**接口**：`GET /api/wxapp/posts`  
 **描述**：获取帖子列表  
 **参数**：
 - `limit` - 查询参数，返回记录数量限制，默认20，最大100
@@ -436,13 +476,15 @@
     "total": 100,
     "limit": 20,
     "offset": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 2.4 更新帖子
 
-**接口**：`PUT /wxapp/posts/{post_id}`  
+**接口**：`PUT /api/wxapp/posts/{post_id}`  
 **描述**：更新帖子信息  
 **参数**：
 - `post_id` - 路径参数，帖子ID
@@ -491,13 +533,15 @@
     "platform": "wxapp",
     "is_deleted": 0,
     "extra": {}
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 13:00:00"
 }
 ```
 
 ### 2.5 删除帖子
 
-**接口**：`DELETE /wxapp/posts/{post_id}`  
+**接口**：`DELETE /api/wxapp/posts/{post_id}`  
 **描述**：删除帖子（标记删除）  
 **参数**：
 - `post_id` - 路径参数，帖子ID
@@ -511,13 +555,15 @@
   "data": {
     "success": true,
     "message": "帖子已删除"
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 2.6 点赞/取消点赞帖子
 
-**接口**：`POST /wxapp/posts/{post_id}/like`  
+**接口**：`POST /api/wxapp/posts/{post_id}/like`  
 **描述**：点赞或取消点赞帖子  
 **参数**：
 - `post_id` - 路径参数，帖子ID
@@ -534,13 +580,15 @@
     "message": "点赞成功",
     "liked": true,
     "like_count": 6
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 2.7 收藏/取消收藏帖子
 
-**接口**：`POST /wxapp/posts/{post_id}/favorite`  
+**接口**：`POST /api/wxapp/posts/{post_id}/favorite`  
 **描述**：收藏或取消收藏帖子  
 **参数**：
 - `post_id` - 路径参数，帖子ID
@@ -565,7 +613,59 @@
     "message": "收藏成功",
     "favorite": true,
     "favorite_count": 3
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 2.8 取消点赞帖子
+
+**接口**：`POST /api/wxapp/posts/{post_id}/unlike`  
+**描述**：取消点赞帖子  
+**参数**：
+- `post_id` - 路径参数，帖子ID
+- `openid` - 查询参数，用户openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "message": "取消点赞成功",
+    "liked": false,
+    "like_count": 5
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 2.9 取消收藏帖子
+
+**接口**：`POST /api/wxapp/posts/{post_id}/unfavorite`  
+**描述**：取消收藏帖子  
+**参数**：
+- `post_id` - 路径参数，帖子ID
+- `openid` - 查询参数，用户openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "message": "取消收藏成功",
+    "favorite": false,
+    "favorite_count": 2
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
@@ -573,7 +673,7 @@
 
 ### 3.1 创建评论
 
-**接口**：`POST /wxapp/comments`  
+**接口**：`POST /api/wxapp/comments`  
 **描述**：创建新评论  
 **请求体**：
 
@@ -609,13 +709,15 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 3.2 获取评论详情
 
-**接口**：`GET /wxapp/comments/{comment_id}`  
+**接口**：`GET /api/wxapp/comments/{comment_id}`  
 **描述**：获取指定评论的详情  
 **参数**：
 - `comment_id` - 路径参数，评论ID
@@ -642,13 +744,15 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 3.3 获取帖子评论列表
 
-**接口**：`GET /wxapp/posts/{post_id}/comments`  
+**接口**：`GET /api/wxapp/posts/{post_id}/comments`  
 **描述**：获取指定帖子的评论列表  
 **参数**：
 - `post_id` - 路径参数，帖子ID
@@ -698,13 +802,15 @@
     "offset": 0,
     "post_id": 1,
     "parent_id": null
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 3.4 更新评论
 
-**接口**：`PUT /wxapp/comments/{comment_id}`  
+**接口**：`PUT /api/wxapp/comments/{comment_id}`  
 **描述**：更新评论信息  
 **参数**：
 - `comment_id` - 路径参数，评论ID
@@ -740,13 +846,15 @@
     "status": 1,
     "is_deleted": 0,
     "extra": {}
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 13:00:00"
 }
 ```
 
 ### 3.5 删除评论
 
-**接口**：`DELETE /wxapp/comments/{comment_id}`  
+**接口**：`DELETE /api/wxapp/comments/{comment_id}`  
 **描述**：删除评论（标记删除）  
 **参数**：
 - `comment_id` - 路径参数，评论ID
@@ -761,13 +869,15 @@
   "data": {
     "success": true,
     "message": "评论已删除"
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 3.6 点赞评论
 
-**接口**：`PUT /wxapp/comments/{comment_id}/like`  
+**接口**：`PUT /api/wxapp/comments/{comment_id}/like`  
 **描述**：点赞或取消点赞评论  
 **参数**：
 - `comment_id` - 路径参数，评论ID
@@ -790,7 +900,40 @@
     "message": "点赞成功",
     "liked": true,
     "like_count": 4
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 3.7 取消点赞评论
+
+**接口**：`POST /api/wxapp/comments/{comment_id}/unlike`  
+**描述**：取消点赞评论  
+**参数**：
+- `comment_id` - 路径参数，评论ID
+
+**请求体**：
+```json
+{
+  "openid": "用户openid"
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "message": "取消点赞成功",
+    "liked": false,
+    "like_count": 3
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
@@ -798,7 +941,7 @@
 
 ### 4.1 获取用户通知列表
 
-**接口**：`GET /wxapp/users/{openid}/notifications`  
+**接口**：`GET /api/wxapp/users/{openid}/notifications`  
 **描述**：获取用户的通知列表  
 **参数**：
 - `openid` - 路径参数，用户openid
@@ -841,13 +984,15 @@
     "unread": 5,
     "limit": 20,
     "offset": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 4.2 获取通知详情
 
-**接口**：`GET /wxapp/notifications/{notification_id}`  
+**接口**：`GET /api/wxapp/notifications/{notification_id}`  
 **描述**：获取通知详情  
 **参数**：
 - `notification_id` - 路径参数，通知ID
@@ -873,13 +1018,15 @@
     "platform": "wxapp",
     "is_deleted": 0,
     "extra": {}
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 4.3 标记通知为已读
 
-**接口**：`PUT /wxapp/notifications/{notification_id}`  
+**接口**：`PUT /api/wxapp/notifications/{notification_id}`  
 **描述**：标记单个通知为已读  
 **参数**：
 - `notification_id` - 路径参数，通知ID
@@ -912,13 +1059,15 @@
     "update_time": "2023-01-01 12:30:00",
     "platform": "wxapp",
     "is_deleted": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:30:00"
 }
 ```
 
 ### 4.4 批量标记通知为已读
 
-**接口**：`PUT /wxapp/users/{openid}/notifications/read`  
+**接口**：`PUT /api/wxapp/users/{openid}/notifications/read`  
 **描述**：标记用户所有或指定通知为已读  
 **参数**：
 - `openid` - 路径参数，用户openid
@@ -941,13 +1090,15 @@
     "success": true,
     "message": "已将5条通知标记为已读",
     "count": 5
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 4.5 删除通知
 
-**接口**：`DELETE /wxapp/notifications/{notification_id}`  
+**接口**：`DELETE /api/wxapp/notifications/{notification_id}`  
 **描述**：删除通知（标记删除）  
 **参数**：
 - `notification_id` - 路径参数，通知ID
@@ -961,7 +1112,9 @@
   "data": {
     "success": true,
     "message": "通知已删除"
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
@@ -969,7 +1122,7 @@
 
 ### 5.1 提交反馈
 
-**接口**：`POST /wxapp/feedback`  
+**接口**：`POST /api/wxapp/feedback`  
 **描述**：提交意见反馈  
 **请求体**：
 
@@ -1013,13 +1166,15 @@
     "platform": "wxapp",
     "is_deleted": 0,
     "extra": null
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 5.2 获取用户反馈列表
 
-**接口**：`GET /wxapp/users/{openid}/feedback`  
+**接口**：`GET /api/wxapp/users/{openid}/feedback`  
 **描述**：获取用户的反馈列表  
 **参数**：
 - `openid` - 路径参数，用户openid
@@ -1060,13 +1215,15 @@
     "total": 5,
     "limit": 20,
     "offset": 0
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
 ### 5.3 获取反馈详情
 
-**接口**：`GET /wxapp/feedback/{feedback_id}`  
+**接口**：`GET /api/wxapp/feedback/{feedback_id}`  
 **描述**：获取反馈详情  
 **参数**：
 - `feedback_id` - 路径参数，反馈ID
@@ -1096,13 +1253,15 @@
     "platform": "wxapp",
     "is_deleted": 0,
     "extra": null
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 13:00:00"
 }
 ```
 
 ### 5.4 更新反馈
 
-**接口**：`PUT /wxapp/feedback/{feedback_id}`  
+**接口**：`PUT /api/wxapp/feedback/{feedback_id}`  
 **描述**：更新反馈信息  
 **参数**：
 - `feedback_id` - 路径参数，反馈ID
@@ -1143,13 +1302,15 @@
     "platform": "wxapp",
     "is_deleted": 0,
     "extra": {}
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 13:30:00"
 }
 ```
 
 ### 5.5 删除反馈
 
-**接口**：`DELETE /wxapp/feedback/{feedback_id}`  
+**接口**：`DELETE /api/wxapp/feedback/{feedback_id}`  
 **描述**：删除反馈（标记删除）  
 **参数**：
 - `feedback_id` - 路径参数，反馈ID
@@ -1163,7 +1324,9 @@
   "data": {
     "success": true,
     "message": "反馈已删除"
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
@@ -1176,183 +1339,25 @@
 | 401    | 未授权，需要登录 |
 | 403    | 禁止访问，无权限 |
 | 404    | 资源不存在 |
+| 422    | 请求验证失败 |
 | 429    | 请求过于频繁 |
 | 500    | 服务器内部错误 |
 | 502    | 网关错误 |
 | 503    | 服务不可用 |
 | 504    | 网关超时 |
 
-## 七、MySQL查询API
+## 七、Agent智能体API
 
-### 7.1 获取数据库表列表
+### 7.1 与Agent对话
 
-**接口**：`GET /mysql/tables`  
-**描述**：获取数据库中所有表  
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "tables": [
-      "wxapp_users",
-      "wxapp_posts",
-      "wxapp_comments",
-      "wxapp_notifications",
-      "wxapp_feedback"
-    ]
-  }
-}
-```
-
-### 7.2 获取表结构
-
-**接口**：`GET /mysql/table/{table_name}/structure`  
-**描述**：获取指定表的结构  
-**参数**：
-- `table_name` - 路径参数，表名
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "fields": [
-      {
-        "Field": "id",
-        "Type": "int(11)",
-        "Null": "NO",
-        "Key": "PRI",
-        "Default": null,
-        "Extra": "auto_increment"
-      },
-      {
-        "Field": "openid",
-        "Type": "varchar(100)",
-        "Null": "NO",
-        "Key": "UNI",
-        "Default": null,
-        "Extra": ""
-      }
-    ]
-  }
-}
-```
-
-### 7.3 查询数据
-
-**接口**：`POST /mysql/query`  
-**描述**：按条件查询表数据  
-**请求体**：
-
-```json
-{
-  "table_name": "wxapp_users",
-  "conditions": {
-    "status": 1,
-    "platform": "wxapp"
-  },
-  "order_by": "create_time DESC",
-  "limit": 20,
-  "offset": 0
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": [
-    {
-      "id": 1,
-      "openid": "test_openid",
-      "nick_name": "测试用户",
-      "avatar": "https://example.com/avatar.jpg",
-      "status": 1,
-      "create_time": "2023-01-01 12:00:00"
-    }
-  ]
-}
-```
-
-### 7.4 统计记录
-
-**接口**：`POST /mysql/count`  
-**描述**：统计表中的记录数量  
-**请求体**：
-
-```json
-{
-  "table_name": "wxapp_posts",
-  "conditions": {
-    "status": 1
-  }
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "count": 120
-  }
-}
-```
-
-### 7.5 自定义查询
-
-**接口**：`POST /mysql/custom_query`  
-**描述**：执行自定义SQL查询  
-**请求体**：
-
-```json
-{
-  "query": "SELECT * FROM wxapp_users WHERE status = %s AND platform = %s LIMIT 10",
-  "params": [1, "wxapp"],
-  "fetch": true
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": [
-    {
-      "id": 1,
-      "openid": "test_openid",
-      "nick_name": "测试用户",
-      "avatar": "https://example.com/avatar.jpg",
-      "status": 1,
-      "create_time": "2023-01-01 12:00:00"
-    }
-  ]
-}
-```
-
-## 八、Agent智能体API
-
-### 8.1 与Agent对话
-
-**接口**：`POST /agent/chat`  
+**接口**：`POST /api/agent/chat`  
 **描述**：与AI智能体进行对话  
 **请求体**：
 
 ```json
 {
   "query": "南开大学的校训是什么？",
-  "history": [
+  "messages": [
     {"role": "user", "content": "你好"},
     {"role": "assistant", "content": "你好！我是南开Wiki智能助手，有什么可以帮助你的吗？"}
   ],
@@ -1372,9 +1377,10 @@
     "response": "南开大学的校训是"允公允能，日新月异"。这八个字出自《论语》，体现了南开大学追求公能日新的办学理念。",
     "sources": [
       {
+        "type": "小程序帖子",
         "title": "南开大学简介",
-        "url": "https://nku.wiki/intro",
-        "snippet": "南开大学校训为"允公允能，日新月异"，出自《论语》..."
+        "content": "南开大学校训为"允公允能，日新月异"，出自《论语》...",
+        "author": "南开百科"
       }
     ],
     "suggested_questions": [
@@ -1383,13 +1389,15 @@
       "南开大学的创始人是谁？"
     ],
     "format": "markdown"
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-### 8.2 知识库搜索
+### 7.2 知识库搜索
 
-**接口**：`POST /agent/search`  
+**接口**：`POST /api/agent/search`  
 **描述**：搜索知识库内容  
 **请求体**：
 
@@ -1406,26 +1414,44 @@
 {
   "code": 200,
   "message": "success",
-  "data": [
-    {
-      "title": "南开大学校史",
-      "url": "https://nku.wiki/history",
-      "snippet": "南开大学创建于1919年，由著名爱国教育家张伯苓先生创办...",
-      "score": 0.95
-    },
-    {
-      "title": "南开大学百年校庆",
-      "url": "https://nku.wiki/100years",
-      "snippet": "2019年，南开大学迎来百年华诞...",
-      "score": 0.85
-    }
-  ]
+  "data": {
+    "results": [
+      {
+        "id": 1,
+        "title": "南开大学校史",
+        "content_preview": "南开大学创建于1919年，由著名爱国教育家张伯苓先生创办...",
+        "author": "南开百科",
+        "create_time": "2023-01-01 12:00:00",
+        "type": "文章",
+        "view_count": 1024,
+        "like_count": 89,
+        "comment_count": 15,
+        "relevance": 0.95
+      },
+      {
+        "id": 2,
+        "title": "南开大学百年校庆",
+        "content_preview": "2019年，南开大学迎来百年华诞...",
+        "author": "南开校友",
+        "create_time": "2023-01-02 12:00:00",
+        "type": "文章",
+        "view_count": 986,
+        "like_count": 76,
+        "comment_count": 12,
+        "relevance": 0.85
+      }
+    ],
+    "keyword": "南开大学历史",
+    "total": 2
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-### 8.3 获取Agent状态
+### 7.3 获取Agent状态
 
-**接口**：`GET /agent/status`  
+**接口**：`GET /api/agent/status`  
 **描述**：获取Agent系统状态  
 
 **响应**：
@@ -1437,15 +1463,17 @@
   "data": {
     "status": "running",
     "version": "1.0.0",
-    "capabilities": ["chat", "search"],
+    "capabilities": ["chat", "search", "rag"],
     "formats": ["markdown", "text", "html"]
-  }
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-### 8.4 检索增强生成 (RAG)
+### 7.4 检索增强生成 (RAG)
 
-**接口**：`POST /agent/rag`  
+**接口**：`POST /api/agent/rag`  
 **描述**：从知识库中检索相关信息，并结合大语言模型生成回答  
 **请求体**：
 
@@ -1456,7 +1484,9 @@
   "max_results": 5,
   "stream": false,
   "format": "markdown",
-  "openid": "user_openid"
+  "openid": "user_openid",
+  "rewrite_bot_id": null,
+  "knowledge_bot_id": null
 }
 ```
 
@@ -1470,29 +1500,31 @@
 | stream | bool | 否 | false | 是否流式返回 |
 | format | string | 否 | "markdown" | 回复格式: markdown/text/html |
 | openid | string | 否 | null | 用户唯一标识 |
+| rewrite_bot_id | string | 否 | null | 查询改写机器人ID，不传则使用默认配置 |
+| knowledge_bot_id | string | 否 | null | 知识回答机器人ID，不传则使用默认配置 |
 
 **可用的表名列表**：
 - `wxapp_posts`: 小程序帖子
 - `wxapp_comments`: 小程序评论
-- `wxapp_users`: 小程序用户
 - `wechat_nku`: 微信公众号文章
 - `website_nku`: 南开网站文章
 - `market_nku`: 校园集市帖子
 
-**响应**：
+**普通响应**：
 
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
+    "original_query": "南开大学历史",
+    "rewritten_query": "南开大学历史沿革和发展",
     "response": "南开大学创建于1919年，由著名爱国教育家张伯苓和严修创办...",
     "sources": [
       {
-        "id": "1",
-        "type": "帖子",
+        "type": "小程序帖子",
         "title": "南开大学创办历史",
-        "item_id": 123,
+        "content": "南开大学创建于1919年...",
         "author": "南开百科"
       }
     ],
@@ -1501,44 +1533,76 @@
       "南开大学有哪些著名校友？",
       "南开大学的学科设置有哪些？"
     ],
-    "format": "markdown",
+    "format": "markdown"
+  },
+  "details": {
     "retrieved_count": 5,
     "response_time": 0.518
-  }
+  },
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-### 8.5 增强版检索增强生成 (RAG2)
+**流式响应**：
 
-**接口**：`POST /agent/rag2`  
-**描述**：使用查询改写和两阶段处理的增强版RAG接口  
-**请求体**：
+当请求参数 `stream=true` 时，接口将以 Server-Sent Events (SSE) 格式返回流式响应，Content-Type为 `text/event-stream`。
+
+每个事件都以 `data: ` 开头，后跟JSON格式数据，数据中包含 `type` 字段标识事件类型：
+
+1. 查询信息事件:
+```
+data: {"type":"query","original":"原始查询","rewritten":"改写查询"}
+```
+
+2. 内容分块事件:
+```
+data: {"type":"content","chunk":"回答内容片段"}
+```
+
+3. 来源信息事件:
+```
+data: {"type":"sources","sources":[{"type":"小程序帖子","title":"标题","content":"内容摘要","author":"作者"}]}
+```
+
+4. 建议问题事件:
+```
+data: {"type":"suggested","questions":["建议问题1","建议问题2","建议问题3"]}
+```
+
+5. 完成事件:
+```
+data: {"type":"done"}
+```
+
+**错误响应**：
 
 ```json
 {
-  "query": "怎样申请奖学金",
-  "tables": ["wxapp_posts", "wechat_nku"],
-  "max_results": 5,
-  "stream": false,
-  "format": "markdown",
-  "openid": "user_openid",
-  "query_bot_id": "rewriter",
-  "flash_bot_id": "flash"
+  "code": 400,
+  "message": "错误信息",
+  "data": null,
+  "details": {
+    "errors": [
+      {
+        "loc": ["body", "query"],
+        "msg": "字段不能为空",
+        "type": "value_error.missing"
+      }
+    ]
+  },
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-**请求参数说明**：
+**常见错误码**：
+- `400`: 请求参数错误，例如表名不存在
+- `422`: 请求验证失败，例如查询为空或表名列表为空
+- `500`: 服务器内部错误
 
-| 参数名 | 类型 | 必填 | 默认值 | 说明 |
-|-------|------|------|--------|------|
-| query | string | 是 | - | 用户查询问题 |
-| tables | array | 否 | ["wxapp_posts"] | 要检索的表名列表 |
-| max_results | int | 否 | 5 | 每个表返回的最大结果数 |
-| stream | bool | 否 | false | 是否流式返回 |
-| format | string | 否 | "markdown" | 回复格式: markdown/text/html |
-| openid | string | 否 | null | 用户唯一标识 |
-| query_bot_id | string | 否 | "rewriter" | 查询改写机器人ID |
-| flash_bot_id | string | 否 | "flash" | 回答生成机器人ID |
+### 7.5 API健康检查
+
+**接口**：`GET /api/health`  
+**描述**：检查API服务健康状态  
 
 **响应**：
 
@@ -1547,26 +1611,157 @@
   "code": 200,
   "message": "success",
   "data": {
-    "response": "在南开大学，申请奖学金的流程如下...",
-    "sources": [
+    "status": "ok",
+    "version": "1.0.0",
+    "uptime": 3600,
+    "memory_usage": "128MB",
+    "timestamp": "2023-01-01T12:00:00Z"
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+## 八、文件上传API
+
+### 8.1 上传图片
+
+**接口**：`POST /api/wxapp/upload/image`  
+**描述**：上传图片到服务器  
+**请求头**：
+- `Content-Type` - multipart/form-data
+
+**请求表单**：
+- `file` - 图片文件
+- `type` - 图片类型：post-帖子图片, avatar-头像, feedback-反馈图片
+- `openid` - 用户openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "url": "https://nkuwiki.com/uploads/images/posts/202301/image.jpg",
+    "size": 102400,
+    "width": 800,
+    "height": 600,
+    "type": "post"
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 8.2 上传文件
+
+**接口**：`POST /api/wxapp/upload/file`  
+**描述**：上传文件到服务器  
+**请求头**：
+- `Content-Type` - multipart/form-data
+
+**请求表单**：
+- `file` - 文件
+- `type` - 文件类型：document-文档, other-其他
+- `openid` - 用户openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "url": "https://nkuwiki.com/uploads/files/202301/document.pdf",
+    "filename": "document.pdf",
+    "size": 1024000,
+    "type": "document",
+    "mime_type": "application/pdf"
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+## 九、其他接口
+
+### 9.1 关于信息
+
+**接口**：`GET /api/wxapp/about`  
+**描述**：获取系统关于信息  
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "app_name": "南开Wiki",
+    "version": "1.0.0",
+    "description": "南开Wiki是一个校园知识共享平台",
+    "contact": "nkuwiki@example.com",
+    "website": "https://nkuwiki.com",
+    "copyright": "© 2023 南开Wiki",
+    "terms_url": "https://nkuwiki.com/terms",
+    "privacy_url": "https://nkuwiki.com/privacy",
+    "update_log": [
       {
-        "id": "1",
-        "type": "帖子",
-        "title": "南开大学奖学金申请指南",
-        "item_id": 456,
-        "author": "南开学生处"
+        "version": "1.0.0",
+        "date": "2023-01-01",
+        "changes": ["初始版本发布"]
+      }
+    ]
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 9.2 搜索功能
+
+**接口**：`GET /api/wxapp/search`  
+**描述**：搜索微信小程序内容  
+**参数**：
+- `keyword` - 查询参数，搜索关键词
+- `type` - 查询参数，搜索类型，可选值：post-帖子, comment-评论, user-用户, all-全部
+- `limit` - 查询参数，返回记录数量限制，默认20，最大100
+- `offset` - 查询参数，分页偏移量，默认0
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "keyword": "南开大学",
+    "type": "all",
+    "results": [
+      {
+        "id": 1,
+        "type": "post",
+        "title": "南开大学校园风光",
+        "content_preview": "南开大学的校园风光非常美丽...",
+        "author": "南开学生",
+        "create_time": "2023-01-01 12:00:00",
+        "score": 0.95
+      },
+      {
+        "id": 5,
+        "type": "comment",
+        "content_preview": "南开大学的历史很悠久...",
+        "author": "历史爱好者",
+        "create_time": "2023-01-02 15:30:00",
+        "score": 0.85
       }
     ],
-    "suggested_questions": [
-      "南开大学有哪些类型的奖学金？",
-      "奖学金申请的时间节点是什么？",
-      "获得奖学金的条件有哪些？"
-    ],
-    "format": "markdown",
-    "retrieved_count": 3,
-    "original_query": "怎样申请奖学金",
-    "rewritten_query": "南开大学奖学金申请流程和要求",
-    "response_time": 0.723
-  }
+    "total": 2,
+    "limit": 20,
+    "offset": 0
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
 }
 ``` 

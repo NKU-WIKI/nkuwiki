@@ -1,15 +1,11 @@
 """
 Agent工厂模块，负责创建不同类型的智能体实例
 """
-
-import importlib
-import sys
 from core.utils.logger import register_logger
 
 logger = register_logger("core.agent.factory")
 
 from core.agent.agent import Agent
-from config import Config
 
 class AgentFactory:
     """智能体工厂类，负责创建和管理不同类型的智能体实例"""
@@ -52,7 +48,7 @@ class AgentFactory:
         """清空智能体实例缓存"""
         cls._instance_cache.clear()
 
-def create_agent(agent_type: str, **kwargs) -> Agent:
+def create_agent(agent_type: str = "coze", **kwargs) -> Agent:
     """
     创建智能体实例
     
@@ -64,19 +60,21 @@ def create_agent(agent_type: str, **kwargs) -> Agent:
         Agent: 智能体实例
     """
     agent_type = agent_type.lower()
-    config = Config()
-    
-    # 尝试动态导入对应的Agent类
+   
     try:
-        if agent_type == "chatgpt":
-            from core.agent.chatgpt.chatgpt_session import ChatGPTSession
-            return ChatGPTSession()
+        if agent_type == "coze":
+            from core.agent.coze.coze_agent import CozeAgent
+            tag = kwargs.get("tag", "default")
+            return CozeAgent(tag)
+        elif agent_type == "chatgpt":
+            from core.agent.chatgpt.chat_gpt_agent import ChatGPTAgent
+            return ChatGPTAgent()
         elif agent_type == "dify":
             from core.agent.dify.dify_agent import DifyAgent
             return DifyAgent()
         elif agent_type == "openai":
-            from core.agent.openai.openai_session import OpenAISession
-            return OpenAISession()
+            from core.agent.openai.open_ai_agent import OpenAIAgent
+            return OpenAIAgent()
         elif agent_type == "claude":
             from core.agent.claudeapi.claude_api_agent import ClaudeAPIAgent
             return ClaudeAPIAgent()
@@ -110,21 +108,11 @@ def create_agent(agent_type: str, **kwargs) -> Agent:
         elif agent_type == "xunfei":
             from core.agent.xunfei.xunfei_spark_agent import XunfeiSparkAgent
             return XunfeiSparkAgent()
-        elif agent_type == "flash" or agent_type == "rewriter":
-            # 查询改写和闪回智能体，默认使用coze实现
-            from core.agent.coze.coze_agent import CozeAgent
-            return CozeAgent()
-        elif agent_type == "coze":
-            from core.agent.coze.coze_agent import CozeAgent
-            # 直接返回CozeAgent实例，CozeAgent自己会从config获取必要参数
-            return CozeAgent()
-            
-        logger.error(f"未知的智能体类型: {agent_type}")
-        return Agent()  # 返回基础Agent作为默认值
-        
-    except ImportError as e:
-        logger.error(f"无法导入{agent_type}模块: {e}")
-        return Agent()
+        else:
+            raise ValueError(f"不支持的智能体类型: {agent_type}")
     except Exception as e:
-        logger.error(f"创建{agent_type}智能体时发生错误: {e}")
+        logger.exception(e)
         return Agent()
+
+# 导出工厂方法为模块级函数
+get_agent = AgentFactory.get_agent

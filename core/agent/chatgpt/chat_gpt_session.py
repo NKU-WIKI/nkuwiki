@@ -39,7 +39,7 @@ class ChatGPTSession(Session):
                     cur_tokens = cur_tokens - max_tokens
                 break
             elif len(self.messages) == 2 and self.messages[1]["role"] == "user":
-                App().logger.warn("user message exceed max_tokens. total_tokens={}".format(cur_tokens))
+                App().logger.warning("user message exceed max_tokens. total_tokens={}".format(cur_tokens))
                 break
             else:
                 App().logger.debug("max_tokens={}, total_tokens={}, len(messages)={}".format(max_tokens, cur_tokens, len(self.messages)))

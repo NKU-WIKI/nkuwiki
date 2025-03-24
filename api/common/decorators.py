@@ -1,152 +1,134 @@
 """
 API装饰器模块
-提供API错误处理等通用装饰器
+提供API错误处理等常用装饰器和工具函数
 """
-import functools
+from functools import wraps
 import traceback
-from typing import Callable, Dict, Any, Union, List
+import json
+from typing import Any, Dict, Callable, List, TypeVar, Optional, Union
 from fastapi import HTTPException, Request
-from fastapi.responses import JSONResponse
-from fastapi.exceptions import RequestValidationError
+from core.utils.logger import register_logger
 from pydantic import ValidationError
-from loguru import logger
+from api.models.common import create_response, StatusCode
 
-def handle_api_errors(operation_name: str):
+logger = register_logger("api")
+T = TypeVar('T')
+
+def format_validation_errors(error: ValidationError) -> List[Dict[str, Any]]:
+    """格式化Pydantic验证错误"""
+    return [{
+        "loc": e.get("loc", []),
+        "msg": e.get("msg", ""),
+        "type": e.get("type", "")
+    } for e in error.errors()]
+
+def handle_api_errors(operation_name: str = "API操作"):
     """
-    API错误处理装饰器
-    捕获并处理API执行过程中的异常，返回标准格式响应
+    装饰器：确保API接口返回标准响应格式，并处理异常
+    如果路由定义了response_model，还会验证返回数据是否符合模型
     
     Args:
         operation_name: 操作名称，用于日志记录
-        
-    Returns:
-        装饰器函数
     """
-    def decorator(func: Callable):
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            # 获取请求对象(如果有)
-            request = next((arg for arg in args if isinstance(arg, Request)), None)
-            client_ip = request.client.host if request and request.client else "unknown"
-            path = request.url.path if request else "unknown"
-            
-            # 检查api_logger是否在kwargs中
-            api_logger = kwargs.get('api_logger', logger)
-            
-            # 记录请求开始
-            api_logger.info(f"开始执行 [{operation_name}] - 路径: {path}, 客户端: {client_ip}")
-            
+    def decorator(func: Callable[..., T]):
+        @wraps(func)
+        async def wrapper(*args, **kwargs) -> T:
             try:
-                # 执行API处理函数
-                response = await func(*args, **kwargs)
+                result = await func(*args, **kwargs)
                 
-                # 记录成功响应
-                api_logger.info(f"成功完成 [{operation_name}]")
+                # 如果结果已经是JSONResponse实例，直接返回
+                if hasattr(result, "status_code"):
+                    return result
                 
-                return response
-            except RequestValidationError as e:
-                # 请求参数验证错误
-                error_details = format_validation_errors(e.errors())
-                error_msg = f"参数验证错误: {error_details}"
+                # 获取路由的response_model（如果有）
+                response_model = None
+                # 尝试从函数对象中获取FastAPI设置的路由信息
+                if hasattr(func, "__fastapi_route__"):
+                    route_info = getattr(func, "__fastapi_route__")
+                    response_model = getattr(route_info, "response_model", None)
                 
-                api_logger.warning(
-                    f"参数验证错误 [{operation_name}]: {error_details}"
+                # 如果有response_model且不是None，验证返回数据
+                if response_model is not None:
+                    try:
+                        # 如果返回的不是字典，转换为字典
+                        if not isinstance(result, dict) and hasattr(result, "dict"):
+                            result_dict = result.dict()
+                        elif not isinstance(result, dict) and hasattr(result, "model_dump"):
+                            result_dict = result.model_dump()
+                        else:
+                            result_dict = result
+                        
+                        # 使用response_model验证数据
+                        validated_data = response_model(**result_dict)
+                        # 使用验证后的数据
+                        result = validated_data
+                        
+                    except ValidationError as e:
+                        # 记录验证错误但不抛出异常，仍然返回原始数据
+                        logger.warning(
+                            f"{operation_name}响应不符合response_model要求: {str(e)}"
+                        )
+                
+                # 包装为标准响应格式
+                return create_response(data=result)
+                
+            except HTTPException as e:
+                # FastAPI的HTTP异常
+                logger.warning(f"{operation_name}失败: HTTP {e.status_code} - {e.detail}")
+                return create_response(
+                    message=e.detail,
+                    code=e.status_code
                 )
-                
-                # 返回标准格式响应
-                return JSONResponse(
-                    status_code=422,
-                    content=create_standard_response(
-                        data={"errors": e.errors()},
-                        code=422,
-                        message=error_msg
-                    )
-                )
+                    
             except ValidationError as e:
                 # Pydantic验证错误
-                error_details = format_validation_errors(e.errors())
-                error_msg = f"数据验证错误: {error_details}"
+                errors = format_validation_errors(e)
+                error_message = "请求参数验证失败"
                 
-                api_logger.warning(
-                    f"数据验证错误 [{operation_name}]: {error_details}"
-                )
-                
-                # 返回标准格式响应
-                return JSONResponse(
-                    status_code=422,
-                    content=create_standard_response(
-                        data={"errors": e.errors()},
-                        code=422,
-                        message=error_msg
-                    )
-                )
-            except HTTPException as e:
-                # 处理HTTP异常
-                api_logger.warning(
-                    f"HTTP异常 [{operation_name}]: "
-                    f"状态码={e.status_code}, "
-                    f"详情='{e.detail}'"
+                logger.warning(
+                    f"{operation_name}失败: 验证错误 - {error_message}\n"
+                    f"详细错误: {json.dumps(errors, ensure_ascii=False)}"
                 )
                 
-                # 返回标准格式响应
-                return JSONResponse(
-                    status_code=e.status_code,
-                    content=create_standard_response(None, e.status_code, str(e.detail))
+                return create_response(
+                    message=error_message,
+                    code=StatusCode.BAD_REQUEST,
+                    details={"errors": errors}
                 )
+                
             except Exception as e:
-                # 处理其他异常
+                # 其他异常
                 error_detail = str(e)
                 error_trace = traceback.format_exc()
                 
-                # 记录异常详情
-                api_logger.error(
-                    f"未捕获异常 [{operation_name}]: {error_detail}\n{error_trace}"
+                logger.error(
+                    f"{operation_name}发生未处理异常: {error_detail}\n{error_trace}"
                 )
                 
-                # 返回标准格式响应
-                return JSONResponse(
-                    status_code=500,
-                    content=create_standard_response(None, 500, f"{operation_name}失败: {error_detail}")
+                return create_response(
+                    message=f"{operation_name}失败: {error_detail}",
+                    code=StatusCode.INTERNAL_ERROR
                 )
-                
+        
         return wrapper
     return decorator
 
-def format_validation_errors(errors: List[Dict]) -> str:
+def require_permissions(permissions: List[str] = None):
     """
-    格式化验证错误信息
+    装饰器：要求接口具有特定权限
     
     Args:
-        errors: 验证错误列表
-        
-    Returns:
-        格式化后的错误信息
+        permissions: 需要的权限列表
     """
-    if not errors:
-        return "未知验证错误"
-    
-    formatted_errors = []
-    for error in errors:
-        loc = ".".join(str(l) for l in error.get("loc", []))
-        msg = error.get("msg", "")
-        formatted_errors.append(f"{loc}: {msg}")
-    
-    return "; ".join(formatted_errors)
+    def decorator(func: Callable):
+        @wraps(func)
+        async def wrapper(request: Request, *args, **kwargs):
+            # 这里需要实现权限验证逻辑
+            return await func(request, *args, **kwargs)
+        return wrapper
+    return decorator
 
-def create_standard_response(data: Any = None, code: int = 200, message: str = "success") -> Dict[str, Any]:
-    """
-    创建标准响应格式
-    
-    Args:
-        data: 响应数据
-        code: 响应状态码
-        message: 响应消息
-        
-    Returns:
-        标准格式的响应字典
-    """
-    return {
-        "code": code,
-        "message": message,
-        "data": data
-    } 
+__all__ = [
+    "handle_api_errors",
+    "require_permissions"
+] 

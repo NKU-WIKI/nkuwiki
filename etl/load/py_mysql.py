@@ -621,11 +621,20 @@ def query_records(table_name: str, conditions: Dict[str, Any] = None, order_by: 
         values = []
         
         if conditions:
-            where_parts = []
-            for key, value in conditions.items():
-                where_parts.append(f"{key} = %s")
-                values.append(value)
-            where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+            # 优先处理where_condition和params字段
+            if 'where_condition' in conditions and 'params' in conditions:
+                # 将?占位符替换为MySQL的%s占位符
+                where_condition = conditions['where_condition'].replace('?', '%s')
+                where_clause = f"WHERE {where_condition}"
+                values = conditions['params'] if isinstance(conditions['params'], list) else [conditions['params']]
+            else:
+                # 传统方式：处理条件字典
+                where_parts = []
+                for key, value in conditions.items():
+                    if key not in ['where_condition', 'params']:
+                        where_parts.append(f"{key} = %s")
+                        values.append(value)
+                where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         
         order_clause = f"ORDER BY {order_by}" if order_by else ""
         limit_clause = f"LIMIT {limit} OFFSET {offset}"
@@ -1139,41 +1148,20 @@ def import_json_dir_to_table(dir_path: str = None, table_name: str = None, platf
     return result
 
 def execute_raw_query(query, params=None):
-    """
-    执行原生SQL查询，返回查询结果
+    """执行原生SQL查询，返回查询结果"""
+    from etl.load import get_conn, close_conn
     
-    Args:
-        query (str): SQL查询语句
-        params (tuple, optional): 查询参数
-    
-    Returns:
-        list: 包含查询结果的字典列表
-    """
     try:
-        # 获取数据库连接
-        connection = get_conn()
-        cursor = connection.cursor(dictionary=True)
-        
-        # 执行查询
-        try:
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            
-            # 获取结果
+        conn = get_conn()
+        with conn.cursor(dictionary=True) as cursor:
+            cursor.execute(query, params)
             result = cursor.fetchall()
-            load_logger.debug(f"执行原生SQL查询成功，返回 {len(result)} 条记录")
-            return result
-        finally:
-            cursor.close()
+        return result
     except Exception as e:
-        load_logger.error(f"执行原生SQL查询失败: {str(e)}")
-        load_logger.error(f"查询语句: {query}")
-        if params:
-            load_logger.error(f"查询参数: {params}")
-        # 返回空列表而不是抛出异常
-        return []
+        logger.error(f"SQL查询执行失败: {str(e)}")
+        raise
+    finally:
+        close_conn()
 
 def get_mysql_config():
     """获取MySQL配置"""
@@ -1204,13 +1192,8 @@ def get_mysql_config():
 
 def get_db_connection():
     """获取数据库连接"""
-    mysql_config = get_mysql_config()
-    try:
-        connection = pymysql.connect(**mysql_config)
-        return connection
-    except Exception as e:
-        logger.error(f"数据库连接失败: {str(e)}")
-        raise
+    from etl.load import get_conn
+    return get_conn()
 
 def search_posts(keyword, page=1, page_size=10, sort_by="relevance", status=1, include_deleted=False):
     """搜索帖子"""
@@ -1348,6 +1331,31 @@ def search_users(keyword, page=1, page_size=10):
     except Exception as e:
         logger.error(f"搜索用户失败: {str(e)}")
         return []
+
+async def async_query_records(table_name, conditions=None, order_by=None, limit=None, offset=None):
+    """异步版本的query_records函数
+    
+    Args:
+        table_name (str): 表名
+        conditions (dict, optional): 条件字典. Defaults to None.
+        order_by (str, optional): 排序字段. Defaults to None.
+        limit (int, optional): 限制返回数量. Defaults to None.
+        offset (int, optional): 结果偏移量. Defaults to None.
+        
+    Returns:
+        List[dict]: 查询结果列表
+    """
+    import asyncio
+    
+    # 使用ThreadPoolExecutor来异步调用同步的query_records函数
+    return await asyncio.to_thread(
+        query_records,
+        table_name=table_name,
+        conditions=conditions,
+        order_by=order_by,
+        limit=limit,
+        offset=offset
+    )
 
 if __name__ == "__main__":
     # 避免同时执行多个导致连接池溢出，先删除一个表

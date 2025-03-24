@@ -34,9 +34,9 @@ function show_help {
     echo ""
     echo -e "${GREEN}== 服务实例管理 ==${NC}"
     echo -e "  ${YELLOW}create${NC} [起始端口] [实例数]   - 创建指定数量的服务实例，从起始端口开始"
-    echo -e "  ${YELLOW}start${NC}                      - 启动所有nkuwiki服务并部署文档"
+    echo -e "  ${YELLOW}start${NC}                      - 启动所有nkuwiki服务"
     echo -e "  ${YELLOW}stop${NC}                       - 停止所有nkuwiki服务"
-    echo -e "  ${YELLOW}restart${NC} [website]          - 重启所有nkuwiki服务并部署文档，添加website参数仅重启网站服务并部署文档"
+    echo -e "  ${YELLOW}restart${NC}                    - 重启所有nkuwiki服务"
     echo -e "  ${YELLOW}status${NC}                     - 显示所有nkuwiki服务状态和端口监听情况"
     echo -e "  ${YELLOW}enable${NC}                     - 启用所有nkuwiki服务开机自启"
     echo -e "  ${YELLOW}disable${NC}                    - 禁用所有nkuwiki服务开机自启"
@@ -46,10 +46,6 @@ function show_help {
     echo -e "  ${YELLOW}cloudflare${NC}                 - 配置Cloudflare IP范围和真实IP获取支持"
     echo -e "  ${YELLOW}setup-ssl${NC}                  - 设置SSL证书路径并验证证书是否存在"
     echo ""
-    echo -e "${GREEN}== 文档管理 ==${NC}"
-    echo -e "  ${YELLOW}docs${NC}                       - 部署文档到网站"
-    echo -e "  ${YELLOW}website${NC} restart            - 重启网站服务并部署文档"
-    echo ""
     echo -e "${GREEN}== 系统维护 ==${NC}"
     echo -e "  ${YELLOW}cleanup${NC}                    - 清理所有创建的服务(不包括主服务)"
     echo -e "  ${YELLOW}cleanup-config${NC}             - 清理所有生成的Nginx配置文件"
@@ -57,18 +53,15 @@ function show_help {
     echo -e "                               选项: --force/-f 不询问直接清理"
     echo ""
     echo -e "${GREEN}== 一键操作 ==${NC}"
-    echo -e "  ${YELLOW}deploy${NC} [起始端口] [实例数]  - 一键部署服务和配置(创建服务+负载均衡+SSL配置+启动服务+部署文档)"
+    echo -e "  ${YELLOW}deploy${NC} [起始端口] [实例数]  - 一键部署服务和配置(创建服务+负载均衡+SSL配置+启动服务)"
     echo -e "  ${YELLOW}help${NC}                       - 显示此帮助信息"
     echo ""
     echo -e "${GREEN}== 使用示例 ==${NC}"
     echo -e "  $0 create 8000 4           - 创建4个服务，监听端口8000-8003"
     echo -e "  $0 nginx 8000 4            - 为端口8000-8003生成Nginx负载均衡配置"
-    echo -e "  $0 deploy 8000 4           - 一键部署4个服务实例并配置Nginx(含文档部署)"
-    echo -e "  $0 docs                    - 仅部署文档到网站"
-    echo -e "  $0 restart website         - 仅重启网站服务并部署文档"
-    echo -e "  $0 website restart         - 仅重启网站服务并部署文档(替代写法)"
-    echo -e "  $0 start                   - 启动所有服务并部署文档"
-    echo -e "  $0 restart                 - 重启所有服务并部署文档"
+    echo -e "  $0 deploy 8000 4           - 一键部署4个服务实例并配置Nginx"
+    echo -e "  $0 start                   - 启动所有服务"
+    echo -e "  $0 restart                 - 重启所有服务"
     echo -e "  $0 status                  - 显示所有服务状态和端口监听情况"
     echo -e "  $0 cleanup && $0 cleanup-config - 完全清理服务和配置"
     echo -e "  $0 cleanup-logs            - 清理所有日志文件"
@@ -636,10 +629,6 @@ function start_services {
             echo -e "${YELLOW}查看日志: journalctl -u $failed_service${NC}"
         done
     fi
-    
-    # 部署文档并重启网站
-    echo -e "${BLUE}更新网站和文档...${NC}"
-    deploy_docs || echo -e "${YELLOW}文档部署跳过或失败，网站可能需要手动更新${NC}"
 }
 
 # 配置Nginx
@@ -701,10 +690,6 @@ function deploy {
     # 5. 设置开机自启
     enable_services
     
-    # 6. 部署文档到网站
-    echo -e "${BLUE}部署文档到网站...${NC}"
-    deploy_docs || echo -e "${YELLOW}文档部署跳过或失败，网站可能需要手动更新${NC}"
-    
     echo -e "${GREEN}完整部署成功完成!${NC}"
 }
 
@@ -756,10 +741,6 @@ function restart_services {
             echo -e "${YELLOW}查看日志: journalctl -u $failed_service${NC}"
         done
     fi
-    
-    # 部署文档并重启网站
-    echo -e "${BLUE}更新网站和文档...${NC}"
-    deploy_docs || echo -e "${YELLOW}文档部署跳过或失败，网站可能需要手动更新${NC}"
 }
 
 # 显示所有服务状态
@@ -992,121 +973,6 @@ function cleanup_logs {
     return 0
 }
 
-# 部署文档到网站
-function deploy_docs {
-    echo -e "${BLUE}=== 开始部署文档到网站 ===${NC}"
-    
-    # 获取项目根目录
-    if [ -z "$PROJECT_ROOT" ]; then
-        PROJECT_ROOT="$(pwd)"
-    fi
-    
-    WEBSITE_DIR="${PROJECT_ROOT}/services/website"
-    DOCS_DIR="${PROJECT_ROOT}/docs"
-    
-    # 1. 检查文档目录是否存在
-    if [ ! -d "$DOCS_DIR" ]; then
-        echo -e "${RED}错误: 文档目录不存在 ${DOCS_DIR}${NC}"
-        exit 1
-    fi
-    
-    # 2. 检查文档转换脚本是否存在
-    if [ ! -f "${WEBSITE_DIR}/markdown_to_html.py" ]; then
-        echo -e "${RED}错误: 文档转换脚本不存在 ${WEBSITE_DIR}/markdown_to_html.py${NC}"
-        exit 1
-    fi
-    
-    # 3. 检查文档页面是否存在
-    if [ ! -f "${WEBSITE_DIR}/docs.html" ]; then
-        echo -e "${RED}错误: 文档页面不存在 ${WEBSITE_DIR}/docs.html${NC}"
-        exit 1
-    fi
-    
-    # 4. 创建markdown目录（如果不存在）
-    MARKDOWN_DIR="${WEBSITE_DIR}/markdown"
-    if [ ! -d "$MARKDOWN_DIR" ]; then
-        echo -e "${BLUE}创建markdown目录...${NC}"
-        mkdir -p "$MARKDOWN_DIR"
-    fi
-    
-    # 5. 安装依赖
-    echo -e "${BLUE}检查并安装python依赖...${NC}"
-    if ! command -v pip &> /dev/null && ! command -v pip3 &> /dev/null; then
-        echo -e "${YELLOW}未检测到pip，正在安装...${NC}"
-        apt-get update && apt-get install -y python3-pip
-    fi
-    
-    pip install markdown 2>/dev/null || pip3 install markdown 2>/dev/null
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}安装markdown依赖失败${NC}"
-        exit 1
-    fi
-    
-    # 6. 运行转换脚本
-    echo -e "${BLUE}运行markdown转换脚本...${NC}"
-    cd "$WEBSITE_DIR"
-    python markdown_to_html.py || python3 markdown_to_html.py
-    
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}文档转换失败，请检查错误信息${NC}"
-        cd "$PROJECT_ROOT"
-        exit 1
-    fi
-    
-    echo -e "${GREEN}文档转换完成！${NC}"
-    
-    # 7. 确保文档目录权限正确
-    echo -e "${BLUE}设置文档目录权限...${NC}"
-    chown -R www-data:www-data "$MARKDOWN_DIR" 2>/dev/null
-    chmod -R 755 "$MARKDOWN_DIR" 2>/dev/null
-    
-    # 8. 重启网站服务
-    echo -e "${BLUE}重启网站服务...${NC}"
-    if systemctl is-active --quiet nginx; then
-        systemctl restart nginx
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}重启Nginx失败，请手动检查${NC}"
-        else
-            echo -e "${GREEN}Nginx服务已重启${NC}"
-        fi
-    else
-        echo -e "${YELLOW}Nginx服务未运行，跳过重启${NC}"
-    fi
-    
-    echo -e "${GREEN}文档部署完成! 文档可在 /docs.html 访问${NC}"
-    
-    # 返回原目录
-    cd "$PROJECT_ROOT"
-}
-
-# 重启网站服务
-function restart_website {
-    echo -e "${BLUE}重启网站服务...${NC}"
-    
-    # 检查Nginx是否运行
-    if systemctl is-active --quiet nginx; then
-        systemctl restart nginx
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}重启Nginx失败，请手动检查${NC}"
-            return 1
-        else
-            echo -e "${GREEN}Nginx服务已重启${NC}"
-        fi
-    else
-        echo -e "${YELLOW}Nginx服务未运行${NC}"
-        systemctl start nginx
-        if [ $? -ne 0 ]; then
-            echo -e "${RED}启动Nginx失败，请手动检查${NC}"
-            return 1
-        else
-            echo -e "${GREEN}Nginx服务已启动${NC}"
-        fi
-    fi
-    
-    return 0
-}
-
 # 主函数
 function main {
     check_root
@@ -1132,14 +998,7 @@ function main {
             stop_services
             ;;
         restart)
-            if [ $# -gt 1 ] && [ "$2" = "website" ]; then
-                # 重启网站并部署文档
-                echo -e "${BLUE}重启网站并部署文档...${NC}"
-                restart_website
-                deploy_docs || echo -e "${YELLOW}文档部署跳过或失败${NC}"
-            else
-                restart_services
-            fi
+            restart_services
             ;;
         status)
             status_services
@@ -1163,21 +1022,6 @@ function main {
             ;;
         setup-ssl)
             setup_ssl
-            ;;
-        docs)
-            deploy_docs
-            ;;
-        website)
-            if [ $# -gt 1 ] && [ "$2" = "restart" ]; then
-                # 重启网站并部署文档
-                echo -e "${BLUE}重启网站并部署文档...${NC}"
-                restart_website
-                deploy_docs || echo -e "${YELLOW}文档部署跳过或失败${NC}"
-            else
-                echo -e "${RED}错误: website命令需要子命令 (restart)${NC}"
-                show_help
-                exit 1
-            fi
             ;;
         deploy)
             if [ $# -lt 3 ]; then

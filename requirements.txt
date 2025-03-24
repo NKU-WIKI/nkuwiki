@@ -53,10 +53,12 @@ fastapi               # API框架
 uvicorn               # ASGI服务器
 requests              # HTTP请求库
 fastapi-responseschema  # API标准响应格式
+pytest
 
 # 网页处理
 beautifulsoup4        # HTML解析
 playwright            # 浏览器自动化
+
 
 # 企业微信 (仅Windows)
 # ntwork; platform_system=="Windows"  # pip源不可用，本地安装: pip install ./servercies/wework/ntwork_backup_bin/ntwork<your_version>.whl
@@ -110,5 +112,7 @@ arrow                 # 日期时间处理
 croniter              # 定时任务表达式
 ephem                 # 天文计算（农历）
 LunarCalendar         # 农历日期处理
+
+python-multipart
 
 

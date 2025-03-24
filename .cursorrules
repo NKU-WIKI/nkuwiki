@@ -12,7 +12,7 @@ markdown代码遵循vscode的markdownlint规范。
 一般情况日志使用debug级别，不要使用info级别，只有最重要的信息采用info级别。
 
 ### 配置
-配置参考config.py中的嵌套配置引用方式
+配置参考config.py中的嵌套配置引用方式，实际配置在config.json
 
 ### 命名
 
@@ -20,143 +20,63 @@ markdown代码遵循vscode的markdownlint规范。
 
 ## 项目描述
 
-### 项目背景
-
 nkuwiki校园知识共享平台
-
-我们致力于构建南开知识共同体，践行 开源·共治·普惠 三位一体价值体系
-（🔓 技术开源透明 + 🤝 社区协同共治 + 🆓 服务永久普惠），实现：
-
-🚀 消除南开学子信息差距
-💡 开放知识资源免费获取
-🌱 构建可持续的互助社区
 
 这是一个前后端分离的项目，主体是后端项目，接口在api目录下
 services/app微信小程序，是git子模块，请求地址为https://nkuwiki.com
-或者http://localhost:8000[8000~8007]
 api文档见docs/api_docs.md
-服务部署脚本./nkuwiki_service_manager.sh
-crontab -e 添加定时任务
 
-库表在etl/load/mysql_tables目录下
+**你应该先了解项目中已经实现的方法再写新代码，不要造轮子**
 
-现在需要实现rag，并在前端展示，详见https://github.com/ghost233lism/Nkuwiki/issues/13
-
-
-
-### 项目结构树
-
-```plaintext
-- api # api模块，负责智能体对话、贡献激励、平台治理等算法应用
-- core # core模块，负责智能体对话、贡献激励、平台治理等算法应用
-  - agent  # 智能体应用
-    - coze  # Coze平台对接
-      - coze_agent.py
-    （openai,chatgpt,hiagent、etc.）
-    - session_manager.py  # 会话管理器
-    - agent_factory.py  # 智能体工厂
-  - bridge  # 桥接服务与智能体
-  - plugins  # 插件管理系统
-  - utils  # 通用工具函数和类
-    - voice  # 语音处理
-    - translate  # 翻译工具
-- docs  # 项目文档
-  - logging_guide.md  # 日志指南
-  - assets  # 文档资源
-    - 技术报告.pdf
-  - HiagentAPI  # HiAgent API文档
-    - HiagentAPI.md
-- etl  # etl模块，负责数据抽取、转换和加载
-  - __init__.py  # etl模块全局共享配置项、环境变量、路径和工具函数
-  - crawler  # 爬虫模块，负责从各种数据源抓取数据
-    - base_crawler.py  # 基础爬虫类
-    (website,wechat, market, etc.)
-    - __init__.py  # 爬虫模块专用配置项、环境变量、路径和工具函数
-  - transform  # 转换模块，负责数据格式转换、处理和清洗
-    - transformation.py  # 转换工具
-  - load  # 加载模块，将原始数据导出到索引数据,关系数据库（mysql）和向量数据库（qdrant）
-    - mysql_tables # mysql建表语句
-    - json2mysql.py  # JSON数据导入MySQL
-    - pipieline.py # 文档索引建立、嵌入、检索、重排全流程
-  - embedding  # 嵌入处理模块
-    - hierarchical.py # 文档处理成节点树，建立索引
-    - ingestion.py  # 文档分块、嵌入
-    - hf_embeddings.py # 嵌入模型
-  - retrieval  # 检索模块
-    - retrivers.py # 稀疏/稠密/混合检索器
-    - rerankders.py # 重排器
-  - utils  # 工具
-  - data # 数据持久化存储目录，gitignore，一般放在项目代码外，仅本地测试时放在项目中，可在config.json中配置挂载路径
-    - cache  # 缓存目录，存储临时处理的数据
-    - index  # 索引目录，存储建立的搜索索引
-    - models  # 模型目录，存储下载的机器学习模型
-    - mysql  # MySQL数据库目录，存储关系型数据
-    - qdrant  # Qdrant向量数据库目录，存储向量检索数据
-    - nltk  # NLTK数据目录，存储自然语言处理工具包数据
-    - raw  # 原始数据目录，存储爬取的原始数据
-- infra  # 基础设施
-  - __init__.py
-- services  # services模块，提供多渠道服务
-  - wechatmp  # 微信公众号服务
-    - active_reply.py  # 主动回复
-    - passive_reply.py  # 被动回复
-    - wechatmp_channel.py  # 微信公众号渠道
-  - terminal  # 终端服务，调试用
-  - website  # 网站服务
-  - app # 微信小程序服务
-  - channel_factory.py  # 渠道工厂
-- requirements.txt  # 项目依赖文件
-- app.py  # 应用程序入口
-- config.py  # 全局配置管理类，包含所有可用配置项的注释和默认值
-- config.json  # 配置文件，包含敏感信息，gitignore
-- .cursors # cursor项目规则，推荐开发使用
+服务重启方式为 
+```bash
+kill -9 $(lsof -t -i:8000) && python app.py --api --port 8000 && sleep 5 && curl -X GET "http://localhost:8000/api/health"
 ```
+可以通过http://localhost:8000/api/health检查服务是否正常
 
-### services/app
+库表结构在etl/load/mysql_tables目录下
 
-##### 项目结构
+包括
+market_nku
+webisite_nku
+wechat_nku
+wxappp_posts
+wxappp_comments
+等
+用etl/load/py_mysql.py中的方法和数据库交互
+主要函数:
+- init_database(): 分步初始化数据库
+- create_table(table_name): 根据表名创建对应的表结构
+- process_file(file_path): 处理指定的JSON文件并返回数据字典
+- export_wechat_to_mysql(n): 将微信文章数据导出到MySQL数据库
+- query_table(table_name, limit): 查询指定表中的数据
+- delete_table(table_name): 删除指定的表
+- insert_record(table_name, data): 向指定表中插入单条记录
+- update_record(table_name, record_id, data): 更新指定表中的记录
+- delete_record(table_name, record_id): 删除指定表中的记录
+- get_record_by_id(table_name, record_id): 根据ID获取指定表中的记录
+- query_records(table_name, conditions, order_by, limit, offset): 按条件查询表中记录
+- count_records(table_name, conditions): 计算符合条件的记录数量
+- batch_insert(table_name, records, batch_size): 批量插入记录
+- execute_custom_query(query, params, fetch): 执行自定义SQL查询
+- upsert_record(table_name, data, unique_fields): 更新或插入记录
+- get_all_tables(): 获取数据库中所有表
+- get_table_structure(table_name): 获取表结构
+- get_nkuwiki_tables(): 获取nkuwiki数据库中的所有表
+- transfer_table_from_mysql_to_nkuwiki(table_name): 将表从MySQL迁移到nkuwiki数据库
+- import_json_dir_to_table(dir_path, table_name, platform, tag, batch_size): 将目录中的JSON文件导入到指定表
+- execute_raw_query(query, params=None): 执行原生SQL查询，返回查询结果
+- get_mysql_config(): 获取MySQL配置
+- get_db_connection(): 获取数据库连接
+- search_posts(keyword, page=1, page_size=10, sort_by="relevance", status=1, include_deleted=False): 搜索帖子
+- search_comments(keyword, page=1, page_size=10): 搜索评论
+- search_users(keyword, page=1, page_size=10): 搜索用户
 
-```plain text
-services/app
-│
-├── pages/ # 页面文件夹
-│   ├── index/ # 首页
-│   │   ├── index.js # 页面逻辑
-│   │   ├── index.json # 页面配置
-│   │   ├── index.wxml # 页面结构
-│   │   └── index.wxss # 页面样式
-│   ├── search/ # 搜索页
-│   ├── discover/ # 发现页
-│   ├── profile/ # 个人中心
-│   ├── login/ # 登录页
-│   └── post/ # 发帖页
-│
-├── api/ # API接口封装
-│   ├── api_docs.md # API文档
-│   └── README.md # API说明文档
-│
-├── assets/ # 静态资源
-│   └── icons/ # 图标文件
-│
-├── utils/ # 工具函数
-│   ├── api/ #接口函数
-│   │   ├── agent/ # 智能体接口
-│   │   ├── search/ # 搜索接口
-│   │   ├── user/ # 用户接口
-│   └── util.ts # 通用工具函数
-│
-├── cloudfunctions/ # 云函数
-│   └── login/ # 登录相关云函数
-│
-├── typings/ # TypeScript类型定义
-│
-├── app.js # 小程序入口文件
-├── app.json # 小程序全局配置
-├── app.wxss # 全局样式
-├── project.config.json # 项目配置文件
-├── project.private.config.json # 项目私有配置
-├── sitemap.json # 小程序搜索配置
-├── jsconfig.json # JavaScript配置文件
-└── .cursorrules # Cursor IDE配置文件
-```
+
+
+
+
+写新代码把旧代码冗余代码删了。
+
+根据api/routes/下的接口，更新接口文档
 

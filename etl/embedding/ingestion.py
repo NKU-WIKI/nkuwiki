@@ -271,3 +271,57 @@ def build_qdrant_filters(dir):
         ]
     )
     return filters
+
+
+async def embed_and_store_document(
+    documents: List[Document],
+    embed_model: BaseEmbedding,
+    vector_store: QdrantVectorStore,
+    collection_name: str = "default",
+    chunk_size: int = 1024,
+    chunk_overlap: int = 50,
+    split_type: int = 0,
+    callback_manager: CallbackManager = None,
+) -> List[TextNode]:
+    """嵌入并存储文档到向量存储
+    
+    Args:
+        documents: 待处理的文档列表
+        embed_model: 嵌入模型
+        vector_store: 向量存储
+        collection_name: 集合名称
+        chunk_size: 分块大小
+        chunk_overlap: 分块重叠
+        split_type: 分割类型 (0->Sentence 1->Hierarchical)
+        callback_manager: 回调管理器
+        
+    Returns:
+        处理后的节点列表
+    """
+    embedding_logger.debug(f"开始处理 {len(documents)} 个文档")
+    
+    # 创建预处理管道
+    pipeline = build_preprocess_pipeline(
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
+        split_type=split_type,
+        callback_manager=callback_manager,
+    )
+    
+    # 分块处理文档
+    nodes = pipeline.run(documents=documents)
+    embedding_logger.debug(f"分块后生成 {len(nodes)} 个节点")
+    
+    # 嵌入节点
+    for node in nodes:
+        embedding = embed_model.get_text_embedding(
+            get_node_content(node)
+        )
+        node.embedding = embedding
+    
+    # 存储嵌入向量到向量存储
+    if vector_store is not None:
+        vector_store.add(nodes)
+        embedding_logger.debug(f"已将节点存储到向量存储 {collection_name}")
+    
+    return nodes

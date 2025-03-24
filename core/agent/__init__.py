@@ -15,6 +15,7 @@ from config import Config
 # 导入 Agent 类
 from core.agent.agent import Agent
 from core.utils.logger import register_logger
+from core.agent.agent_factory import get_agent
 
 # 配置引用
 config = Config()
@@ -23,4 +24,4 @@ config = Config()
 logger = register_logger("core.agent")
 logger.debug("core.agent模块初始化")
 
-__all__ = ['logger', 'config', 'Agent', 'requests', 'json', 'time', 'datetime', 'Path', 'sys'] 
+__all__ = ['logger', 'config', 'Agent', 'get_agent', 'requests', 'json', 'time', 'datetime', 'Path', 'sys'] 

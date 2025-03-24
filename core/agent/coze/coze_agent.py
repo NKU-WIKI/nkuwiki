@@ -4,44 +4,38 @@
 """
 使用官方 coze-py SDK 的 CozeAgent 实现
 """
-from core.agent import *
-import sys
+# 标准库导入
 import os
-import requests
-from core.utils.logger import register_logger
-
-logger = register_logger("core.agent.coze")
-
+import sys
 import json
 import time
+import re
 from typing import List, Dict, AsyncGenerator, Generator
+
+# 第三方库导入
+import requests
 import aiohttp
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 # 确保项目根目录在 sys.path 中
-current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-if current_dir not in sys.path:
-    sys.path.append(current_dir)
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
+# 本地导入
 from config import Config
 from core.agent import Agent
 from core.bridge.context import ContextType, Context
 from core.bridge.reply import Reply, ReplyType
-from core.agent.session_manager import SessionManager
-from core.agent.chatgpt.chat_gpt_session import ChatGPTSession
+from core.utils.logger import register_logger
 
-import re
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
+# 初始化日志
+logger = register_logger("core.agent.coze")
 
 # 需要先安装 cozepy: pip install cozepy
-try:
-    from cozepy import Coze, TokenAuth, Message, ChatEventType, COZE_CN_BASE_URL
-    from cozepy.bots import BotOnboardingInfo, Bot as CozeBot
-    COZE_SDK_AVAILABLE = True
-except ImportError:
-    COZE_SDK_AVAILABLE = False
-    logger.error("需要先安装 cozepy: pip install cozepy")
-    raise
+from cozepy import Coze, TokenAuth, Message, ChatEventType, COZE_CN_BASE_URL
+from cozepy import MessageRole, MessageContentType
 
 def create_http_session():
     """创建HTTP会话，带连接池和重试功能"""
@@ -74,13 +68,17 @@ def create_http_session():
 class CozeAgent(Agent):
     """CozeAgent类，继承自Agent基类"""
     
-    def __init__(self):
+    def __init__(self, tag="default"):
         super().__init__()
         self.config = Config()
-        self.sessions = SessionManager(ChatGPTSession, model=self.config.get("model") or "coze")
         
+        # 获取API密钥
+        self.api_key = self.config.get("core.agent.coze.api_key", "")
+        if not self.api_key:
+            raise ValueError("API 密钥未配置")
+            
         # 处理 bot_id
-        bot_id = self.config.get("core.agent.coze.bot_id")
+        bot_id = self.config.get(f"core.agent.coze.{tag}_bot_id")
         if isinstance(bot_id, str):
             self.bot_id = bot_id
         elif isinstance(bot_id, (list, tuple)) and len(bot_id) > 0:
@@ -89,19 +87,13 @@ class CozeAgent(Agent):
                 logger.warning(f"配置了多个 bot_id，当前使用第一个: {self.bot_id}")
         else:
             raise ValueError("bot_id 必须是字符串或非空字符串数组")
-            
+        
         # 初始化配置
         self.max_retries = 30
         self.poll_interval = 0.3
         self.use_cn_api = True
-        self.use_sdk = True
         
-        # 获取API密钥
-        self.api_key = self.config.get("core.agent.coze.api_key", "")
-        if not self.api_key:
-            raise ValueError("API 密钥未配置")
-        
-        # 根据官方示例设置 API 基地址
+        # 根据配置设置API基地址
         if self.use_cn_api:
             # 使用国内API
             self.base_url = COZE_CN_BASE_URL
@@ -113,19 +105,17 @@ class CozeAgent(Agent):
         
         # 用于HTTP请求的base_url    
         self.http_base_url = self.config.get("core.agent.coze.base_url", COZE_CN_BASE_URL if self.use_cn_api else "https://api.coze.com")
-            
-        # 如果使用SDK，初始化Coze客户端
-        if self.use_sdk:
-            # 按照官方示例初始化 Coze 客户端
-            self.client = Coze(
-                auth=TokenAuth(token=self.api_key), 
-                base_url=self.base_url if self.use_cn_api else None
-            )
+        
+        # 初始化Coze客户端
+        self.client = Coze(
+            auth=TokenAuth(token=self.api_key), 
+            base_url=self.base_url if self.use_cn_api else None
+        )
             
         # 创建HTTP会话
         self.session = create_http_session()
         
-        logger.info(f"CozeAgent 初始化完成，bot_id: {self.bot_id}, API: {'国内' if self.use_cn_api else '海外'}, 模式: {'SDK' if self.use_sdk else 'HTTP'}")
+        logger.info(f"CozeAgent 初始化完成，bot_id: {self.bot_id}, API: {'国内' if self.use_cn_api else '海外'}")
 
     def _get_headers(self):
         """获取HTTP请求头"""
@@ -137,11 +127,11 @@ class CozeAgent(Agent):
     def reply(self, query: str, context: Context) -> Reply:
         """处理用户输入，返回回复"""
         if context.type == ContextType.TEXT:
-            logger.info("[COZE] query={}".format(query))
+            logger.info(f"[COZE] query={query}")
             
             session_id = context["session_id"]
             session = self.sessions.session_query(query, session_id)
-            logger.debug("[COZE] session query={}".format(session.messages))
+            logger.debug(f"[COZE] session query={session.messages}")
             
             # 获取user_id，如果没有则使用默认值
             user_id = context.get("user_id", "default_user")
@@ -156,7 +146,7 @@ class CozeAgent(Agent):
             stream_output = context.get("stream_output", False) or context.get("stream", False)
             if stream_output:
                 logger.info("[COZE] 使用流式输出")
-                logger.info("开始流式请求: {}...".format(query))
+                logger.info(f"开始流式请求: {query[:30]}...")
                 
                 def stream_wrapper():
                     try:
@@ -192,8 +182,14 @@ class CozeAgent(Agent):
                             return Reply(ReplyType.TEXT, message.content)
                     
                     return Reply(ReplyType.TEXT, "未获取到有效回复")
+                except (ValueError, KeyError) as e:
+                    logger.error(f"[COZE] 非流式回复客户端错误: {str(e)}")
+                    return Reply(ReplyType.TEXT, f"请求参数错误: {str(e)}")
+                except requests.RequestException as e:
+                    logger.error(f"[COZE] 非流式回复网络错误: {str(e)}")
+                    return Reply(ReplyType.TEXT, f"网络请求失败: {str(e)}")
                 except Exception as e:
-                    logger.error(f"[COZE] 非流式回复出错: {str(e)}")
+                    logger.error(f"[COZE] 非流式回复未知错误: {str(e)}")
                     return Reply(ReplyType.TEXT, f"请求失败: {str(e)}")
             
         elif context.type == ContextType.IMAGE_CREATE:
@@ -203,7 +199,7 @@ class CozeAgent(Agent):
 
     def _calc_tokens(self, messages, answer):
         """计算token数量"""
-        completion_tokens = len(answer)  # noqa: F841
+        completion_tokens = len(answer)
         prompt_tokens = 0
         for message in messages:
             prompt_tokens += len(message["content"])
@@ -221,15 +217,8 @@ class CozeAgent(Agent):
         Returns:
             生成器，每次迭代返回一个响应片段
         """
-        if self.use_sdk:
-            return self._sdk_stream_reply(query, format_type, user_id)
-        else:
-            return self._http_stream_reply(query, format_type, user_id)
-            
-    def _sdk_stream_reply(self, query, format_type="text", user_id="default_user"):
-        """使用SDK进行流式对话请求"""
         try:
-            logger.debug(f"开始流式请求(SDK): {query[:30]}...")
+            logger.debug(f"开始流式请求: {query[:30]}...")
             
             # 设置元数据
             meta_data = {"format": format_type} if format_type != "text" else None
@@ -249,141 +238,14 @@ class CozeAgent(Agent):
                     if event.message and event.message.content:
                         yield event.message.content
                         
+        except (ValueError, KeyError) as e:
+            logger.error(f"流式请求参数错误: {e}")
+            yield f"请求参数错误: {e}"
+        except requests.RequestException as e:
+            logger.error(f"流式请求网络错误: {e}")
+            yield f"网络请求失败: {e}"
         except Exception as e:
-            logger.exception(f"SDK流式请求失败: {e}")
-            # 尝试切换到HTTP模式
-            logger.info("尝试切换到HTTP模式...")
-            for chunk in self._http_stream_reply(query, format_type, user_id):
-                yield chunk
-
-    def _http_stream_reply(self, query, format_type="text", user_id="default_user"):
-        """使用HTTP请求进行流式对话请求"""
-        try:
-            logger.info(f"开始流式请求(HTTP): {query[:30]}...")
-            
-            # 构建请求URL
-            url = f"{self.http_base_url}/v3/chat"
-            
-            # 构建请求体，添加格式信息
-            payload = {
-                "bot_id": self.bot_id,
-                "user_id": user_id,
-                "stream": True,
-                "additional_messages": [
-                    {
-                        "content": query,
-                        "content_type": "text",
-                        "role": "user",
-                        "type": "question",
-                        "meta_data": {"format": format_type} if format_type != "text" else None
-                    }
-                ]
-            }
-            
-            # 自定义请求头，优化流式传输
-            headers = self._get_headers()
-            headers.update({
-                'Accept': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'X-Accel-Buffering': 'no'  # 禁用代理服务器的缓冲
-            })
-            
-            # 添加整体超时机制
-            start_time = time.time()
-            max_total_timeout = 30  # 设置30秒的总体超时时间
-            
-            # 发送请求
-            with self.session.post(url, headers=headers, json=payload, stream=True, timeout=(3.05, 15)) as response:
-                response.raise_for_status()
-                
-                # 使用更高效的缓冲区处理
-                buffer = b""
-                last_chunk_time = time.time()
-                total_received_bytes = 0
-                
-                for chunk in response.iter_content(chunk_size=1024):  # 提高块大小至1KB
-                    if not chunk:
-                        continue
-                    
-                    # 检查总体超时
-                    current_time = time.time()
-                    if current_time - start_time > max_total_timeout:
-                        logger.warning(f"流式请求总体超时 ({max_total_timeout}秒)，强制结束")
-                        yield f"\n[请求超时: 超过{max_total_timeout}秒没有完成]"
-                        return
-                    
-                    total_received_bytes += len(chunk)    
-                    # 记录收到数据的时间
-                    if current_time - last_chunk_time > 5.0:  # 如果超过5秒没有收到数据，记录警告
-                        logger.warning(f"数据流中断 {current_time - last_chunk_time:.2f}秒")
-                        yield f"\n[提示: 连接不稳定，请稍候...]"
-                    last_chunk_time = current_time
-                    
-                    buffer += chunk
-                    
-                    # 添加单次处理超时保护
-                    process_start = time.time()
-                    
-                    # 处理缓冲区中的行
-                    while b'\n' in buffer and time.time() - process_start < 1.0:  # 添加1秒处理超时
-                        try:
-                            line, buffer = buffer.split(b'\n', 1)
-                            if not line:  # 跳过空行
-                                continue
-                                
-                            # 尝试解码行
-                            try:
-                                line = line.decode('utf-8')
-                                
-                                # 检查是否是SSE数据行
-                                if line.startswith('data: '):
-                                    data = line[6:]  # 去掉 'data: ' 前缀
-                                    
-                                    # 检查是否是结束标记
-                                    if data == '[DONE]':
-                                        logger.debug(f"流式响应结束，共接收 {total_received_bytes/1024:.2f} KB 数据")
-                                        return
-                                    
-                                    # 尝试解析JSON数据
-                                    try:
-                                        json_data = json.loads(data)
-                                        if 'data' in json_data and isinstance(json_data['data'], dict):
-                                            content = json_data['data'].get('content', '')
-                                            if content:
-                                                yield content
-                                    except json.JSONDecodeError:
-                                        logger.debug(f"非JSON数据: {data[:30]}...")
-                            except UnicodeDecodeError:
-                                # 对于解码错误，跳过当前行
-                                logger.debug("跳过无法解码的行")
-                                continue
-                        except Exception as e:
-                            logger.debug(f"处理行时出错: {str(e)}")
-                            continue
-                
-                # 处理剩余的buffer
-                if buffer:
-                    try:
-                        line = buffer.decode('utf-8')
-                        if line.startswith('data: '):
-                            data = line[6:]
-                            if data != '[DONE]':
-                                try:
-                                    json_data = json.loads(data)
-                                    if 'data' in json_data and isinstance(json_data['data'], dict):
-                                        content = json_data['data'].get('content', '')
-                                        if content:
-                                            yield content
-                                except json.JSONDecodeError:
-                                    logger.debug(f"剩余缓冲区非JSON数据: {data[:30]}...")
-                    except Exception as e:
-                        logger.debug(f"处理剩余缓冲区出错: {str(e)}")
-                
-                logger.debug(f"流式请求完成，共接收 {total_received_bytes/1024:.2f} KB 数据")
-                
-        except Exception as e:
-            logger.exception(f"HTTP流式请求失败: {e}")
+            logger.exception(f"流式请求未知错误: {e}")
             yield f"请求失败: {e}"
 
     def get_knowledge_results(self, query, user_id="default_user"):
@@ -397,17 +259,8 @@ class CozeAgent(Agent):
         Returns:
             知识库召回结果列表
         """
-        if self.use_sdk:
-            return self._sdk_get_knowledge_results(query, user_id)
-        else:
-            # HTTP方式暂不支持获取知识库结果，使用SDK方式
-            logger.warning("HTTP方式不支持获取知识库结果，切换到SDK方式")
-            return self._sdk_get_knowledge_results(query, user_id)
-    
-    def _sdk_get_knowledge_results(self, query, user_id="default_user"):
-        """使用SDK获取知识库召回结果"""
         try:
-            logger.info(f"开始获取知识库召回结果(SDK)，bot_id: {self.bot_id}, query: {query}")
+            logger.info(f"开始获取知识库召回结果，bot_id: {self.bot_id}, query: {query}")
             
             # 创建对话
             chat = self.client.chat.create(
@@ -465,13 +318,21 @@ class CozeAgent(Agent):
                                 if link:
                                     clean_link = link.replace("u0026", "&")
                                     knowledge_results.append(clean_link)
+                    except json.JSONDecodeError as e:
+                        logger.error(f"解析知识库内容JSON错误: {str(e)}")
                     except Exception as e:
-                        logger.error(f"解析知识库内容错误: {str(e)}")
+                        logger.error(f"解析知识库内容其他错误: {str(e)}")
             
             return knowledge_results
             
+        except (ValueError, KeyError) as e:
+            logger.error(f"获取知识库召回结果参数错误: {str(e)}")
+            return []
+        except requests.RequestException as e:
+            logger.error(f"获取知识库召回结果网络错误: {str(e)}")
+            return []
         except Exception as e:
-            logger.exception(f"获取知识库召回结果失败(SDK): {str(e)}")
+            logger.exception(f"获取知识库召回结果未知错误: {str(e)}")
             return []
 
     def get_bot_info(self):
@@ -482,16 +343,18 @@ class CozeAgent(Agent):
             Bot对象，包含Bot的配置信息
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("获取Bot信息需要使用SDK模式")
-                return None
-                
             # 获取Bot信息
             bot_info = self.client.bots.retrieve(bot_id=self.bot_id)
             logger.debug(f"成功获取Bot信息: {self.bot_id}")
             return bot_info
+        except (ValueError, KeyError) as e:
+            logger.error(f"获取Bot信息参数错误: {str(e)}")
+            return None
+        except requests.RequestException as e:
+            logger.error(f"获取Bot信息网络错误: {str(e)}")
+            return None
         except Exception as e:
-            logger.error(f"获取Bot信息失败: {str(e)}")
+            logger.error(f"获取Bot信息未知错误: {str(e)}")
             return None
             
     def get_welcome_message(self):
@@ -502,10 +365,6 @@ class CozeAgent(Agent):
             tuple: (欢迎语, 推荐问题列表)
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("获取欢迎语需要使用SDK模式")
-                return None, []
-                
             # 获取Bot信息
             bot_info = self.get_bot_info()
             if not bot_info:
@@ -522,8 +381,11 @@ class CozeAgent(Agent):
             suggested_questions = onboarding_info.suggested_questions
             
             return prologue, suggested_questions
+        except AttributeError as e:
+            logger.error(f"获取欢迎语数据结构错误: {str(e)}")
+            return None, []
         except Exception as e:
-            logger.error(f"获取欢迎语失败: {str(e)}")
+            logger.error(f"获取欢迎语未知错误: {str(e)}")
             return None, []
             
     def get_formatted_welcome(self):
@@ -554,10 +416,6 @@ class CozeAgent(Agent):
             dict: Bot详细配置信息
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("获取Bot详细信息需要使用SDK模式")
-                return None
-                
             # 获取Bot详细信息
             bot_info = self.get_bot_info()
             if not bot_info:
@@ -587,22 +445,30 @@ class CozeAgent(Agent):
             }
             
             return bot_detail
+        except AttributeError as e:
+            logger.error(f"获取Bot详细信息数据结构错误: {str(e)}")
+            return None
         except Exception as e:
-            logger.error(f"获取Bot详细信息失败: {str(e)}")
+            logger.error(f"获取Bot详细信息未知错误: {str(e)}")
             return None
     
     def get_suggested_questions(self):
         """
-        获取Bot配置的推荐问题列表
+        获取推荐问题列表
         
         Returns:
             list: 推荐问题列表
         """
         try:
-            _, suggested_questions = self.get_welcome_message()
-            return suggested_questions
+            # 这里可以实现具体的推荐问题逻辑
+            # 目前返回一些通用的问题
+            return [
+                "南开大学的历史是什么？",
+                "南开大学有哪些著名校友？",
+                "南开大学的特色专业有哪些？"
+            ]
         except Exception as e:
-            logger.error(f"获取推荐问题失败: {str(e)}")
+            logger.warning(f"获取推荐问题失败: {e}")
             return []
     
     def create_conversation(self):
@@ -613,15 +479,14 @@ class CozeAgent(Agent):
             str: 对话ID
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("创建对话需要使用SDK模式")
-                return None
-                
             # 创建新的对话
             conversation = self.client.conversations.create()
             logger.debug(f"创建新对话成功: {conversation.id}")
             
             return conversation.id
+        except requests.RequestException as e:
+            logger.error(f"创建对话网络错误: {str(e)}")
+            return None
         except Exception as e:
             logger.error(f"创建对话失败: {str(e)}")
             return None
@@ -639,12 +504,6 @@ class CozeAgent(Agent):
             bool: 是否添加成功
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("添加消息需要使用SDK模式")
-                return False
-                
-            from cozepy import MessageRole, MessageContentType
-            
             # 设置消息角色
             if role.lower() == "user":
                 message_role = MessageRole.USER
@@ -664,6 +523,12 @@ class CozeAgent(Agent):
             
             logger.debug(f"添加消息成功: {message.id}")
             return True
+        except ValueError as e:
+            logger.error(f"添加消息参数错误: {str(e)}")
+            return False
+        except requests.RequestException as e:
+            logger.error(f"添加消息网络错误: {str(e)}")
+            return False
         except Exception as e:
             logger.error(f"添加消息失败: {str(e)}")
             return False
@@ -679,15 +544,17 @@ class CozeAgent(Agent):
             bool: 是否清空成功
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("清空对话需要使用SDK模式")
-                return False
-                
             # 清空对话
             section = self.client.conversations.clear(conversation_id=conversation_id)
             logger.debug(f"清空对话成功: {section.section_id}")
             
             return True
+        except ValueError as e:
+            logger.error(f"清空对话参数错误: {str(e)}")
+            return False
+        except requests.RequestException as e:
+            logger.error(f"清空对话网络错误: {str(e)}")
+            return False
         except Exception as e:
             logger.error(f"清空对话失败: {str(e)}")
             return False
@@ -703,10 +570,6 @@ class CozeAgent(Agent):
             list: 消息列表
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("获取对话消息需要使用SDK模式")
-                return []
-                
             # 获取对话消息
             messages = self.client.conversations.messages.list(conversation_id=conversation_id)
             
@@ -724,6 +587,12 @@ class CozeAgent(Agent):
             
             logger.debug(f"获取对话消息成功，共 {len(message_list)} 条")
             return message_list
+        except ValueError as e:
+            logger.error(f"获取对话消息参数错误: {str(e)}")
+            return []
+        except requests.RequestException as e:
+            logger.error(f"获取对话消息网络错误: {str(e)}")
+            return []
         except Exception as e:
             logger.error(f"获取对话消息失败: {str(e)}")
             return []
@@ -741,12 +610,6 @@ class CozeAgent(Agent):
             如果stream为True，则返回生成器；否则返回回复内容
         """
         try:
-            if not self.use_sdk or not COZE_SDK_AVAILABLE:
-                logger.warning("新对话聊天需要使用SDK模式，将使用HTTP方式")
-                return self.stream_reply(query, user_id=user_id) if stream else self.reply(query)
-                
-            from cozepy import Message, ChatEventType, MessageContentType
-            
             # 创建新对话并发送消息
             if stream:
                 # 流式响应
@@ -783,8 +646,24 @@ class CozeAgent(Agent):
                         return message.content
                 
                 return None
+        except (ValueError, KeyError) as e:
+            logger.error(f"创建新对话并发送消息参数错误: {str(e)}")
+            if stream:
+                def error_generator():
+                    yield f"请求参数错误: {str(e)}"
+                return error_generator()
+            else:
+                return f"请求参数错误: {str(e)}"
+        except requests.RequestException as e:
+            logger.error(f"创建新对话并发送消息网络错误: {str(e)}")
+            if stream:
+                def error_generator():
+                    yield f"网络请求失败: {str(e)}"
+                return error_generator()
+            else:
+                return f"网络请求失败: {str(e)}"
         except Exception as e:
-            logger.error(f"创建新对话并发送消息失败: {str(e)}")
+            logger.error(f"创建新对话并发送消息未知错误: {str(e)}")
             if stream:
                 def error_generator():
                     yield f"请求失败: {str(e)}"
@@ -793,91 +672,221 @@ class CozeAgent(Agent):
                 return f"请求失败: {str(e)}"
 
     async def stream_chat(self, query: str, history: List[Dict] = None, user_id="default_user") -> AsyncGenerator[str, None]:
-        """流式对话接口"""
+        """异步流式对话接口"""
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    f"{self.base_url}/chat/completions",
-                    headers=self.headers,
-                    json={
-                        "messages": history + [{"role": "user", "content": query}] if history else [{"role": "user", "content": query}],
-                        "stream": True,
-                        "user_id": user_id
-                    }
-                ) as response:
-                    async for line in response.content:
-                        if line:
-                            try:
-                                data = json.loads(line.decode('utf-8').replace('data: ', ''))
-                                if data.get('choices') and data['choices'][0].get('delta', {}).get('content'):
-                                    yield data['choices'][0]['delta']['content']
-                            except json.JSONDecodeError:
-                                logger.error(f"Failed to parse JSON: {line}")
-                                continue
-        except Exception as e:
-            logger.error(f"Stream chat error: {str(e)}")
-            yield f"Error: {str(e)}"
-
-    def stream_chat_sync(self, query: str, history: List[Dict] = None, user_id="default_user") -> Generator[str, None, None]:
-        """同步流式对话接口"""
-        try:
-            url = f"{self.http_base_url}/v3/chat"
-            headers = self._get_headers()
-            headers.update({
-                'Accept': 'text/event-stream',
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'X-Accel-Buffering': 'no'
-            })
+            # 构建历史消息
+            messages = []
+            if history:
+                for msg in history:
+                    role = msg.get("role", "user")
+                    content = msg.get("content", "")
+                    if role == "user":
+                        messages.append(Message.build_user_question_text(content))
+                    elif role == "assistant":
+                        messages.append(Message.build_assistant_answer_text(content))
             
-            payload = {
-                "bot_id": self.bot_id,
-                "user_id": user_id,
-                "stream": True,
-                "additional_messages": [
-                    {
-                        "content": query,
-                        "content_type": "text",
-                        "role": "user",
-                        "type": "question"
-                    }
-                ]
+            # 添加当前用户问题
+            messages.append(Message.build_user_question_text(query))
+            
+            # 使用aiohttp创建异步HTTP客户端会话
+            async with aiohttp.ClientSession() as session:
+                # 构建请求URL和头部
+                url = f"{self.http_base_url}/v3/chat"
+                headers = self._get_headers()
+                headers.update({
+                    'Accept': 'text/event-stream',
+                    'Cache-Control': 'no-cache',
+                    'Connection': 'keep-alive'
+                })
+                
+                # 构建请求体
+                payload = {
+                    "bot_id": self.bot_id,
+                    "user_id": user_id,
+                    "stream": True,
+                    "additional_messages": messages
+                }
+                
+                # 发送异步请求
+                async with session.post(url, headers=headers, json=payload) as response:
+                    response.raise_for_status()
+                    
+                    # 处理流式响应
+                    buffer = b""
+                    async for chunk in response.content.iter_chunked(1024):
+                        if not chunk:
+                            continue
+                            
+                        buffer += chunk
+                        
+                        while b'\n' in buffer:
+                            line, buffer = buffer.split(b'\n', 1)
+                            if not line:
+                                continue
+                                
+                            try:
+                                line = line.decode('utf-8')
+                                if line.startswith('data: '):
+                                    data = line[6:]
+                                    if data == '[DONE]':
+                                        return
+                                        
+                                    try:
+                                        json_data = json.loads(data)
+                                        if 'data' in json_data and isinstance(json_data['data'], dict):
+                                            content = json_data['data'].get('content', '')
+                                            if content:
+                                                yield content
+                                    except json.JSONDecodeError:
+                                        logger.debug(f"非JSON数据: {data[:30]}...")
+                            except UnicodeDecodeError as e:
+                                logger.debug(f"解码错误: {str(e)}")
+                                continue
+                            except Exception as e:
+                                logger.debug(f"处理行时出错: {str(e)}")
+                                continue
+                    
+        except aiohttp.ClientError as e:
+            logger.error(f"异步流式对话客户端错误: {str(e)}")
+            yield f"网络请求失败: {str(e)}"
+        except ValueError as e:
+            logger.error(f"异步流式对话参数错误: {str(e)}")
+            yield f"请求参数错误: {str(e)}"
+        except Exception as e:
+            logger.error(f"异步流式对话未知错误: {str(e)}")
+            yield f"错误: {str(e)}"
+
+    async def chat(self, messages, format="markdown"):
+        """
+        异步对话方法，使用Coze客户端直接发送请求
+        
+        Args:
+            messages: 消息历史
+            format: 输出格式
+            
+        Returns:
+            对话响应对象
+        """
+        logger.debug(f"调用chat方法，消息数量: {len(messages)}")
+        
+        # 提取最后一条用户消息作为查询
+        query = None
+        for msg in reversed(messages):
+            if msg.role == MessageRole.USER:
+                query = msg.content
+                break
+                
+        if not query:
+            logger.error("没有找到用户消息")
+            return {"content": "未找到有效的用户消息", "sources": [], "suggested_questions": []}
+            
+        # 获取用户ID
+        user_id = "api_user"
+        
+        # 设置元数据
+        meta_data = {"format": format} if format != "text" else None
+        
+        try:
+            # 使用Coze客户端发送请求
+            additional_messages = []
+            for msg in messages:
+                if msg.role == MessageRole.USER:
+                    additional_messages.append(Message.build_user_question_text(msg.content))
+                elif msg.role == MessageRole.ASSISTANT:
+                    additional_messages.append(Message.build_assistant_answer_text(msg.content))
+                elif msg.role == MessageRole.SYSTEM:
+                    additional_messages.append(Message(role=MessageRole.SYSTEM, type=MessageContentType.TEXT, content=msg.content))
+            
+            # 如果additional_messages为空，则添加当前查询
+            if not additional_messages:
+                additional_messages.append(Message.build_user_question_text(query, meta_data=meta_data))
+            
+            # 发送请求
+            api_response = self.client.chat.create_and_poll(
+                bot_id=self.bot_id,
+                user_id=user_id,
+                additional_messages=additional_messages
+            )
+            
+            # 提取回复内容
+            content = ""
+            for message in api_response.messages:
+                if message.role == "assistant" and message.type == "answer":
+                    content = message.content
+                    break
+            
+            if not content:
+                logger.warning("未从响应中获取到有效内容")
+                content = "抱歉，没有获取到回答。"
+            
+            # 构建响应
+            response = {
+                "content": content,
+                "sources": [],
+                "suggested_questions": []
             }
             
-            with self.session.post(url, headers=headers, json=payload, stream=True) as response:
-                response.raise_for_status()
-                buffer = b""
-                
-                for chunk in response.iter_content(chunk_size=1024):
-                    if not chunk:
-                        continue
-                        
-                    buffer += chunk
-                    
-                    while b'\n' in buffer:
-                        line, buffer = buffer.split(b'\n', 1)
-                        if not line:
-                            continue
-                            
-                        try:
-                            line = line.decode('utf-8')
-                            if line.startswith('data: '):
-                                data = line[6:]
-                                if data == '[DONE]':
-                                    continue
-                                    
-                                json_data = json.loads(data)
-                                if 'data' in json_data and isinstance(json_data['data'], dict):
-                                    content = json_data['data'].get('content', '')
-                                    if content:
-                                        yield content
-                        except Exception as e:
-                            logger.error(f"Parse chunk error: {str(e)}")
-                            continue
-                            
+            # 尝试获取建议问题
+            try:
+                suggested = self.get_suggested_questions()
+                if suggested and isinstance(suggested, list):
+                    response["suggested_questions"] = suggested[:3]  # 最多返回3个建议问题
+            except Exception as e:
+                logger.warning(f"获取建议问题失败: {str(e)}")
+            
+            return response
+            
         except Exception as e:
-            logger.error(f"Stream chat error: {str(e)}")
-            yield f"Error: {str(e)}"
+            logger.error(f"chat方法出错: {str(e)}")
+            return {
+                "content": f"请求失败: {str(e)}",
+                "sources": [],
+                "suggested_questions": []
+            }
+
+    async def chat_stream(self, messages, format="markdown"):
+        """
+        异步流式对话方法，使用现有的stream_chat方法实现
+        
+        Args:
+            messages: 消息历史
+            format: 输出格式
+            
+        Returns:
+            流式响应
+        """
+        logger.debug(f"调用chat_stream方法，消息数量: {len(messages)}")
+        
+        # 提取最后一条用户消息作为查询
+        query = None
+        for msg in reversed(messages):
+            if msg.role == MessageRole.USER:
+                query = msg.content
+                break
+                
+        if not query:
+            logger.error("没有找到用户消息")
+            return None
+            
+        # 转换消息历史格式
+        history = []
+        for msg in messages:
+            if msg.role == MessageRole.USER or msg.role == MessageRole.ASSISTANT:
+                history.append({
+                    "role": msg.role,
+                    "content": msg.content
+                })
+        
+        # 调用stream_chat方法
+        from fastapi.responses import StreamingResponse
+        
+        async def generate():
+            async for chunk in self.stream_chat(query, history):
+                if chunk:
+                    yield f"data: {chunk}\n\n"
+            yield "data: [DONE]\n\n"
+            
+        return StreamingResponse(generate(), media_type="text/event-stream")
 
 def remove_markdown(text):
     """移除Markdown格式"""

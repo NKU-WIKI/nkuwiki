@@ -1,25 +1,27 @@
 """
 API模块
 包含所有对外提供的HTTP接口
+
+提供以下主要路由器:
+- wxapp_router: 微信小程序接口
+- agent_router: 智能体接口
+- health_router: 健康检查接口
 """
 from fastapi import APIRouter
 
-# 创建各种路由器
+# 创建各种路由
 health_router = APIRouter(tags=["health"])
 wxapp_router = APIRouter(prefix="/wxapp", tags=["wxapp"])
-health_router = APIRouter(tags=["health"])
-mysql_router = APIRouter(prefix="/mysql", tags=["mysql"])
 agent_router = APIRouter(prefix="/agent", tags=["agent"])
-admin_router = APIRouter(prefix="/admin", tags=["admin"])
 
 # 将这些路由器暴露给外部
 __all__ = [
     "wxapp_router",
+    "health_router", 
     "agent_router",
     "register_routers",
 ]
 
-# 定义注册路由器的函数
 def register_routers(app):
     """
     将所有API路由器注册到FastAPI应用
@@ -27,24 +29,13 @@ def register_routers(app):
     Args:
         app: FastAPI应用实例
     """
-    # 注意：健康检查端点已在app.py中定义
-    # 不再重复注册/health端点
-        
+    # 注意：健康检查端点(/api/health)已在app.py中通过api_router注册
+    # 这里只注册各个子路由器的路由
+    
+    # 注册各路由器
     app.include_router(health_router)
     app.include_router(wxapp_router)
-    app.include_router(mysql_router)
     app.include_router(agent_router)
-    app.include_router(admin_router)
 
 # 导入各子模块的路由，这会触发子模块中的路由注册
-# 使用明确的导入代替通配符导入
-import api.wxapp.user_api
-import api.wxapp.post_api
-import api.wxapp.comment_api
-import api.wxapp.notification_api
-import api.wxapp.search_api
-import api.wxapp.feedback_api
-import api.wxapp.about_api
-
-import api.mysql
-import api.agent 
+from api.routes import wxapp, agent
