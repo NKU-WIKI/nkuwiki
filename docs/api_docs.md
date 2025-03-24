@@ -512,19 +512,26 @@
 
 **接口**：`POST /api/wxapp/posts`  
 **描述**：创建新帖子  
+**查询参数**：
+- `openid`: 发布用户openid (必填)
+- `nick_name`: 用户昵称 (可选，如不提供则从用户表获取)
+- `avatar`: 用户头像URL (可选，如不提供则从用户表获取)
+
 **请求体**：
 
 ```json
 {
-  "openid": "发布用户openid",
-  "title": "帖子标题",
-  "content": "帖子内容",
-  "images": ["图片URL1", "图片URL2"],
-  "tags": ["标签1", "标签2"],
-  "category_id": 1,
-  "location": "位置信息",
-  "nick_name": "用户昵称",
-  "avatar": "用户头像URL"
+  "title": "帖子标题", // 必填
+  "content": "帖子内容", // 必填
+  "images": ["图片URL1", "图片URL2"], // 可选
+  "tags": ["标签1", "标签2"], // 可选
+  "category_id": 1, // 可选，默认为0
+  "location": { // 可选
+    "latitude": 39.12345,
+    "longitude": 116.12345,
+    "name": "位置名称",
+    "address": "详细地址"
+  }
 }
 ```
 
@@ -542,7 +549,12 @@
     "images": ["图片URL1", "图片URL2"],
     "tags": ["标签1", "标签2"],
     "category_id": 1,
-    "location": "位置信息",
+    "location": {
+      "latitude": 39.12345,
+      "longitude": 116.12345,
+      "name": "位置名称",
+      "address": "详细地址"
+    },
     "nick_name": "用户昵称",
     "avatar": "用户头像URL",
     "view_count": 0,
@@ -664,6 +676,7 @@
 **描述**：更新帖子信息  
 **参数**：
 - `post_id` - 路径参数，帖子ID
+- `openid` - 查询参数，用户openid（必填，用于验证操作权限）
 
 **请求体**：
 
@@ -674,9 +687,13 @@
   "images": ["新图片URL1", "新图片URL2"],
   "tags": ["新标签1", "新标签2"],
   "category_id": 2,
-  "location": "新位置信息",
-  "status": 1,
-  "extra": {}
+  "location": {
+    "latitude": 39.12345,
+    "longitude": 116.12345,
+    "name": "位置名称",
+    "address": "详细地址"
+  },
+  "status": 1
 }
 ```
 
@@ -694,7 +711,12 @@
     "images": ["新图片URL1", "新图片URL2"],
     "tags": ["新标签1", "新标签2"],
     "category_id": 2,
-    "location": "新位置信息",
+    "location": {
+      "latitude": 39.12345,
+      "longitude": 116.12345,
+      "name": "位置名称",
+      "address": "详细地址"
+    },
     "nick_name": "用户昵称", 
     "avatar": "用户头像URL",
     "view_count": 10,
@@ -707,8 +729,7 @@
     "update_time": "2023-01-01 13:00:00",
     "status": 1,
     "platform": "wxapp",
-    "is_deleted": 0,
-    "extra": {}
+    "is_deleted": 0
   },
   "details": null,
   "timestamp": "2023-01-01 13:00:00"
@@ -721,6 +742,7 @@
 **描述**：删除帖子（标记删除）  
 **参数**：
 - `post_id` - 路径参数，帖子ID
+- `openid` - 查询参数，用户openid（必填，用于验证操作权限）
 
 **响应**：
 

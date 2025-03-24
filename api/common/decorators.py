@@ -85,9 +85,12 @@ def handle_api_errors(operation_name: str = "API操作"):
                 errors = format_validation_errors(e)
                 error_message = "请求参数验证失败"
                 
+                # 添加更详细的错误日志
                 logger.warning(
                     f"{operation_name}失败: 验证错误 - {error_message}\n"
-                    f"详细错误: {json.dumps(errors, ensure_ascii=False)}"
+                    f"详细错误: {json.dumps(errors, ensure_ascii=False)}\n"
+                    f"原始错误: {str(e)}\n"
+                    f"错误字段: {['.'.join(map(str, err.get('loc', []))) for err in errors]}"
                 )
                 
                 return create_response(
