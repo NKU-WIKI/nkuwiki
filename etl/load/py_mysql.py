@@ -1369,7 +1369,7 @@ if __name__ == "__main__":
     delete_table("wxapp_users")
     delete_table("wxapp_feedback")
     delete_table("wxapp_notifications")
-    
+    delete_table("wxapp_comments")
     # 删除后再次清理连接池
     close_conn_pool()
     
