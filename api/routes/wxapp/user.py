@@ -4,10 +4,12 @@
 """
 from fastapi import Depends, HTTPException, Query
 from datetime import datetime
+from typing import Optional
 
 from api import wxapp_router
 from api.common import handle_api_errors, get_api_logger_dep
-from api.models.wxapp.user import UserModel, UserUpdateRequest, UserSyncRequest
+from api.models.wxapp.user import UserModel, UserUpdateRequest, UserSyncRequest, UserListResponse
+from api.models.common import create_response
 logger = get_api_logger_dep()
 # 获取配置
 # config = Config()
@@ -143,4 +145,200 @@ async def sync_user_info(
     if user and 'last_login' in user and isinstance(user['last_login'], datetime):
         user['last_login'] = user['last_login'].strftime("%Y-%m-%d %H:%M:%S")
     
-    return user 
+    return user
+
+@wxapp_router.get("/users/{openid}/follow-stats", response_model=dict)
+@handle_api_errors("获取用户关注统计")
+async def get_user_follow_stats(
+    openid: str,
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    获取用户关注统计
+    
+    获取用户的关注数量和粉丝数量
+    """
+    from api.database.wxapp import user_dao
+    
+    api_logger.debug(f"获取用户关注统计 (openid: {openid[:8]}...)")
+    
+    # 查询用户信息
+    user = await user_dao.get_user_by_openid(openid)
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 获取关注统计
+    return {
+        "following": user.get("following_count", 0),
+        "followers": user.get("followers_count", 0)
+    }
+
+@wxapp_router.post("/users/{follower_id}/follow/{followed_id}", response_model=dict)
+@handle_api_errors("关注用户")
+async def follow_user(
+    follower_id: str,
+    followed_id: str,
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    关注用户
+    
+    将当前用户设为目标用户的粉丝
+    """
+    from api.database.wxapp import follow_dao, user_dao
+    
+    api_logger.debug(f"关注用户 (follower: {follower_id[:8]}..., followed: {followed_id[:8]}...)")
+    
+    # 检查用户是否存在
+    follower = await user_dao.get_user_by_openid(follower_id)
+    if not follower:
+        raise HTTPException(status_code=404, detail="关注者不存在")
+    
+    followed = await user_dao.get_user_by_openid(followed_id)
+    if not followed:
+        raise HTTPException(status_code=404, detail="被关注者不存在")
+    
+    # 不能关注自己
+    if follower_id == followed_id:
+        raise HTTPException(status_code=400, detail="不能关注自己")
+    
+    # 执行关注操作
+    success = await follow_dao.follow_user(follower_id, followed_id)
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="关注操作失败")
+    
+    # 查询最新的关注状态
+    following_count = follower.get("following_count", 0)
+    followers_count = followed.get("followers_count", 0)
+    
+    # 重新查询最新的统计数据
+    follower = await user_dao.get_user_by_openid(follower_id)
+    followed = await user_dao.get_user_by_openid(followed_id)
+    
+    return {
+        "status": "success",
+        "following_count": follower.get("following_count", 0),
+        "followers_count": followed.get("followers_count", 0),
+        "is_following": True
+    }
+
+@wxapp_router.post("/users/{follower_id}/unfollow/{followed_id}", response_model=dict)
+@handle_api_errors("取消关注用户")
+async def unfollow_user(
+    follower_id: str,
+    followed_id: str,
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    取消关注用户
+    
+    将当前用户从目标用户的粉丝列表中移除
+    """
+    from api.database.wxapp import follow_dao, user_dao
+    
+    api_logger.debug(f"取消关注用户 (follower: {follower_id[:8]}..., followed: {followed_id[:8]}...)")
+    
+    # 检查用户是否存在
+    follower = await user_dao.get_user_by_openid(follower_id)
+    if not follower:
+        raise HTTPException(status_code=404, detail="关注者不存在")
+    
+    followed = await user_dao.get_user_by_openid(followed_id)
+    if not followed:
+        raise HTTPException(status_code=404, detail="被关注者不存在")
+    
+    # 执行取消关注操作
+    success = await follow_dao.unfollow_user(follower_id, followed_id)
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="取消关注操作失败")
+    
+    # 重新查询最新的统计数据
+    follower = await user_dao.get_user_by_openid(follower_id)
+    followed = await user_dao.get_user_by_openid(followed_id)
+    
+    return {
+        "status": "success",
+        "following_count": follower.get("following_count", 0),
+        "followers_count": followed.get("followers_count", 0),
+        "is_following": False
+    }
+
+@wxapp_router.get("/users/{follower_id}/check-follow/{followed_id}", response_model=dict)
+@handle_api_errors("检查关注状态")
+async def check_follow_status(
+    follower_id: str,
+    followed_id: str,
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    检查关注状态
+    
+    检查用户是否已关注某用户
+    """
+    from api.database.wxapp import follow_dao
+    
+    api_logger.debug(f"检查关注状态 (follower: {follower_id[:8]}..., followed: {followed_id[:8]}...)")
+    
+    # 检查关注状态
+    is_following = await follow_dao.check_follow_status(follower_id, followed_id)
+    
+    return {
+        "is_following": is_following
+    }
+
+@wxapp_router.get("/users/{openid}/followings", response_model=UserListResponse)
+@handle_api_errors("获取用户关注列表")
+async def get_user_followings(
+    openid: str,
+    limit: int = Query(20, description="每页数量", ge=1, le=100),
+    offset: int = Query(0, description="偏移量", ge=0),
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    获取用户关注列表
+    
+    获取用户关注的所有用户
+    """
+    from api.database.wxapp import follow_dao
+    
+    api_logger.debug(f"获取用户关注列表 (openid: {openid[:8]}..., limit: {limit}, offset: {offset})")
+    
+    # 获取关注列表
+    users, total = await follow_dao.get_user_followings(openid, limit, offset)
+    
+    return {
+        "users": users,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    }
+
+@wxapp_router.get("/users/{openid}/followers", response_model=UserListResponse)
+@handle_api_errors("获取用户粉丝列表")
+async def get_user_followers(
+    openid: str,
+    limit: int = Query(20, description="每页数量", ge=1, le=100),
+    offset: int = Query(0, description="偏移量", ge=0),
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    获取用户粉丝列表
+    
+    获取关注该用户的所有用户
+    """
+    from api.database.wxapp import follow_dao
+    
+    api_logger.debug(f"获取用户粉丝列表 (openid: {openid[:8]}..., limit: {limit}, offset: {offset})")
+    
+    # 获取粉丝列表
+    users, total = await follow_dao.get_user_followers(openid, limit, offset)
+    
+    return {
+        "users": users,
+        "total": total,
+        "limit": limit,
+        "offset": offset
+    } 

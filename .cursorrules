@@ -10,6 +10,7 @@ markdown代码遵循vscode的markdownlint规范。
 
 ### 日志
 一般情况日志使用debug级别，不要使用info级别，只有最重要的信息采用info级别。
+使用core/utils/logger.py中的register_logger方法注册日志，不要直接使用logging。
 
 ### 配置
 配置参考config.py中的嵌套配置引用方式，实际配置在config.json

@@ -8,6 +8,7 @@ import time
 import argparse
 import atexit
 import warnings
+import asyncio
 from pathlib import Path
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
@@ -52,6 +53,16 @@ async def lifespan(app: FastAPI):
     # 预热资源
     logger.debug("正在预热应用资源...")
     try:
+        # 初始化表结构
+        logger.debug("初始化数据库表结构...")
+        try:
+            # 初始化用户关注关系表
+            from api.database.wxapp.follow_dao import init_follow_table
+            await init_follow_table()
+            logger.debug("用户关注关系表初始化完成")
+        except Exception as e:
+            logger.error(f"初始化表结构失败: {str(e)}")
+        
         # 可以在这里预加载模型、建立连接池等
         pass
     except Exception as e:

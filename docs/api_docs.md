@@ -330,6 +330,182 @@
 }
 ```
 
+### 1.7 获取用户关注统计
+
+**接口**：`GET /api/wxapp/users/{openid}/follow-stats`  
+**描述**：获取用户的关注数量和粉丝数量  
+**参数**：
+- `openid` - 路径参数，用户openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "following": 10,
+    "followers": 20
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 1.8 关注用户
+
+**接口**：`POST /api/wxapp/users/{follower_id}/follow/{followed_id}`  
+**描述**：将当前用户设为目标用户的粉丝  
+**参数**：
+- `follower_id` - 路径参数，关注者的openid
+- `followed_id` - 路径参数，被关注者的openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "status": "success",
+    "following_count": 11,
+    "followers_count": 21,
+    "is_following": true
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 1.9 取消关注用户
+
+**接口**：`POST /api/wxapp/users/{follower_id}/unfollow/{followed_id}`  
+**描述**：将当前用户从目标用户的粉丝列表中移除  
+**参数**：
+- `follower_id` - 路径参数，关注者的openid
+- `followed_id` - 路径参数，被关注者的openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "status": "success",
+    "following_count": 10,
+    "followers_count": 20,
+    "is_following": false
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 1.10 检查关注状态
+
+**接口**：`GET /api/wxapp/users/{follower_id}/check-follow/{followed_id}`  
+**描述**：检查用户是否已关注某用户  
+**参数**：
+- `follower_id` - 路径参数，关注者的openid
+- `followed_id` - 路径参数，被关注者的openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "is_following": true
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 1.11 获取用户关注列表
+
+**接口**：`GET /api/wxapp/users/{openid}/followings`  
+**描述**：获取用户关注的所有用户  
+**参数**：
+- `openid` - 路径参数，用户openid
+- `limit` - 查询参数，返回记录数量限制，默认20，最大100
+- `offset` - 查询参数，分页偏移量，默认0
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "users": [
+      {
+        "id": 2,
+        "openid": "被关注用户的openid",
+        "nick_name": "用户昵称",
+        "avatar": "头像URL",
+        "gender": 1,
+        "country": "国家",
+        "province": "省份",
+        "city": "城市",
+        "followers_count": 10,
+        "following_count": 5,
+        "create_time": "2023-01-01 12:00:00",
+        "update_time": "2023-01-01 12:00:00"
+      }
+    ],
+    "total": 10,
+    "limit": 20,
+    "offset": 0
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 1.12 获取用户粉丝列表
+
+**接口**：`GET /api/wxapp/users/{openid}/followers`  
+**描述**：获取关注该用户的所有用户  
+**参数**：
+- `openid` - 路径参数，用户openid
+- `limit` - 查询参数，返回记录数量限制，默认20，最大100
+- `offset` - 查询参数，分页偏移量，默认0
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "users": [
+      {
+        "id": 3,
+        "openid": "粉丝用户的openid",
+        "nick_name": "粉丝昵称",
+        "avatar": "头像URL",
+        "gender": 2,
+        "country": "国家",
+        "province": "省份",
+        "city": "城市",
+        "followers_count": 2,
+        "following_count": 15,
+        "create_time": "2023-01-01 12:00:00",
+        "update_time": "2023-01-01 12:00:00"
+      }
+    ],
+    "total": 20,
+    "limit": 20,
+    "offset": 0
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
 ## 二、帖子接口
 
 ### 2.1 创建帖子

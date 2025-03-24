@@ -4,6 +4,7 @@
 from api.database.wxapp.post_dao import *
 from api.database.wxapp.user_dao import *
 from api.database.wxapp.notification_dao import *
+from api.database.wxapp.follow_dao import *
 
 __all__ = [
     # 帖子相关

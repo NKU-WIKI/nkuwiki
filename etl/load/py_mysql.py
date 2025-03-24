@@ -1358,28 +1358,14 @@ async def async_query_records(table_name, conditions=None, order_by=None, limit=
     )
 
 if __name__ == "__main__":
-    # 避免同时执行多个导致连接池溢出，先删除一个表
-    delete_table("wxapp_comments")
-    # 删除表后释放连接池
-    from etl.load import close_conn_pool
-    close_conn_pool()
     
-    # 再删除其他表
-    delete_table("wxapp_posts")
-    delete_table("wxapp_users")
-    delete_table("wxapp_feedback")
-    delete_table("wxapp_notifications")
-    delete_table("wxapp_comments")
-    # 删除后再次清理连接池
-    close_conn_pool()
-    
-    # 等待连接池完全释放
-    import time
-    time.sleep(1)
-    
+    # delete_table("wxapp_posts")
+    # delete_table("wxapp_users")
+    # delete_table("wxapp_feedback")
+    # delete_table("wxapp_notifications")
+    # delete_table("wxapp_comments")
     # 初始化数据库
     init_database()
-    
     # 测试其他功能
     # get_table_structure("wxapp_posts")
     # query_table("wxapp_posts")
