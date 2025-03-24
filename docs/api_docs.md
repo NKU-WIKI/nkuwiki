@@ -873,16 +873,19 @@
 
 **接口**：`POST /api/wxapp/comments`  
 **描述**：创建新评论  
+**查询参数**：
+- `openid`: 评论用户openid (必填)
+- `nick_name`: 用户昵称 (可选，如不提供则从用户表获取)
+- `avatar`: 用户头像URL (可选，如不提供则从用户表获取)
+
 **请求体**：
 
 ```json
 {
-  "openid": "评论用户openid",
-  "nick_name": "用户昵称",
-  "avatar": "用户头像URL",
   "post_id": 1,
   "content": "评论内容",
-  "parent_id": null
+  "parent_id": null,
+  "images": ["图片URL1", "图片URL2"]
 }
 ```
 
@@ -1012,13 +1015,15 @@
 **描述**：更新评论信息  
 **参数**：
 - `comment_id` - 路径参数，评论ID
+- `openid` - 查询参数，用户openid（必填，用于验证操作权限）
 
 **请求体**：
 
 ```json
 {
   "content": "新评论内容",
-  "extra": {}
+  "images": ["图片URL1", "图片URL2"],
+  "status": 1
 }
 ```
 
@@ -1042,8 +1047,7 @@
     "update_time": "2023-01-01 13:00:00",
     "platform": "wxapp",
     "status": 1,
-    "is_deleted": 0,
-    "extra": {}
+    "is_deleted": 0
   },
   "details": null,
   "timestamp": "2023-01-01 13:00:00"
@@ -1075,17 +1079,11 @@
 
 ### 3.6 点赞评论
 
-**接口**：`PUT /api/wxapp/comments/{comment_id}/like`  
-**描述**：点赞或取消点赞评论  
+**接口**：`POST /api/wxapp/comments/{comment_id}/like`  
+**描述**：点赞评论  
 **参数**：
 - `comment_id` - 路径参数，评论ID
-
-**请求体**：
-```json
-{
-  "openid": "用户openid"
-}
-```
+- `openid` - 查询参数，用户openid（必填）
 
 **响应**：
 
@@ -1110,13 +1108,7 @@
 **描述**：取消点赞评论  
 **参数**：
 - `comment_id` - 路径参数，评论ID
-
-**请求体**：
-```json
-{
-  "openid": "用户openid"
-}
-```
+- `openid` - 查询参数，用户openid（必填）
 
 **响应**：
 
@@ -1322,11 +1314,13 @@
 
 **接口**：`POST /api/wxapp/feedback`  
 **描述**：提交意见反馈  
+**查询参数**：
+- `openid`: 用户openid (必填)
+
 **请求体**：
 
 ```json
 {
-  "openid": "用户openid",
   "content": "反馈内容",
   "type": "bug",
   "contact": "联系方式",
