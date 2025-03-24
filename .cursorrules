@@ -44,39 +44,7 @@ wxappp_posts
 wxappp_comments
 等
 用etl/load/py_mysql.py中的方法和数据库交互
-主要函数:
-- init_database(): 分步初始化数据库
-- create_table(table_name): 根据表名创建对应的表结构
-- process_file(file_path): 处理指定的JSON文件并返回数据字典
-- export_wechat_to_mysql(n): 将微信文章数据导出到MySQL数据库
-- query_table(table_name, limit): 查询指定表中的数据
-- delete_table(table_name): 删除指定的表
-- insert_record(table_name, data): 向指定表中插入单条记录
-- update_record(table_name, record_id, data): 更新指定表中的记录
-- delete_record(table_name, record_id): 删除指定表中的记录
-- get_record_by_id(table_name, record_id): 根据ID获取指定表中的记录
-- query_records(table_name, conditions, order_by, limit, offset): 按条件查询表中记录
-- count_records(table_name, conditions): 计算符合条件的记录数量
-- batch_insert(table_name, records, batch_size): 批量插入记录
-- execute_custom_query(query, params, fetch): 执行自定义SQL查询
-- upsert_record(table_name, data, unique_fields): 更新或插入记录
-- get_all_tables(): 获取数据库中所有表
-- get_table_structure(table_name): 获取表结构
-- get_nkuwiki_tables(): 获取nkuwiki数据库中的所有表
-- transfer_table_from_mysql_to_nkuwiki(table_name): 将表从MySQL迁移到nkuwiki数据库
-- import_json_dir_to_table(dir_path, table_name, platform, tag, batch_size): 将目录中的JSON文件导入到指定表
-- execute_raw_query(query, params=None): 执行原生SQL查询，返回查询结果
-- get_mysql_config(): 获取MySQL配置
-- get_db_connection(): 获取数据库连接
-- search_posts(keyword, page=1, page_size=10, sort_by="relevance", status=1, include_deleted=False): 搜索帖子
-- search_comments(keyword, page=1, page_size=10): 搜索评论
-- search_users(keyword, page=1, page_size=10): 搜索用户
-
-
-
-
 
 写新代码把旧代码冗余代码删了。
 
-根据api/routes/下的接口，更新接口文档
-
+根据接口文档docs/api_docs.md调试微信小程序前端项目services/app

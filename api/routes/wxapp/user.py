@@ -98,8 +98,13 @@ async def update_user_info(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     
+    # 处理nickname和nick_name字段，确保一致性
+    update_dict = update_info.model_dump(exclude_unset=True)
+    if 'nickname' in update_dict and update_dict['nickname'] is not None:
+        update_dict['nick_name'] = update_dict['nickname']
+    
     # 更新用户信息
-    updated_user = await user_dao.update_user(openid, update_info.model_dump(exclude_unset=True))
+    updated_user = await user_dao.update_user(openid, update_dict)
     
     # 手动处理datetime对象
     if updated_user and 'create_time' in updated_user and isinstance(updated_user['create_time'], datetime):

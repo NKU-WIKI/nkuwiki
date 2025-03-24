@@ -7,6 +7,7 @@ from datetime import datetime
 from loguru import logger
 import pymysql
 from config import Config
+import json
 
 # 表名常量
 TABLE_NAME = "wxapp_users"
@@ -105,6 +106,64 @@ async def update_user(openid: str, update_data: Dict[str, Any]) -> Dict[str, Any
                 if 'update_time' not in update_data:
                     update_data['update_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
+                # 检查表结构，提取标准字段和额外字段
+                cursor.execute(f"SHOW COLUMNS FROM {TABLE_NAME}")
+                columns = [column['Field'] for column in cursor.fetchall()]
+                
+                # 处理extra字段中的标准字段迁移
+                if 'extra' in update_data and update_data['extra']:
+                    extra_data = update_data['extra']
+                    if isinstance(extra_data, str):
+                        try:
+                            extra_data = json.loads(extra_data)
+                        except:
+                            extra_data = {}
+                    
+                    # 从extra中提取标准字段
+                    for field in ['birthday', 'wechatId', 'qqId']:
+                        if field in extra_data and field in columns:
+                            update_data[field] = extra_data.pop(field)
+                    
+                    # 更新extra字段
+                    if extra_data:
+                        update_data['extra'] = json.dumps(extra_data)
+                    else:
+                        update_data['extra'] = None
+                
+                # 将非标准字段放入extra字段，如果extra不存在则创建
+                standard_fields = set(columns)
+                extra_fields = {}
+                
+                for key in list(update_data.keys()):
+                    if key not in standard_fields:
+                        # 将非标准字段移到extra中
+                        extra_fields[key] = update_data.pop(key)
+                
+                # 如果有扩展字段，则更新或创建extra字段
+                if extra_fields:
+                    # 先检查是否已存在extra字段
+                    cursor.execute(f"SELECT extra FROM {TABLE_NAME} WHERE openid = %s", [openid])
+                    existing_extra_row = cursor.fetchone()
+                    existing_extra = {}
+                    
+                    if existing_extra_row and existing_extra_row.get('extra'):
+                        try:
+                            # 尝试解析现有的extra JSON
+                            existing_extra = json.loads(existing_extra_row['extra'])
+                        except:
+                            pass
+                    
+                    # 合并现有extra和新的extra字段
+                    if isinstance(existing_extra, dict):
+                        existing_extra.update(extra_fields)
+                        update_data['extra'] = json.dumps(existing_extra)
+                    else:
+                        update_data['extra'] = json.dumps(extra_fields)
+                
+                # 如果没有要更新的标准字段，确保至少更新时间被更新
+                if not update_data:
+                    update_data['update_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
                 # 构建更新SQL
                 set_clause = ", ".join(f"{k} = %s" for k in update_data.keys())
                 params = list(update_data.values()) + [openid]
@@ -116,6 +175,18 @@ async def update_user(openid: str, update_data: Dict[str, Any]) -> Dict[str, Any
                 # 查询更新后的用户
                 cursor.execute(f"SELECT * FROM {TABLE_NAME} WHERE openid = %s", [openid])
                 result = cursor.fetchone()
+                
+                # 如果存在extra字段且是JSON字符串，尝试解析并合并到结果中
+                if result and 'extra' in result and result['extra']:
+                    try:
+                        extra_data = json.loads(result['extra'])
+                        if isinstance(extra_data, dict):
+                            for key, value in extra_data.items():
+                                if key not in result:  # 避免覆盖已有字段
+                                    result[key] = value
+                    except:
+                        logger.error("解析extra字段失败")
+                
                 return result
         finally:
             conn.close()
@@ -142,6 +213,30 @@ async def upsert_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
         
         try:
             with conn.cursor() as cursor:
+                # 处理extra字段
+                if 'extra' in user_data and user_data['extra']:
+                    extra_data = user_data['extra']
+                    if isinstance(extra_data, str):
+                        try:
+                            extra_data = json.loads(extra_data)
+                        except:
+                            extra_data = {}
+                    
+                    # 检查表结构
+                    cursor.execute(f"SHOW COLUMNS FROM {TABLE_NAME}")
+                    columns = [column['Field'] for column in cursor.fetchall()]
+                    
+                    # 从extra中提取标准字段
+                    for field in ['birthday', 'wechatId', 'qqId']:
+                        if field in extra_data and field in columns:
+                            user_data[field] = extra_data.pop(field)
+                    
+                    # 更新extra字段
+                    if extra_data:
+                        user_data['extra'] = json.dumps(extra_data)
+                    else:
+                        user_data['extra'] = None
+                
                 # 查询用户是否存在
                 sql = f"SELECT * FROM {TABLE_NAME} WHERE openid = %s AND is_deleted = 0 LIMIT 1"
                 cursor.execute(sql, [openid])
@@ -206,7 +301,20 @@ async def upsert_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
                 
                 # 返回最新的用户信息
                 cursor.execute(f"SELECT * FROM {TABLE_NAME} WHERE openid = %s AND is_deleted = 0 LIMIT 1", [openid])
-                return cursor.fetchone()
+                user_result = cursor.fetchone()
+                
+                # 如果存在extra字段且是JSON字符串，尝试解析并合并到结果中
+                if user_result and 'extra' in user_result and user_result['extra']:
+                    try:
+                        extra_data = json.loads(user_result['extra'])
+                        if isinstance(extra_data, dict):
+                            for key, value in extra_data.items():
+                                if key not in user_result:  # 避免覆盖已有字段
+                                    user_result[key] = value
+                    except:
+                        logger.error("解析extra字段失败")
+                
+                return user_result
         finally:
             conn.close()
     except Exception as e:

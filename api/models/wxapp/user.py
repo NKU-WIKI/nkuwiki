@@ -29,6 +29,9 @@ class UserModel(BaseTimeStampModel):
     province: Optional[str] = Field(None, description="省份")
     city: Optional[str] = Field(None, description="城市")
     language: Optional[str] = Field(None, description="语言")
+    birthday: Optional[str] = Field(None, description="生日")
+    wechatId: Optional[str] = Field(None, description="微信号")
+    qqId: Optional[str] = Field(None, description="QQ号")
     token_count: int = Field(0, description="用户Token数量")
     likes_count: int = Field(0, description="获得的点赞数")
     favorites_count: int = Field(0, description="获得的收藏数")
@@ -36,14 +39,20 @@ class UserModel(BaseTimeStampModel):
     following_count: int = Field(0, description="关注的用户数量")
     last_login: Optional[str] = Field(None, description="最后登录时间")
     status: int = Field(1, description="状态：1-正常, 0-禁用")
+    extra: Optional[Dict[str, Any]] = Field(None, description="扩展字段")
 
 class UserUpdateRequest(BaseAPIModel):
     """用户更新请求"""
     nick_name: Optional[str] = Field(None, description="用户昵称")
+    nickname: Optional[str] = Field(None, description="用户昵称(兼容前端)")
     avatar: Optional[str] = Field(None, description="头像URL")
     bio: Optional[str] = Field(None, description="个人简介")
     gender: Optional[int] = Field(None, description="性别：0-未知, 1-男, 2-女")
     status: Optional[int] = Field(None, description="用户状态")
+    birthday: Optional[str] = Field(None, description="生日")
+    wechatId: Optional[str] = Field(None, description="微信号")
+    qqId: Optional[str] = Field(None, description="QQ号")
+    extra: Optional[Dict[str, Any]] = Field(None, description="扩展字段")
     
 class UserListResponse(BaseAPIModel):
     """用户列表响应"""
