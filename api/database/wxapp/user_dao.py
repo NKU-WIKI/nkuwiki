@@ -5,26 +5,12 @@
 from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 from loguru import logger
-import pymysql
-from config import Config
 import json
+
+from etl.load.py_mysql import query_records, update_record, get_record_by_id, execute_custom_query, insert_record
 
 # 表名常量
 TABLE_NAME = "wxapp_users"
-
-def get_mysql_config():
-    """获取MySQL配置"""
-    config = Config()
-    mysql_config = {
-        'host': config.get('etl.data.mysql.host', 'localhost'),
-        'port': config.get('etl.data.mysql.port', 3306),
-        'user': config.get('etl.data.mysql.user', 'nkuwiki'),
-        'password': config.get('etl.data.mysql.password', ''),
-        'db': config.get('etl.data.mysql.name', 'nkuwiki'),
-        'charset': 'utf8mb4',
-        'cursorclass': pymysql.cursors.DictCursor
-    }
-    return mysql_config
 
 async def get_user_by_openid(openid: str) -> Optional[Dict[str, Any]]:
     """
@@ -39,17 +25,8 @@ async def get_user_by_openid(openid: str) -> Optional[Dict[str, Any]]:
     logger.debug(f"查询用户 (openid: {openid[:8]}...)")
     
     try:
-        # 直接连接数据库
-        conn = pymysql.connect(**get_mysql_config())
-        
-        try:
-            with conn.cursor() as cursor:
-                sql = f"SELECT * FROM {TABLE_NAME} WHERE openid = %s AND is_deleted = 0 LIMIT 1"
-                cursor.execute(sql, [openid])
-                result = cursor.fetchone()
-                return result
-        finally:
-            conn.close()
+        users = query_records(TABLE_NAME, {"openid": openid, "is_deleted": 0}, limit=1)
+        return users[0] if users else None
     except Exception as e:
         logger.error(f"查询用户信息失败: {str(e)}")
         raise
@@ -66,22 +43,14 @@ async def get_users(limit: int = 10, offset: int = 0) -> Tuple[List[Dict[str, An
         Tuple[List[Dict[str, Any]], int]: 用户列表和总数
     """
     try:
-        conn = pymysql.connect(**get_mysql_config())
+        # 查询用户列表
+        users = query_records(TABLE_NAME, {"is_deleted": 0}, order_by={"id": "DESC"}, limit=limit, offset=offset)
         
-        try:
-            with conn.cursor() as cursor:
-                # 查询总数
-                cursor.execute(f"SELECT COUNT(*) as total FROM {TABLE_NAME} WHERE is_deleted = 0")
-                total = cursor.fetchone()['total']
-                
-                # 查询用户列表
-                sql = f"SELECT * FROM {TABLE_NAME} WHERE is_deleted = 0 ORDER BY id DESC LIMIT %s OFFSET %s"
-                cursor.execute(sql, [limit, offset])
-                users = cursor.fetchall()
-                
-                return users, total
-        finally:
-            conn.close()
+        # 查询总数
+        count_result = execute_custom_query(f"SELECT COUNT(*) as total FROM {TABLE_NAME} WHERE is_deleted = 0", None, fetch=True)
+        total = count_result[0]['total'] if count_result and count_result[0] else 0
+        
+        return users, total
     except Exception as e:
         logger.error(f"获取用户列表失败: {str(e)}")
         raise
@@ -98,98 +67,31 @@ async def update_user(openid: str, update_data: Dict[str, Any]) -> Dict[str, Any
         Dict[str, Any]: 更新后的用户信息
     """
     try:
-        conn = pymysql.connect(**get_mysql_config())
+        # 确保有更新时间
+        if 'update_time' not in update_data:
+            update_data['update_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        try:
-            with conn.cursor() as cursor:
-                # 确保有更新时间
-                if 'update_time' not in update_data:
-                    update_data['update_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                # 检查表结构，提取标准字段和额外字段
-                cursor.execute(f"SHOW COLUMNS FROM {TABLE_NAME}")
-                columns = [column['Field'] for column in cursor.fetchall()]
-                
-                # 处理extra字段中的标准字段迁移
-                if 'extra' in update_data and update_data['extra']:
-                    extra_data = update_data['extra']
-                    if isinstance(extra_data, str):
-                        try:
-                            extra_data = json.loads(extra_data)
-                        except:
-                            extra_data = {}
-                    
-                    # 从extra中提取标准字段
-                    for field in ['birthday', 'wechatId', 'qqId']:
-                        if field in extra_data and field in columns:
-                            update_data[field] = extra_data.pop(field)
-                    
-                    # 更新extra字段
-                    if extra_data:
-                        update_data['extra'] = json.dumps(extra_data)
-                    else:
-                        update_data['extra'] = None
-                
-                # 将非标准字段放入extra字段，如果extra不存在则创建
-                standard_fields = set(columns)
-                extra_fields = {}
-                
-                for key in list(update_data.keys()):
-                    if key not in standard_fields:
-                        # 将非标准字段移到extra中
-                        extra_fields[key] = update_data.pop(key)
-                
-                # 如果有扩展字段，则更新或创建extra字段
-                if extra_fields:
-                    # 先检查是否已存在extra字段
-                    cursor.execute(f"SELECT extra FROM {TABLE_NAME} WHERE openid = %s", [openid])
-                    existing_extra_row = cursor.fetchone()
-                    existing_extra = {}
-                    
-                    if existing_extra_row and existing_extra_row.get('extra'):
-                        try:
-                            # 尝试解析现有的extra JSON
-                            existing_extra = json.loads(existing_extra_row['extra'])
-                        except:
-                            pass
-                    
-                    # 合并现有extra和新的extra字段
-                    if isinstance(existing_extra, dict):
-                        existing_extra.update(extra_fields)
-                        update_data['extra'] = json.dumps(existing_extra)
-                    else:
-                        update_data['extra'] = json.dumps(extra_fields)
-                
-                # 如果没有要更新的标准字段，确保至少更新时间被更新
-                if not update_data:
-                    update_data['update_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                
-                # 构建更新SQL
-                set_clause = ", ".join(f"{k} = %s" for k in update_data.keys())
-                params = list(update_data.values()) + [openid]
-                
-                # 执行更新
-                cursor.execute(f"UPDATE {TABLE_NAME} SET {set_clause} WHERE openid = %s", params)
-                conn.commit()
-                
-                # 查询更新后的用户
-                cursor.execute(f"SELECT * FROM {TABLE_NAME} WHERE openid = %s", [openid])
-                result = cursor.fetchone()
-                
-                # 如果存在extra字段且是JSON字符串，尝试解析并合并到结果中
-                if result and 'extra' in result and result['extra']:
-                    try:
-                        extra_data = json.loads(result['extra'])
-                        if isinstance(extra_data, dict):
-                            for key, value in extra_data.items():
-                                if key not in result:  # 避免覆盖已有字段
-                                    result[key] = value
-                    except:
-                        logger.error("解析extra字段失败")
-                
-                return result
-        finally:
-            conn.close()
+        # 直接使用nick_name字段，确保不将nickname迁移到extra中
+        if 'nickname' in update_data:
+            # 将nickname复制到nick_name字段，然后删除原nickname字段
+            update_data['nick_name'] = update_data.pop('nickname')
+        
+        logger.debug(f"更新用户 - 处理后的更新数据: {update_data}")
+        
+        # 查询用户ID
+        users = query_records(TABLE_NAME, {"openid": openid, "is_deleted": 0}, limit=1)
+        if not users:
+            raise ValueError(f"用户不存在: {openid}")
+        
+        user_id = users[0]['id']
+        
+        # 执行更新
+        update_record(TABLE_NAME, user_id, update_data)
+        
+        # 查询更新后的用户
+        updated_user = get_record_by_id(TABLE_NAME, user_id)
+        
+        return updated_user
     except Exception as e:
         logger.error(f"更新用户信息失败: {str(e)}")
         raise
@@ -209,114 +111,166 @@ async def upsert_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("用户数据必须包含openid")
     
     try:
+        # 直接使用nick_name字段，确保不将nickname迁移到extra中
+        if 'nickname' in user_data:
+            # 将nickname复制到nick_name字段，然后删除原nickname字段 
+            user_data['nick_name'] = user_data.pop('nickname')
+        
+        # 查询用户是否存在
+        users = query_records(TABLE_NAME, {"openid": openid, "is_deleted": 0}, limit=1)
+        
+        if users:
+            # 更新用户
+            user_id = users[0]['id']
+            update_data = {k: v for k, v in user_data.items() if k != 'openid'}
+            if update_data:
+                logger.debug(f"更新用户 (openid: {openid[:8]}...)")
+                
+                # 确保有更新时间和登录时间
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                if 'update_time' not in update_data:
+                    update_data['update_time'] = now
+                update_data['last_login'] = now
+                
+                # 执行更新
+                update_record(TABLE_NAME, user_id, update_data)
+            else:
+                # 只更新登录时间
+                logger.debug(f"更新用户登录时间 (openid: {openid[:8]}...)")
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                update_record(TABLE_NAME, user_id, {"last_login": now, "update_time": now})
+            
+            # 获取更新后的用户信息
+            user_result = get_record_by_id(TABLE_NAME, user_id)
+        else:
+            # 创建新用户
+            logger.debug(f"创建新用户 (openid: {openid[:8]}...)")
+            
+            # 设置默认值
+            if 'create_time' not in user_data:
+                user_data['create_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if 'update_time' not in user_data:
+                user_data['update_time'] = user_data['create_time']
+            if 'last_login' not in user_data:
+                user_data['last_login'] = user_data['create_time']
+            if 'platform' not in user_data:
+                user_data['platform'] = 'wxapp'
+            if 'status' not in user_data:
+                user_data['status'] = 1
+            if 'is_deleted' not in user_data:
+                user_data['is_deleted'] = 0
+            
+            # 执行插入
+            inserted_id = insert_record(TABLE_NAME, user_data)
+            
+            # 获取插入后的用户信息
+            user_result = get_record_by_id(TABLE_NAME, inserted_id)
+        
+        return user_result
+    except Exception as e:
+        logger.error(f"用户信息操作失败: {str(e)}")
+        raise
+
+async def increment_user_likes_count(openid: str) -> bool:
+    """
+    增加用户收到的点赞数
+    
+    Args:
+        openid: 帖子作者的openid
+        
+    Returns:
+        bool: 操作是否成功
+    """
+    logger.debug(f"增加用户收到的点赞数 (openid: {openid[:8]}...)")
+    try:
         conn = pymysql.connect(**get_mysql_config())
         
         try:
             with conn.cursor() as cursor:
-                # 处理extra字段
-                if 'extra' in user_data and user_data['extra']:
-                    extra_data = user_data['extra']
-                    if isinstance(extra_data, str):
-                        try:
-                            extra_data = json.loads(extra_data)
-                        except:
-                            extra_data = {}
-                    
-                    # 检查表结构
-                    cursor.execute(f"SHOW COLUMNS FROM {TABLE_NAME}")
-                    columns = [column['Field'] for column in cursor.fetchall()]
-                    
-                    # 从extra中提取标准字段
-                    for field in ['birthday', 'wechatId', 'qqId']:
-                        if field in extra_data and field in columns:
-                            user_data[field] = extra_data.pop(field)
-                    
-                    # 更新extra字段
-                    if extra_data:
-                        user_data['extra'] = json.dumps(extra_data)
-                    else:
-                        user_data['extra'] = None
-                
-                # 查询用户是否存在
-                sql = f"SELECT * FROM {TABLE_NAME} WHERE openid = %s AND is_deleted = 0 LIMIT 1"
+                sql = f"UPDATE {TABLE_NAME} SET likes_count = likes_count + 1, update_time = NOW() WHERE openid = %s"
                 cursor.execute(sql, [openid])
-                existing_user = cursor.fetchone()
-                
-                if existing_user:
-                    # 更新用户信息
-                    update_data = {k: v for k, v in user_data.items() if k != 'openid'}
-                    if update_data:
-                        logger.debug(f"更新用户信息 (openid: {openid[:8]}...)")
-                        
-                        # 确保有更新时间
-                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        if 'update_time' not in update_data:
-                            update_data['update_time'] = now
-                        
-                        # 同时更新登录时间
-                        update_data['last_login'] = now
-                        
-                        # 构建更新SQL
-                        set_clause = ", ".join(f"{k} = %s" for k in update_data.keys())
-                        params = list(update_data.values()) + [openid]
-                        
-                        # 执行更新
-                        cursor.execute(f"UPDATE {TABLE_NAME} SET {set_clause} WHERE openid = %s", params)
-                    else:
-                        # 只更新登录时间
-                        logger.debug(f"更新用户登录时间 (openid: {openid[:8]}...)")
-                        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                        cursor.execute(
-                            f"UPDATE {TABLE_NAME} SET last_login = %s, update_time = %s WHERE openid = %s",
-                            [now, now, openid]
-                        )
-                else:
-                    # 创建新用户
-                    logger.debug(f"创建新用户 (openid: {openid[:8]}...)")
-                    
-                    # 确保有创建时间
-                    if 'create_time' not in user_data:
-                        user_data['create_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    # 确保有更新时间
-                    if 'update_time' not in user_data:
-                        user_data['update_time'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    # 确保有最后登录时间
-                    if 'last_login' not in user_data:
-                        user_data['last_login'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    # 构建插入SQL
-                    fields = ', '.join(user_data.keys())
-                    placeholders = ', '.join(['%s'] * len(user_data))
-                    
-                    # 执行插入
-                    cursor.execute(
-                        f"INSERT INTO {TABLE_NAME} ({fields}) VALUES ({placeholders})",
-                        list(user_data.values())
-                    )
-                
-                # 提交事务
                 conn.commit()
-                
-                # 返回最新的用户信息
-                cursor.execute(f"SELECT * FROM {TABLE_NAME} WHERE openid = %s AND is_deleted = 0 LIMIT 1", [openid])
-                user_result = cursor.fetchone()
-                
-                # 如果存在extra字段且是JSON字符串，尝试解析并合并到结果中
-                if user_result and 'extra' in user_result and user_result['extra']:
-                    try:
-                        extra_data = json.loads(user_result['extra'])
-                        if isinstance(extra_data, dict):
-                            for key, value in extra_data.items():
-                                if key not in user_result:  # 避免覆盖已有字段
-                                    user_result[key] = value
-                    except:
-                        logger.error("解析extra字段失败")
-                
-                return user_result
+                return True
         finally:
             conn.close()
     except Exception as e:
-        logger.error(f"用户信息操作失败: {str(e)}")
-        raise 
+        logger.error(f"更新用户点赞数失败: {str(e)}")
+        return False
+
+async def decrement_user_likes_count(openid: str) -> bool:
+    """
+    减少用户收到的点赞数
+    
+    Args:
+        openid: 帖子作者的openid
+        
+    Returns:
+        bool: 操作是否成功
+    """
+    logger.debug(f"减少用户收到的点赞数 (openid: {openid[:8]}...)")
+    try:
+        conn = pymysql.connect(**get_mysql_config())
+        
+        try:
+            with conn.cursor() as cursor:
+                sql = f"UPDATE {TABLE_NAME} SET likes_count = GREATEST(likes_count - 1, 0), update_time = NOW() WHERE openid = %s"
+                cursor.execute(sql, [openid])
+                conn.commit()
+                return True
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"更新用户点赞数失败: {str(e)}")
+        return False
+
+async def increment_user_favorites_count(openid: str) -> bool:
+    """
+    增加用户收到的收藏数
+    
+    Args:
+        openid: 帖子作者的openid
+        
+    Returns:
+        bool: 操作是否成功
+    """
+    logger.debug(f"增加用户收到的收藏数 (openid: {openid[:8]}...)")
+    try:
+        conn = pymysql.connect(**get_mysql_config())
+        
+        try:
+            with conn.cursor() as cursor:
+                sql = f"UPDATE {TABLE_NAME} SET favorites_count = favorites_count + 1, update_time = NOW() WHERE openid = %s"
+                cursor.execute(sql, [openid])
+                conn.commit()
+                return True
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"更新用户收藏数失败: {str(e)}")
+        return False
+
+async def decrement_user_favorites_count(openid: str) -> bool:
+    """
+    减少用户收到的收藏数
+    
+    Args:
+        openid: 帖子作者的openid
+        
+    Returns:
+        bool: 操作是否成功
+    """
+    logger.debug(f"减少用户收到的收藏数 (openid: {openid[:8]}...)")
+    try:
+        conn = pymysql.connect(**get_mysql_config())
+        
+        try:
+            with conn.cursor() as cursor:
+                sql = f"UPDATE {TABLE_NAME} SET favorites_count = GREATEST(favorites_count - 1, 0), update_time = NOW() WHERE openid = %s"
+                cursor.execute(sql, [openid])
+                conn.commit()
+                return True
+        finally:
+            conn.close()
+    except Exception as e:
+        logger.error(f"更新用户收藏数失败: {str(e)}")
+        return False 

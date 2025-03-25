@@ -305,7 +305,7 @@ async def like_comment(
     
     为指定评论点赞，同一用户只能点赞一次
     """
-    from api.database.wxapp import comment_dao, notification_dao
+    from api.database.wxapp import comment_dao, notification_dao, user_dao
     
     api_logger.debug(f"点赞评论 (ID: {comment_id}, 用户: {openid[:8]}...)")
     
@@ -315,32 +315,46 @@ async def like_comment(
     if not comment:
         raise HTTPException(status_code=404, detail="评论不存在")
     
+    # 评论作者的openid
+    author_openid = comment["openid"]
+    
     # 检查用户是否已点赞
     liked_users = comment.get("liked_users", [])
+    if liked_users is None:
+        liked_users = []
     if openid in liked_users:
         # 已点赞，取消点赞
         await comment_dao.unlike_comment(comment_id, openid)
+        
+        # 减少作者的点赞数
+        if author_openid != openid:  # 不是自己点赞自己的评论
+            await user_dao.decrement_user_likes_count(author_openid)
+            
         result = {
             "success": True,
             "message": "取消点赞成功",
             "liked": False,
-            "like_count": comment["like_count"] - 1
+            "like_count": comment["like_count"] - 1,
+            "comment_id": comment_id,
+            "action": "unlike"
         }
     else:
         # 未点赞，添加点赞
         await comment_dao.like_comment(comment_id, openid)
         
+        # 增加作者的点赞数
+        if author_openid != openid:  # 不是自己点赞自己的评论
+            await user_dao.increment_user_likes_count(author_openid)
+        
         # 如果点赞的不是自己的评论，创建通知
-        if comment["openid"] != openid:
-            from api.database.wxapp import user_dao
-            
+        if author_openid != openid:
             # 获取点赞用户信息
             liker = await user_dao.get_user_by_openid(openid)
             liker_name = liker.get("nick_name", "微信用户") if liker else "微信用户"
             
             # 创建通知
             notification_data = {
-                "openid": comment["openid"],  # 评论作者
+                "openid": author_openid,  # 评论作者
                 "title": "收到新点赞",
                 "content": f"{liker_name} 点赞了你的评论",
                 "type": "like",
@@ -354,8 +368,12 @@ async def like_comment(
             "success": True,
             "message": "点赞成功",
             "liked": True,
-            "like_count": comment["like_count"] + 1
+            "like_count": comment["like_count"] + 1,
+            "comment_id": comment_id,
+            "action": "like"
         }
+
+    return CommentActionResponse(**result)
 
 @wxapp_router.post("/comments/{comment_id}/unlike", response_model=CommentActionResponse)
 @handle_api_errors("取消点赞")
@@ -369,7 +387,7 @@ async def unlike_comment(
     
     取消对指定评论的点赞
     """
-    from api.database.wxapp import comment_dao
+    from api.database.wxapp import comment_dao, user_dao
     
     api_logger.debug(f"取消点赞评论 (ID: {comment_id}, 用户: {openid[:8]}...)")
     
@@ -379,19 +397,39 @@ async def unlike_comment(
     if not comment:
         raise HTTPException(status_code=404, detail="评论不存在")
     
+    # 评论作者的openid
+    author_openid = comment["openid"]
+    
     # 检查用户是否已点赞
     liked_users = comment.get("liked_users", [])
-    if openid not in liked_users:
-        raise HTTPException(status_code=400, detail="用户未点赞该评论")
+    if liked_users is None:
+        liked_users = []
     
-    # 取消点赞
-    await comment_dao.unlike_comment(comment_id, openid)
+    if openid in liked_users:
+        # 取消点赞
+        await comment_dao.unlike_comment(comment_id, openid)
+        
+        # 减少作者的点赞数（如果点赞的不是自己的评论）
+        if author_openid != openid:
+            await user_dao.decrement_user_likes_count(author_openid)
+        
+        result = {
+            "success": True,
+            "message": "取消点赞成功",
+            "liked": False,
+            "like_count": comment["like_count"] - 1,
+            "comment_id": comment_id,
+            "action": "unlike"
+        }
+    else:
+        # 状态未变
+        result = {
+            "success": True,
+            "message": "点赞状态未变",
+            "liked": False,
+            "like_count": comment["like_count"],
+            "comment_id": comment_id,
+            "action": "unlike"
+        }
     
-    result = {
-        "success": True,
-        "message": "取消点赞成功",
-        "liked": False,
-        "like_count": comment["like_count"] - 1
-    }
-    
-    return result
+    return CommentActionResponse(**result)

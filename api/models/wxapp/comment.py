@@ -54,5 +54,8 @@ class CommentActionResponse(BaseAPIModel):
     """评论操作响应（点赞等）"""
     comment_id: int = Field(..., description="评论ID")
     success: bool = Field(True, description="操作是否成功")
+    message: str = Field("操作成功", description="操作消息")
     action: str = Field(..., description="操作类型，如like, unlike")
-    count: int = Field(0, description="当前计数（如点赞数）") 
+    count: Optional[int] = Field(None, description="当前计数（如点赞数）")
+    liked: Optional[bool] = Field(None, description="是否已点赞")
+    like_count: Optional[int] = Field(None, description="当前点赞数") 

@@ -96,6 +96,17 @@ async def get_posts(
         extra_conditions.append("JSON_CONTAINS(tags, %s)")
         params.append(f'"{tag}"')  # JSON字符串格式
     
+    # 处理排序字段映射
+    if order_by:
+        # 处理字段名映射
+        field_mapping = {
+            'created_at': 'create_time',
+            'updated_at': 'update_time'
+        }
+        
+        for old_field, new_field in field_mapping.items():
+            order_by = order_by.replace(old_field, new_field)
+    
     # 查询帖子列表
     posts = query_records(
         TABLE_NAME,

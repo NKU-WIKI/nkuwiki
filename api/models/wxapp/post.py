@@ -76,7 +76,12 @@ class BatchOperationResponse(BaseAPIModel):
     
 class PostActionResponse(BaseAPIModel):
     """帖子操作响应（点赞、收藏等）"""
-    post_id: int = Field(..., description="帖子ID")
+    post_id: Optional[int] = Field(None, description="帖子ID")
     success: bool = Field(True, description="操作是否成功")
-    action: str = Field(..., description="操作类型，如like, unlike, favorite, unfavorite")
-    count: int = Field(0, description="当前计数（如点赞数、收藏数）") 
+    message: str = Field("操作成功", description="操作消息")
+    action: Optional[str] = Field(None, description="操作类型，如like, unlike, favorite, unfavorite")
+    count: Optional[int] = Field(None, description="当前计数（如点赞数、收藏数）")
+    liked: Optional[bool] = Field(None, description="是否已点赞")
+    like_count: Optional[int] = Field(None, description="当前点赞数")
+    favorite: Optional[bool] = Field(None, description="是否已收藏")
+    favorite_count: Optional[int] = Field(None, description="当前收藏数") 

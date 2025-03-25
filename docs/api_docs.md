@@ -20,7 +20,7 @@
   "code": 200,
   "message": "success",
   "data": {
-    "key1": value1
+    
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -74,12 +74,16 @@
   "nick_name": "用户昵称（可选）",
   "avatar": "头像URL（可选）",
   "gender": 0,
+  "bio": "个人简介（可选）",
   "country": "国家（可选）",
   "province": "省份（可选）",
   "city": "城市（可选）",
   "language": "语言（可选）",
-  "university": "南开大学",
-  "login_type": "wechat"
+  "birthday": "2004-06-28（可选）",
+  "wechatId": "微信号（可选）",
+  "qqId": "QQ号（可选）",
+  "platform": "wxapp",
+  "extra": {}
 }
 ```
 
@@ -96,10 +100,14 @@
     "nick_name": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
+    "bio": "个人简介",
     "country": "国家",
     "province": "省份",
     "city": "城市",
     "language": "语言",
+    "birthday": "2004-06-28",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
@@ -110,7 +118,8 @@
     "last_login": "2023-01-01 12:00:00",
     "platform": "wxapp",
     "status": 1,
-    "is_deleted": 0
+    "is_deleted": 0,
+    "extra": {}
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -137,10 +146,14 @@
     "nick_name": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
+    "bio": "个人简介",
     "country": "国家",
     "province": "省份",
     "city": "城市",
     "language": "语言",
+    "birthday": "2004-06-28",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
@@ -151,7 +164,8 @@
     "last_login": "2023-01-01 12:00:00",
     "platform": "wxapp",
     "status": 1,
-    "is_deleted": 0
+    "is_deleted": 0,
+    "extra": {}
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -178,10 +192,14 @@
     "nick_name": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
+    "bio": "个人简介",
     "country": "国家",
     "province": "省份",
     "city": "城市",
     "language": "语言",
+    "birthday": "2004-06-28",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
@@ -192,7 +210,8 @@
     "last_login": "2023-01-01 12:00:00",
     "platform": "wxapp",
     "status": 1,
-    "is_deleted": 0
+    "is_deleted": 0,
+    "extra": {}
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -204,10 +223,8 @@
 **接口**：`GET /api/wxapp/users`  
 **描述**：获取用户列表  
 **参数**：
-- `limit` - 查询参数，返回记录数量限制，默认20，最大100
+- `limit` - 查询参数，返回记录数量限制，默认10，最大100
 - `offset` - 查询参数，分页偏移量，默认0
-- `status` - 查询参数，用户状态：1-正常，0-禁用，可选
-- `order_by` - 查询参数，排序方式，默认"create_time DESC"
 
 **响应**：
 
@@ -224,10 +241,14 @@
         "nick_name": "用户昵称",
         "avatar": "头像URL",
         "gender": 0,
+        "bio": "个人简介",
         "country": "国家",
         "province": "省份",
         "city": "城市",
         "language": "语言",
+        "birthday": "2004-06-28",
+        "wechatId": "微信号",
+        "qqId": "QQ号",
         "token_count": 0,
         "likes_count": 0,
         "favorites_count": 0,
@@ -238,11 +259,12 @@
         "last_login": "2023-01-01 12:00:00",
         "platform": "wxapp",
         "status": 1,
-        "is_deleted": 0
+        "is_deleted": 0,
+        "extra": {}
       }
     ],
     "total": 100,
-    "limit": 20,
+    "limit": 10,
     "offset": 0
   },
   "details": null,
@@ -261,15 +283,22 @@
 
 ```json
 {
-  "nick_name": "新昵称",
-  "avatar": "新头像URL",
-  "gender": 1,
-  "country": "新国家",
-  "province": "新省份",
-  "city": "新城市",
-  "language": "新语言",
-  "status": 1,
-  "extra": {} 
+  "nick_name": "新昵称",              // 可选，用户昵称
+  "avatar": "新头像URL",              // 可选，头像URL
+  "gender": 1,                        // 可选，性别：0-未知, 1-男, 2-女
+  "bio": "新个人简介",                // 可选，个人简介
+  "country": "新国家",                // 可选，国家
+  "province": "新省份",               // 可选，省份
+  "city": "新城市",                   // 可选，城市
+  "language": "新语言",               // 可选，语言
+  "birthday": "2004-06-28",           // 可选，生日
+  "wechatId": "微信号",               // 可选，微信号
+  "qqId": "QQ号",                     // 可选，QQ号
+  "status": 1,                        // 可选，用户状态：1-正常, 0-禁用
+  "extra": {                          // 可选，扩展字段
+    "school": "南开大学",
+    "major": "计算机科学与技术"
+  }
 }
 ```
 
@@ -286,10 +315,14 @@
     "nick_name": "新昵称",
     "avatar": "新头像URL",
     "gender": 1,
+    "bio": "新个人简介",
     "country": "新国家",
     "province": "新省份",
     "city": "新城市",
     "language": "新语言",
+    "birthday": "2004-06-28",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
@@ -301,36 +334,17 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0,
-    "extra": {}
+    "extra": {
+      "school": "南开大学",
+      "major": "计算机科学与技术"
+    }
   },
   "details": null,
   "timestamp": "2023-01-01 12:30:00"
 }
 ```
 
-### 1.6 删除用户
-
-**接口**：`DELETE /api/wxapp/users/{openid}`  
-**描述**：删除用户（标记删除）  
-**参数**：
-- `openid` - 路径参数，用户openid
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "success": true,
-    "message": "用户已删除"
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 1.7 获取用户关注统计
+### 1.6 获取用户关注统计
 
 **接口**：`GET /api/wxapp/users/{openid}/follow-stats`  
 **描述**：获取用户的关注数量和粉丝数量  
@@ -352,7 +366,7 @@
 }
 ```
 
-### 1.8 关注用户
+### 1.7 关注用户
 
 **接口**：`POST /api/wxapp/users/{follower_id}/follow/{followed_id}`  
 **描述**：将当前用户设为目标用户的粉丝  
@@ -377,7 +391,7 @@
 }
 ```
 
-### 1.9 取消关注用户
+### 1.8 取消关注用户
 
 **接口**：`POST /api/wxapp/users/{follower_id}/unfollow/{followed_id}`  
 **描述**：将当前用户从目标用户的粉丝列表中移除  
@@ -402,7 +416,7 @@
 }
 ```
 
-### 1.10 检查关注状态
+### 1.9 检查关注状态
 
 **接口**：`GET /api/wxapp/users/{follower_id}/check-follow/{followed_id}`  
 **描述**：检查用户是否已关注某用户  
@@ -424,7 +438,7 @@
 }
 ```
 
-### 1.11 获取用户关注列表
+### 1.10 获取用户关注列表
 
 **接口**：`GET /api/wxapp/users/{openid}/followings`  
 **描述**：获取用户关注的所有用户  
@@ -444,19 +458,33 @@
       {
         "id": 2,
         "openid": "被关注用户的openid",
+        "unionid": "微信开放平台唯一标识",
         "nick_name": "用户昵称",
         "avatar": "头像URL",
         "gender": 1,
+        "bio": "个人简介",
         "country": "国家",
         "province": "省份",
         "city": "城市",
-        "followers_count": 10,
-        "following_count": 5,
+        "language": "语言",
+        "birthday": "2004-06-28",
+        "wechatId": "微信号",
+        "qqId": "QQ号",
+        "token_count": 0,
+        "likes_count": 0,
+        "favorites_count": 0,
+        "followers_count": 0,
+        "following_count": 0,
         "create_time": "2023-01-01 12:00:00",
-        "update_time": "2023-01-01 12:00:00"
+        "update_time": "2023-01-01 12:00:00",
+        "last_login": "2023-01-01 12:00:00",
+        "platform": "wxapp",
+        "status": 1,
+        "is_deleted": 0,
+        "extra": {}
       }
     ],
-    "total": 10,
+    "total": 50,
     "limit": 20,
     "offset": 0
   },
@@ -465,7 +493,7 @@
 }
 ```
 
-### 1.12 获取用户粉丝列表
+### 1.11 获取用户粉丝列表
 
 **接口**：`GET /api/wxapp/users/{openid}/followers`  
 **描述**：获取关注该用户的所有用户  
@@ -485,21 +513,57 @@
       {
         "id": 3,
         "openid": "粉丝用户的openid",
+        "unionid": "微信开放平台唯一标识",
         "nick_name": "粉丝昵称",
         "avatar": "头像URL",
         "gender": 2,
+        "bio": "个人简介",
         "country": "国家",
         "province": "省份",
         "city": "城市",
+        "language": "语言",
+        "birthday": "2004-06-28",
+        "wechatId": "微信号",
+        "qqId": "QQ号",
+        "token_count": 0,
+        "likes_count": 0,
+        "favorites_count": 0,
         "followers_count": 2,
         "following_count": 15,
         "create_time": "2023-01-01 12:00:00",
-        "update_time": "2023-01-01 12:00:00"
+        "update_time": "2023-01-01 12:00:00",
+        "last_login": "2023-01-01 12:00:00",
+        "platform": "wxapp",
+        "status": 1,
+        "is_deleted": 0,
+        "extra": {}
       }
     ],
     "total": 20,
     "limit": 20,
     "offset": 0
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 1.12 获取用户令牌
+
+**接口**：`GET /api/wxapp/users/{openid}/token`  
+**描述**：获取用户的访问令牌  
+**参数**：
+- `openid` - 路径参数，用户openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expires_at": "2023-01-02 12:00:00"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -762,7 +826,8 @@
 ### 2.6 点赞/取消点赞帖子
 
 **接口**：`POST /api/wxapp/posts/{post_id}/like`  
-**描述**：点赞或取消点赞帖子  
+**描述**：点赞或取消点赞帖子（如果已点赞，则取消点赞）  
+**说明**：该操作会同时更新帖子作者的likes_count（当被其他用户点赞或取消点赞时）  
 **参数**：
 - `post_id` - 路径参数，帖子ID
 - `openid` - 查询参数，用户openid
@@ -777,28 +842,23 @@
     "success": true,
     "message": "点赞成功",
     "liked": true,
-    "like_count": 6
+    "like_count": 6,
+    "post_id": 1,
+    "action": "like"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-### 2.7 收藏/取消收藏帖子
+### 2.7 收藏帖子
 
 **接口**：`POST /api/wxapp/posts/{post_id}/favorite`  
-**描述**：收藏或取消收藏帖子  
+**描述**：收藏帖子  
+**说明**：该操作会同时更新帖子作者的favorites_count（当被其他用户收藏时）  
 **参数**：
 - `post_id` - 路径参数，帖子ID
 - `openid` - 查询参数，用户openid
-
-**请求体**：
-
-```json
-{
-  "is_favorite": true
-}
-```
 
 **响应**：
 
@@ -810,7 +870,9 @@
     "success": true,
     "message": "收藏成功",
     "favorite": true,
-    "favorite_count": 3
+    "favorite_count": 3,
+    "post_id": 1,
+    "action": "favorite"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -821,6 +883,7 @@
 
 **接口**：`POST /api/wxapp/posts/{post_id}/unlike`  
 **描述**：取消点赞帖子  
+**说明**：该操作会同时更新帖子作者的likes_count（当被其他用户取消点赞时）  
 **参数**：
 - `post_id` - 路径参数，帖子ID
 - `openid` - 查询参数，用户openid
@@ -835,7 +898,9 @@
     "success": true,
     "message": "取消点赞成功",
     "liked": false,
-    "like_count": 5
+    "like_count": 5,
+    "post_id": 1,
+    "action": "unlike"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -846,6 +911,7 @@
 
 **接口**：`POST /api/wxapp/posts/{post_id}/unfavorite`  
 **描述**：取消收藏帖子  
+**说明**：该操作会同时更新帖子作者的favorites_count（当被其他用户取消收藏时）  
 **参数**：
 - `post_id` - 路径参数，帖子ID
 - `openid` - 查询参数，用户openid
@@ -860,7 +926,9 @@
     "success": true,
     "message": "取消收藏成功",
     "favorite": false,
-    "favorite_count": 2
+    "favorite_count": 2,
+    "post_id": 1,
+    "action": "unfavorite"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -1080,7 +1148,8 @@
 ### 3.6 点赞评论
 
 **接口**：`POST /api/wxapp/comments/{comment_id}/like`  
-**描述**：点赞评论  
+**描述**：点赞评论或取消点赞（如果已点赞）  
+**说明**：该操作会同时更新评论作者的likes_count（当被其他用户点赞或取消点赞时）  
 **参数**：
 - `comment_id` - 路径参数，评论ID
 - `openid` - 查询参数，用户openid（必填）
@@ -1095,7 +1164,9 @@
     "success": true,
     "message": "点赞成功",
     "liked": true,
-    "like_count": 4
+    "like_count": 4,
+    "comment_id": 1,
+    "action": "like"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -1106,6 +1177,7 @@
 
 **接口**：`POST /api/wxapp/comments/{comment_id}/unlike`  
 **描述**：取消点赞评论  
+**说明**：该操作会同时更新评论作者的likes_count（当被其他用户取消点赞时）  
 **参数**：
 - `comment_id` - 路径参数，评论ID
 - `openid` - 查询参数，用户openid（必填）
@@ -1120,7 +1192,9 @@
     "success": true,
     "message": "取消点赞成功",
     "liked": false,
-    "like_count": 3
+    "like_count": 3,
+    "comment_id": 1,
+    "action": "unlike"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -1302,6 +1376,30 @@
   "data": {
     "success": true,
     "message": "通知已删除"
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 4.6 获取未读通知数量
+
+**接口**：`GET /api/wxapp/users/{openid}/notifications/count`  
+**描述**：获取用户未读通知数量  
+**参数**：
+- `openid` - 路径参数，用户openid
+- `type` - 查询参数，通知类型：system-系统通知, like-点赞, comment-评论, follow-关注，可选
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "unread_count": 5,
+    "openid": "用户openid",
+    "type": "like"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -1662,298 +1760,3 @@
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
-
-### 7.4 检索增强生成 (RAG)
-
-**接口**：`POST /api/agent/rag`  
-**描述**：从知识库中检索相关信息，并结合大语言模型生成回答  
-**请求体**：
-
-```json
-{
-  "query": "南开大学历史",
-  "tables": ["wxapp_posts", "wechat_nku"],
-  "max_results": 5,
-  "stream": false,
-  "format": "markdown",
-  "openid": "user_openid",
-  "rewrite_bot_id": null,
-  "knowledge_bot_id": null
-}
-```
-
-**请求参数说明**：
-
-| 参数名 | 类型 | 必填 | 默认值 | 说明 |
-|-------|------|------|--------|------|
-| query | string | 是 | - | 用户查询问题 |
-| tables | array | 否 | ["wxapp_posts"] | 要检索的表名列表 |
-| max_results | int | 否 | 5 | 每个表返回的最大结果数 |
-| stream | bool | 否 | false | 是否流式返回 |
-| format | string | 否 | "markdown" | 回复格式: markdown/text/html |
-| openid | string | 否 | null | 用户唯一标识 |
-| rewrite_bot_id | string | 否 | null | 查询改写机器人ID，不传则使用默认配置 |
-| knowledge_bot_id | string | 否 | null | 知识回答机器人ID，不传则使用默认配置 |
-
-**可用的表名列表**：
-- `wxapp_posts`: 小程序帖子
-- `wxapp_comments`: 小程序评论
-- `wechat_nku`: 微信公众号文章
-- `website_nku`: 南开网站文章
-- `market_nku`: 校园集市帖子
-
-**普通响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "original_query": "南开大学历史",
-    "rewritten_query": "南开大学历史沿革和发展",
-    "response": "南开大学创建于1919年，由著名爱国教育家张伯苓和严修创办...",
-    "sources": [
-      {
-        "type": "小程序帖子",
-        "title": "南开大学创办历史",
-        "content": "南开大学创建于1919年...",
-        "author": "南开百科"
-      }
-    ],
-    "suggested_questions": [
-      "南开大学的校训是什么？",
-      "南开大学有哪些著名校友？",
-      "南开大学的学科设置有哪些？"
-    ],
-    "format": "markdown"
-  },
-  "details": {
-    "retrieved_count": 5,
-    "response_time": 0.518
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-**流式响应**：
-
-当请求参数 `stream=true` 时，接口将以 Server-Sent Events (SSE) 格式返回流式响应，Content-Type为 `text/event-stream`。
-
-每个事件都以 `data: ` 开头，后跟JSON格式数据，数据中包含 `type` 字段标识事件类型：
-
-1. 查询信息事件:
-```
-data: {"type":"query","original":"原始查询","rewritten":"改写查询"}
-```
-
-2. 内容分块事件:
-```
-data: {"type":"content","chunk":"回答内容片段"}
-```
-
-3. 来源信息事件:
-```
-data: {"type":"sources","sources":[{"type":"小程序帖子","title":"标题","content":"内容摘要","author":"作者"}]}
-```
-
-4. 建议问题事件:
-```
-data: {"type":"suggested","questions":["建议问题1","建议问题2","建议问题3"]}
-```
-
-5. 完成事件:
-```
-data: {"type":"done"}
-```
-
-**错误响应**：
-
-```json
-{
-  "code": 400,
-  "message": "错误信息",
-  "data": null,
-  "details": {
-    "errors": [
-      {
-        "loc": ["body", "query"],
-        "msg": "字段不能为空",
-        "type": "value_error.missing"
-      }
-    ]
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-**常见错误码**：
-- `400`: 请求参数错误，例如表名不存在
-- `422`: 请求验证失败，例如查询为空或表名列表为空
-- `500`: 服务器内部错误
-
-### 7.5 API健康检查
-
-**接口**：`GET /api/health`  
-**描述**：检查API服务健康状态  
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "status": "ok",
-    "version": "1.0.0",
-    "uptime": 3600,
-    "memory_usage": "128MB",
-    "timestamp": "2023-01-01T12:00:00Z"
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-## 八、文件上传API
-
-### 8.1 上传图片
-
-**接口**：`POST /api/wxapp/upload/image`  
-**描述**：上传图片到服务器  
-**请求头**：
-- `Content-Type` - multipart/form-data
-
-**请求表单**：
-- `file` - 图片文件
-- `type` - 图片类型：post-帖子图片, avatar-头像, feedback-反馈图片
-- `openid` - 用户openid
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "url": "https://nkuwiki.com/uploads/images/posts/202301/image.jpg",
-    "size": 102400,
-    "width": 800,
-    "height": 600,
-    "type": "post"
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 8.2 上传文件
-
-**接口**：`POST /api/wxapp/upload/file`  
-**描述**：上传文件到服务器  
-**请求头**：
-- `Content-Type` - multipart/form-data
-
-**请求表单**：
-- `file` - 文件
-- `type` - 文件类型：document-文档, other-其他
-- `openid` - 用户openid
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "url": "https://nkuwiki.com/uploads/files/202301/document.pdf",
-    "filename": "document.pdf",
-    "size": 1024000,
-    "type": "document",
-    "mime_type": "application/pdf"
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-## 九、其他接口
-
-### 9.1 关于信息
-
-**接口**：`GET /api/wxapp/about`  
-**描述**：获取系统关于信息  
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "app_name": "南开Wiki",
-    "version": "1.0.0",
-    "description": "南开Wiki是一个校园知识共享平台",
-    "contact": "nkuwiki@example.com",
-    "website": "https://nkuwiki.com",
-    "copyright": "© 2023 南开Wiki",
-    "terms_url": "https://nkuwiki.com/terms",
-    "privacy_url": "https://nkuwiki.com/privacy",
-    "update_log": [
-      {
-        "version": "1.0.0",
-        "date": "2023-01-01",
-        "changes": ["初始版本发布"]
-      }
-    ]
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 9.2 搜索功能
-
-**接口**：`GET /api/wxapp/search`  
-**描述**：搜索微信小程序内容  
-**参数**：
-- `keyword` - 查询参数，搜索关键词
-- `type` - 查询参数，搜索类型，可选值：post-帖子, comment-评论, user-用户, all-全部
-- `limit` - 查询参数，返回记录数量限制，默认20，最大100
-- `offset` - 查询参数，分页偏移量，默认0
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "keyword": "南开大学",
-    "type": "all",
-    "results": [
-      {
-        "id": 1,
-        "type": "post",
-        "title": "南开大学校园风光",
-        "content_preview": "南开大学的校园风光非常美丽...",
-        "author": "南开学生",
-        "create_time": "2023-01-01 12:00:00",
-        "score": 0.95
-      },
-      {
-        "id": 5,
-        "type": "comment",
-        "content_preview": "南开大学的历史很悠久...",
-        "author": "历史爱好者",
-        "create_time": "2023-01-02 15:30:00",
-        "score": 0.85
-      }
-    ],
-    "total": 2,
-    "limit": 20,
-    "offset": 0
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-``` 

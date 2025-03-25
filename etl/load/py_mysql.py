@@ -636,7 +636,18 @@ def query_records(table_name: str, conditions: Dict[str, Any] = None, order_by: 
                         values.append(value)
                 where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         
-        order_clause = f"ORDER BY {order_by}" if order_by else ""
+        # 处理order_by参数，确保特殊格式被正确处理
+        order_clause = ""
+        if order_by:
+            # 处理可能包含特殊字符的排序参数
+            if ":" in order_by:
+                # 将格式类似 "field:desc" 转换为 "field DESC"
+                field, direction = order_by.split(":", 1)
+                direction = "DESC" if direction.lower() == "desc" else "ASC"
+                order_clause = f"ORDER BY {field} {direction}"
+            else:
+                order_clause = f"ORDER BY {order_by}"
+                
         limit_clause = f"LIMIT {limit} OFFSET {offset}"
         
         while retry_count < max_retries:
