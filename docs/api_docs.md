@@ -20,7 +20,7 @@
   "code": 200,
   "message": "success",
   "data": {
-    "key1": value1
+    
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -72,7 +72,6 @@
   "openid": "微信用户唯一标识",
   "unionid": "微信开放平台唯一标识（可选）",
   "nick_name": "用户昵称（可选）",
-  "nickname": "用户昵称（可选，兼容前端）",
   "avatar": "头像URL（可选）",
   "gender": 0,
   "bio": "个人简介（可选）",
@@ -99,7 +98,6 @@
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
     "nick_name": "用户昵称",
-    "nickname": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
     "bio": "个人简介",
@@ -146,7 +144,6 @@
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
     "nick_name": "用户昵称",
-    "nickname": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
     "bio": "个人简介",
@@ -193,7 +190,6 @@
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
     "nick_name": "用户昵称",
-    "nickname": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
     "bio": "个人简介",
@@ -227,10 +223,8 @@
 **接口**：`GET /api/wxapp/users`  
 **描述**：获取用户列表  
 **参数**：
-- `limit` - 查询参数，返回记录数量限制，默认20，最大100
+- `limit` - 查询参数，返回记录数量限制，默认10，最大100
 - `offset` - 查询参数，分页偏移量，默认0
-- `status` - 查询参数，用户状态：1-正常，0-禁用，可选
-- `order_by` - 查询参数，排序方式，默认"create_time DESC"
 
 **响应**：
 
@@ -245,7 +239,6 @@
         "openid": "微信用户唯一标识",
         "unionid": "微信开放平台唯一标识",
         "nick_name": "用户昵称",
-        "nickname": "用户昵称",
         "avatar": "头像URL",
         "gender": 0,
         "bio": "个人简介",
@@ -271,7 +264,7 @@
       }
     ],
     "total": 100,
-    "limit": 20,
+    "limit": 10,
     "offset": 0
   },
   "details": null,
@@ -290,20 +283,22 @@
 
 ```json
 {
-  "nick_name": "新昵称",
-  "nickname": "新昵称（兼容前端）",
-  "avatar": "新头像URL",
-  "gender": 1,
-  "bio": "新个人简介",
-  "country": "新国家",
-  "province": "新省份",
-  "city": "新城市",
-  "language": "新语言",
-  "birthday": "2004-06-28",
-  "wechatId": "微信号",
-  "qqId": "QQ号",
-  "status": 1,
-  "extra": {} 
+  "nick_name": "新昵称",              // 可选，用户昵称
+  "avatar": "新头像URL",              // 可选，头像URL
+  "gender": 1,                        // 可选，性别：0-未知, 1-男, 2-女
+  "bio": "新个人简介",                // 可选，个人简介
+  "country": "新国家",                // 可选，国家
+  "province": "新省份",               // 可选，省份
+  "city": "新城市",                   // 可选，城市
+  "language": "新语言",               // 可选，语言
+  "birthday": "2004-06-28",           // 可选，生日
+  "wechatId": "微信号",               // 可选，微信号
+  "qqId": "QQ号",                     // 可选，QQ号
+  "status": 1,                        // 可选，用户状态：1-正常, 0-禁用
+  "extra": {                          // 可选，扩展字段
+    "school": "南开大学",
+    "major": "计算机科学与技术"
+  }
 }
 ```
 
@@ -318,7 +313,6 @@
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
     "nick_name": "新昵称",
-    "nickname": "新昵称",
     "avatar": "新头像URL",
     "gender": 1,
     "bio": "新个人简介",
@@ -340,36 +334,17 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0,
-    "extra": {}
+    "extra": {
+      "school": "南开大学",
+      "major": "计算机科学与技术"
+    }
   },
   "details": null,
   "timestamp": "2023-01-01 12:30:00"
 }
 ```
 
-### 1.6 删除用户
-
-**接口**：`DELETE /api/wxapp/users/{openid}`  
-**描述**：删除用户（标记删除）  
-**参数**：
-- `openid` - 路径参数，用户openid
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "success": true,
-    "message": "用户已删除"
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 1.7 获取用户关注统计
+### 1.6 获取用户关注统计
 
 **接口**：`GET /api/wxapp/users/{openid}/follow-stats`  
 **描述**：获取用户的关注数量和粉丝数量  
@@ -391,7 +366,7 @@
 }
 ```
 
-### 1.8 关注用户
+### 1.7 关注用户
 
 **接口**：`POST /api/wxapp/users/{follower_id}/follow/{followed_id}`  
 **描述**：将当前用户设为目标用户的粉丝  
@@ -416,7 +391,7 @@
 }
 ```
 
-### 1.9 取消关注用户
+### 1.8 取消关注用户
 
 **接口**：`POST /api/wxapp/users/{follower_id}/unfollow/{followed_id}`  
 **描述**：将当前用户从目标用户的粉丝列表中移除  
@@ -441,7 +416,7 @@
 }
 ```
 
-### 1.10 检查关注状态
+### 1.9 检查关注状态
 
 **接口**：`GET /api/wxapp/users/{follower_id}/check-follow/{followed_id}`  
 **描述**：检查用户是否已关注某用户  
@@ -463,7 +438,7 @@
 }
 ```
 
-### 1.11 获取用户关注列表
+### 1.10 获取用户关注列表
 
 **接口**：`GET /api/wxapp/users/{openid}/followings`  
 **描述**：获取用户关注的所有用户  
@@ -483,8 +458,8 @@
       {
         "id": 2,
         "openid": "被关注用户的openid",
+        "unionid": "微信开放平台唯一标识",
         "nick_name": "用户昵称",
-        "nickname": "用户昵称",
         "avatar": "头像URL",
         "gender": 1,
         "bio": "个人简介",
@@ -518,7 +493,7 @@
 }
 ```
 
-### 1.12 获取用户粉丝列表
+### 1.11 获取用户粉丝列表
 
 **接口**：`GET /api/wxapp/users/{openid}/followers`  
 **描述**：获取关注该用户的所有用户  
@@ -538,21 +513,57 @@
       {
         "id": 3,
         "openid": "粉丝用户的openid",
+        "unionid": "微信开放平台唯一标识",
         "nick_name": "粉丝昵称",
         "avatar": "头像URL",
         "gender": 2,
+        "bio": "个人简介",
         "country": "国家",
         "province": "省份",
         "city": "城市",
+        "language": "语言",
+        "birthday": "2004-06-28",
+        "wechatId": "微信号",
+        "qqId": "QQ号",
+        "token_count": 0,
+        "likes_count": 0,
+        "favorites_count": 0,
         "followers_count": 2,
         "following_count": 15,
         "create_time": "2023-01-01 12:00:00",
-        "update_time": "2023-01-01 12:00:00"
+        "update_time": "2023-01-01 12:00:00",
+        "last_login": "2023-01-01 12:00:00",
+        "platform": "wxapp",
+        "status": 1,
+        "is_deleted": 0,
+        "extra": {}
       }
     ],
     "total": 20,
     "limit": 20,
     "offset": 0
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 1.12 获取用户令牌
+
+**接口**：`GET /api/wxapp/users/{openid}/token`  
+**描述**：获取用户的访问令牌  
+**参数**：
+- `openid` - 路径参数，用户openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "token": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    "expires_at": "2023-01-02 12:00:00"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"

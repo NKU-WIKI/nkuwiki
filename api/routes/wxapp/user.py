@@ -3,8 +3,12 @@
 处理用户登录、注册、信息查询等
 """
 from fastapi import Depends, HTTPException, Query
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
+import time
+import secrets
+import hashlib
+import json
 
 from api import wxapp_router
 from api.common import handle_api_errors, get_api_logger_dep
@@ -131,10 +135,8 @@ async def update_user_info(
     if not user:
         raise HTTPException(status_code=404, detail="用户不存在")
     
-    # 处理nickname和nick_name字段，确保一致性
+    # 更新用户信息
     update_dict = update_info.model_dump(exclude_unset=True)
-    if 'nickname' in update_dict and update_dict['nickname'] is not None:
-        update_dict['nick_name'] = update_dict['nickname']
     
     # 更新用户信息
     updated_user = await user_dao.update_user(openid, update_dict)
@@ -372,4 +374,53 @@ async def get_user_followers(
         "total": total,
         "limit": limit,
         "offset": offset
-    } 
+    }
+
+@wxapp_router.get("/users/{openid}/token", response_model=dict)
+@handle_api_errors("获取用户令牌")
+async def get_user_token(
+    openid: str,
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    获取用户令牌
+    
+    根据openid生成用户的访问令牌
+    """
+    from api.database.wxapp import user_dao
+    
+    api_logger.debug(f"获取用户令牌 (openid: {openid[:8]}...)")
+    
+    # 查询用户信息
+    user = await user_dao.get_user_by_openid(openid)
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 生成令牌
+    token = generate_user_token(openid)
+    expires_in = 86400  # 24小时过期
+    expires_at = time.time() + expires_in
+    
+    # 返回令牌信息
+    return {
+        "token": token,
+        "expires_in": expires_in,
+        "expires_at": int(expires_at),
+        "user_info": {
+            "openid": user.get("openid"),
+            "nickName": user.get("nick_name", "微信用户"),
+            "avatar": user.get("avatar", "")
+        }
+    }
+    
+def generate_user_token(openid: str) -> str:
+    """生成用户令牌"""
+    # 使用随机字符串和openid生成令牌
+    random_str = secrets.token_hex(16)
+    timestamp = str(int(time.time()))
+    string_to_hash = f"{openid}:{random_str}:{timestamp}"
+    
+    # 使用SHA-256生成令牌
+    token = hashlib.sha256(string_to_hash.encode()).hexdigest()
+    return token 

@@ -273,7 +273,7 @@ async def like_post(
     
     为指定帖子点赞，同一用户只能点赞一次
     """
-    from api.database.wxapp import post_dao, notification_dao
+    from api.database.wxapp import post_dao, notification_dao, user_dao
     
     api_logger.debug(f"点赞帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
     
@@ -283,32 +283,46 @@ async def like_post(
     if not post:
         raise HTTPException(status_code=404, detail="帖子不存在")
     
+    # 帖子作者的openid
+    author_openid = post["openid"]
+    
     # 检查用户是否已点赞
     liked_users = post.get("liked_users", [])
+    if liked_users is None:
+        liked_users = []
     if openid in liked_users:
         # 已点赞，取消点赞
         await post_dao.unlike_post(post_id, openid)
+        
+        # 减少作者的点赞数
+        if author_openid != openid:  # 不是自己点赞自己的帖子
+            await user_dao.decrement_user_likes_count(author_openid)
+        
         result = {
             "success": True,
             "message": "取消点赞成功",
             "liked": False,
-            "like_count": post["like_count"] - 1
+            "like_count": post["like_count"] - 1,
+            "post_id": post_id,
+            "action": "unlike"
         }
     else:
         # 未点赞，添加点赞
         await post_dao.like_post(post_id, openid)
         
+        # 增加作者的点赞数
+        if author_openid != openid:  # 不是自己点赞自己的帖子
+            await user_dao.increment_user_likes_count(author_openid)
+        
         # 如果点赞的不是自己的帖子，创建通知
-        if post["openid"] != openid:
-            from api.database.wxapp import user_dao
-            
+        if author_openid != openid:
             # 获取点赞用户信息
             liker = await user_dao.get_user_by_openid(openid)
             liker_name = liker.get("nick_name", "微信用户") if liker else "微信用户"
             
             # 创建通知
             notification_data = {
-                "openid": post["openid"],  # 帖子作者
+                "openid": author_openid,  # 帖子作者
                 "title": "收到新点赞",
                 "content": f"{liker_name} 点赞了你的帖子「{post.get('title', '无标题')}」",
                 "type": "like",
@@ -322,7 +336,9 @@ async def like_post(
             "success": True,
             "message": "点赞成功",
             "liked": True,
-            "like_count": post["like_count"] + 1
+            "like_count": post["like_count"] + 1,
+            "post_id": post_id,
+            "action": "like"
         }
     
     return PostActionResponse(**result)
@@ -339,7 +355,7 @@ async def unlike_post(
     
     取消对指定帖子的点赞
     """
-    from api.database.wxapp import post_dao
+    from api.database.wxapp import post_dao, user_dao, notification_dao
     
     api_logger.debug(f"取消点赞帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
     
@@ -349,46 +365,38 @@ async def unlike_post(
     if not post:
         raise HTTPException(status_code=404, detail="帖子不存在")
     
+    # 帖子作者的openid
+    author_openid = post["openid"]
+    
     # 检查用户是否已点赞
     liked_users = post.get("liked_users", [])
+    if liked_users is None:
+        liked_users = []
     if openid in liked_users:
         # 已点赞，取消点赞
         await post_dao.unlike_post(post_id, openid)
+        
+        # 减少作者的点赞数
+        if author_openid != openid:  # 不是自己点赞自己的帖子
+            await user_dao.decrement_user_likes_count(author_openid)
+        
         result = {
             "success": True,
             "message": "取消点赞成功",
             "liked": False,
-            "like_count": post["like_count"] - 1
+            "like_count": post["like_count"] - 1,
+            "post_id": post_id,
+            "action": "unlike"
         }
     else:
-        # 未点赞，添加点赞
-        await post_dao.like_post(post_id, openid)
-        
-        # 如果点赞的不是自己的帖子，创建通知
-        if post["openid"] != openid:
-            from api.database.wxapp import user_dao
-            
-            # 获取点赞用户信息
-            liker = await user_dao.get_user_by_openid(openid)
-            liker_name = liker.get("nick_name", "微信用户") if liker else "微信用户"
-            
-            # 创建通知
-            notification_data = {
-                "openid": post["openid"],  # 帖子作者
-                "title": "收到新点赞",
-                "content": f"{liker_name} 点赞了你的帖子「{post.get('title', '无标题')}」",
-                "type": "like",
-                "sender_openid": openid,
-                "related_id": str(post_id),
-                "related_type": "post"
-            }
-            await notification_dao.create_notification(notification_data)
-        
+        # 未点赞，状态未变
         result = {
             "success": True,
-            "message": "点赞成功",
-            "liked": True,
-            "like_count": post["like_count"] + 1
+            "message": "点赞状态未变",
+            "liked": False,
+            "like_count": post["like_count"],
+            "post_id": post_id,
+            "action": "unlike"
         }
     
     return PostActionResponse(**result)
@@ -405,7 +413,7 @@ async def favorite_post(
     
     将指定帖子添加到收藏
     """
-    from api.database.wxapp import post_dao, notification_dao
+    from api.database.wxapp import post_dao, notification_dao, user_dao
     
     api_logger.debug(f"收藏帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
     
@@ -415,25 +423,32 @@ async def favorite_post(
     if not post:
         raise HTTPException(status_code=404, detail="帖子不存在")
     
-    # 获取当前收藏状态
+    # 帖子作者的openid
+    author_openid = post["openid"]
+    
+    # 检查用户是否已收藏
     favorite_users = post.get("favorite_users", [])
+    if favorite_users is None:
+        favorite_users = []
     is_currently_favorite = openid in favorite_users
     
     if not is_currently_favorite:
         # 添加收藏
         await post_dao.favorite_post(post_id, openid)
         
+        # 增加作者的收藏数
+        if author_openid != openid:  # 不是自己收藏自己的帖子
+            await user_dao.increment_user_favorites_count(author_openid)
+        
         # 如果收藏的不是自己的帖子，创建通知
-        if post["openid"] != openid:
-            from api.database.wxapp import user_dao
-            
+        if author_openid != openid:
             # 获取收藏用户信息
             favoriter = await user_dao.get_user_by_openid(openid)
             favoriter_name = favoriter.get("nick_name", "微信用户") if favoriter else "微信用户"
             
             # 创建通知
             notification_data = {
-                "openid": post["openid"],  # 帖子作者
+                "openid": author_openid,  # 帖子作者
                 "title": "收到新收藏",
                 "content": f"{favoriter_name} 收藏了你的帖子「{post.get('title', '无标题')}」",
                 "type": "favorite",
@@ -447,7 +462,9 @@ async def favorite_post(
             "success": True,
             "message": "收藏成功",
             "favorite": True,
-            "favorite_count": post["favorite_count"] + 1
+            "favorite_count": post["favorite_count"] + 1,
+            "post_id": post_id,
+            "action": "favorite"
         }
     else:
         # 状态未变
@@ -455,24 +472,26 @@ async def favorite_post(
             "success": True,
             "message": "收藏状态未变",
             "favorite": True,
-            "favorite_count": post["favorite_count"]
+            "favorite_count": post["favorite_count"],
+            "post_id": post_id,
+            "action": "favorite"
         }
     
     return PostActionResponse(**result)
 
 @wxapp_router.post("/posts/{post_id}/unfavorite", response_model=PostActionResponse)
-@handle_api_errors("取消收藏")
+@handle_api_errors("取消收藏帖子")
 async def unfavorite_post(
     post_id: int = Path(..., description="帖子ID"),
     openid: str = Query(..., description="用户openid"),
     api_logger=Depends(get_api_logger_dep)
 ):
     """
-    取消收藏
+    取消收藏帖子
     
-    取消对指定帖子的收藏
+    将指定帖子从收藏列表中移除
     """
-    from api.database.wxapp import post_dao
+    from api.database.wxapp import post_dao, user_dao
     
     api_logger.debug(f"取消收藏帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
     
@@ -482,18 +501,28 @@ async def unfavorite_post(
     if not post:
         raise HTTPException(status_code=404, detail="帖子不存在")
     
-    # 获取当前收藏状态
+    # 帖子作者的openid
+    author_openid = post["openid"]
+    
+    # 检查用户是否已收藏
     favorite_users = post.get("favorite_users", [])
-    is_currently_favorite = openid in favorite_users
+    is_currently_favorite = openid in favorite_users if favorite_users else False
     
     if is_currently_favorite:
         # 取消收藏
         await post_dao.unfavorite_post(post_id, openid)
+        
+        # 减少作者的收藏数
+        if author_openid != openid:  # 不是自己取消收藏自己的帖子
+            await user_dao.decrement_user_favorites_count(author_openid)
+        
         result = {
             "success": True,
             "message": "取消收藏成功",
             "favorite": False,
-            "favorite_count": post["favorite_count"] - 1
+            "favorite_count": post["favorite_count"] - 1,
+            "post_id": post_id,
+            "action": "unfavorite"
         }
     else:
         # 状态未变
@@ -501,7 +530,9 @@ async def unfavorite_post(
             "success": True,
             "message": "收藏状态未变",
             "favorite": False,
-            "favorite_count": post["favorite_count"]
+            "favorite_count": post["favorite_count"],
+            "post_id": post_id,
+            "action": "unfavorite"
         }
     
     return PostActionResponse(**result) 

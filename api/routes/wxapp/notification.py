@@ -174,4 +174,32 @@ async def delete_notification(
         success=True,
         message="通知已删除",
         affected_items=1
-    ) 
+    )
+
+@wxapp_router.get("/users/{openid}/notifications/count")
+@handle_api_errors("获取未读通知数量")
+async def get_unread_notifications_count(
+    openid: str = Path(..., description="用户openid"),
+    type: Optional[str] = Query(None, description="通知类型：system-系统通知, like-点赞, comment-评论, follow-关注"),
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    获取用户未读通知数量
+    
+    返回用户的未读通知数量，可按类型筛选
+    """
+    from api.database.wxapp import notification_dao
+    
+    api_logger.debug(f"获取未读通知数量 (用户: {openid[:8]}..., 类型: {type})")
+    
+    # 获取未读通知数量
+    count = await notification_dao.get_unread_notification_count(
+        openid=openid,
+        notification_type=type
+    )
+    
+    return {
+        "unread_count": count,
+        "openid": openid,
+        "type": type
+    } 

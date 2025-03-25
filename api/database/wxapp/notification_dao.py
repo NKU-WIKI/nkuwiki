@@ -181,4 +181,30 @@ async def mark_notification_deleted(notification_id: int) -> bool:
         bool: 操作是否成功
     """
     logger.debug(f"标记通知删除 (ID: {notification_id})")
-    return update_record(TABLE_NAME, notification_id, {"is_deleted": 1}) 
+    return update_record(TABLE_NAME, notification_id, {"is_deleted": 1})
+
+async def get_unread_notification_count(openid: str, notification_type: Optional[str] = None) -> int:
+    """
+    获取用户未读通知数量
+    
+    Args:
+        openid: 用户openid
+        notification_type: 通知类型，可选
+        
+    Returns:
+        int: 未读通知数量
+    """
+    logger.debug(f"获取未读通知数量 (openid: {openid[:8]}...)")
+    
+    # 构建查询条件
+    conditions = {
+        "openid": openid,
+        "is_deleted": 0,
+        "is_read": 0
+    }
+    
+    if notification_type:
+        conditions["type"] = notification_type
+    
+    # 计算未读通知数量
+    return count_records(TABLE_NAME, conditions=conditions) 

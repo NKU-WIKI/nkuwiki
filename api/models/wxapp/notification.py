@@ -9,7 +9,7 @@ from api.models.base import BaseAPIModel, BaseTimeStampModel
 class NotificationSender(BaseAPIModel):
     """通知发送者信息"""
     openid: str = Field(..., description="发送者openid")
-    nickname: str = Field("", description="发送者昵称")
+    nick_name: str = Field("", description="发送者昵称")
     avatar: str = Field("", description="发送者头像")
 
 

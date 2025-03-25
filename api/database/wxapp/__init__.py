@@ -24,6 +24,10 @@ __all__ = [
     'create_user',
     'update_user',
     'update_user_login_time',
+    'increment_user_likes_count',
+    'decrement_user_likes_count',
+    'increment_user_favorites_count',
+    'decrement_user_favorites_count',
     
     # 通知相关
     'create_notification',
@@ -31,5 +35,6 @@ __all__ = [
     'get_user_notifications',
     'mark_notification_read',
     'mark_notifications_read',
-    'delete_notification'
+    'delete_notification',
+    'get_unread_notification_count'
 ] 

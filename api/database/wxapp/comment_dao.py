@@ -87,6 +87,17 @@ async def get_post_comments(
     """
     logger.debug(f"获取帖子评论列表: post_id={post_id}, parent_id={parent_id}, limit={limit}, offset={offset}")
     
+    # 处理排序字段映射
+    if sort_by:
+        # 处理字段名映射
+        field_mapping = {
+            'created_at': 'create_time',
+            'updated_at': 'update_time'
+        }
+        
+        for old_field, new_field in field_mapping.items():
+            sort_by = sort_by.replace(old_field, new_field)
+    
     # 处理父评论为NULL的情况
     if parent_id is None:
         # 避免使用execute_custom_query，直接使用query_records
