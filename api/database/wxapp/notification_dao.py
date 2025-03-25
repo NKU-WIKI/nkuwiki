@@ -149,7 +149,7 @@ async def mark_notifications_read(openid: str, notification_ids: Optional[List[i
     
     # 更新通知状态
     sql = f"UPDATE {TABLE_NAME} SET is_read = 1 WHERE {where_clause}"
-    result = await db_core.async_query(sql, params, fetch=False)
+    await db_core.async_query(sql, params)
     
     # 返回更新的数量
     if notification_ids:

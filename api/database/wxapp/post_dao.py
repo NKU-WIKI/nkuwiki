@@ -139,9 +139,9 @@ async def mark_post_deleted(post_id: int) -> bool:
     logger.debug(f"标记帖子删除 (ID: {post_id})")
     return await db_core.async_update(TABLE_NAME, post_id, {"is_deleted": 1})
 
-async def update_post_view_count(post_id: int) -> bool:
+async def increment_view_count(post_id: int) -> bool:
     """
-    更新帖子浏览量
+    增加帖子浏览量
     
     Args:
         post_id: 帖子ID
@@ -151,8 +151,8 @@ async def update_post_view_count(post_id: int) -> bool:
     """
     logger.debug(f"更新帖子浏览量 (ID: {post_id})")
     sql = f"UPDATE {TABLE_NAME} SET view_count = view_count + 1 WHERE id = %s"
-    result = await db_core.async_query(sql, [post_id], fetch=False)
-    return result > 0
+    result = await db_core.async_query(sql, [post_id])
+    return True
 
 async def like_post(post_id: int, openid: str) -> bool:
     """
@@ -177,8 +177,8 @@ async def like_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    result = await db_core.async_query(sql, [openid, post_id], fetch=False)
-    return result > 0
+    await db_core.async_query(sql, [openid, post_id])
+    return True
 
 async def unlike_post(post_id: int, openid: str) -> bool:
     """
@@ -202,8 +202,8 @@ async def unlike_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    result = await db_core.async_query(sql, [openid, post_id], fetch=False)
-    return result > 0
+    await db_core.async_query(sql, [openid, post_id])
+    return True
 
 async def favorite_post(post_id: int, openid: str) -> bool:
     """
@@ -228,8 +228,8 @@ async def favorite_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    result = await db_core.async_query(sql, [openid, post_id], fetch=False)
-    return result > 0
+    await db_core.async_query(sql, [openid, post_id])
+    return True
 
 async def unfavorite_post(post_id: int, openid: str) -> bool:
     """
@@ -253,5 +253,5 @@ async def unfavorite_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    result = await db_core.async_query(sql, [openid, post_id], fetch=False)
-    return result > 0 
+    await db_core.async_query(sql, [openid, post_id])
+    return True 

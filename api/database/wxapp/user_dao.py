@@ -249,8 +249,8 @@ async def update_user_counter(openid: str, field: str, increment: bool = True) -
             sql = f"UPDATE {TABLE_NAME} SET {field} = GREATEST({field} - 1, 0), update_time = NOW() WHERE openid = %s"
         
         # 执行更新
-        result = await db_core.async_query(sql, [openid], fetch=False)
-        return result > 0
+        await db_core.async_query(sql, [openid])
+        return True
     except Exception as e:
         logger.error(f"更新用户{field}失败: {str(e)}")
         return False
