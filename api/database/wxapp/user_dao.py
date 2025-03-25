@@ -171,6 +171,54 @@ async def upsert_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
         logger.error(f"用户信息操作失败: {str(e)}")
         raise
 
+async def insert_user_if_not_exists(openid: str) -> Dict[str, Any]:
+    """
+    只有在用户不存在时才插入基本的用户信息
+    
+    Args:
+        openid: 用户的openid
+        
+    Returns:
+        Dict[str, Any]: 用户信息，不会更新已存在用户的数据
+    """
+    if not openid:
+        raise ValueError("openid不能为空")
+    
+    try:
+        # 查询用户是否存在
+        users = query_records(TABLE_NAME, {"openid": openid, "is_deleted": 0}, limit=1)
+        
+        if users:
+            # 用户已存在，直接返回现有用户信息
+            logger.debug(f"用户已存在，不更新任何信息 (openid: {openid[:8]}...)")
+            return users[0]
+        else:
+            # 创建新用户，只保存openid和必要的字段
+            logger.debug(f"创建新用户，仅保存openid (openid: {openid[:8]}...)")
+            
+            # 准备最小的用户数据
+            now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            user_data = {
+                'openid': openid,
+                'create_time': now,
+                'update_time': now,
+                'last_login': now,
+                'platform': 'wxapp',
+                'status': 1,
+                'is_deleted': 0
+            }
+            
+            # 执行插入
+            inserted_id = insert_record(TABLE_NAME, user_data)
+            
+            # 获取插入后的用户信息
+            user_result = get_record_by_id(TABLE_NAME, inserted_id)
+            return user_result
+            
+    except Exception as e:
+        logger.error(f"插入用户信息失败: {str(e)}")
+        raise
+
 async def increment_user_likes_count(openid: str) -> bool:
     """
     增加用户收到的点赞数
@@ -273,4 +321,48 @@ async def decrement_user_favorites_count(openid: str) -> bool:
             conn.close()
     except Exception as e:
         logger.error(f"更新用户收藏数失败: {str(e)}")
+        return False
+
+async def increment_user_posts_count(openid: str) -> bool:
+    """
+    增加用户发帖数
+    
+    Args:
+        openid: 发帖用户的openid
+        
+    Returns:
+        bool: 操作是否成功
+    """
+    logger.debug(f"增加用户发帖数 (openid: {openid[:8]}...)")
+    try:
+        from etl.load.py_mysql import execute_custom_query
+        
+        # 使用SQL更新用户的posts_count字段
+        sql = f"UPDATE {TABLE_NAME} SET posts_count = posts_count + 1, update_time = NOW() WHERE openid = %s"
+        execute_custom_query(sql, [openid])
+        return True
+    except Exception as e:
+        logger.error(f"更新用户发帖数失败: {str(e)}")
+        return False
+
+async def decrement_user_posts_count(openid: str) -> bool:
+    """
+    减少用户发帖数
+    
+    Args:
+        openid: 发帖用户的openid
+        
+    Returns:
+        bool: 操作是否成功
+    """
+    logger.debug(f"减少用户发帖数 (openid: {openid[:8]}...)")
+    try:
+        from etl.load.py_mysql import execute_custom_query
+        
+        # 使用SQL更新用户的posts_count字段，确保不会小于0
+        sql = f"UPDATE {TABLE_NAME} SET posts_count = GREATEST(posts_count - 1, 0), update_time = NOW() WHERE openid = %s"
+        execute_custom_query(sql, [openid])
+        return True
+    except Exception as e:
+        logger.error(f"更新用户发帖数失败: {str(e)}")
         return False 

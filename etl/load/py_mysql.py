@@ -1370,11 +1370,12 @@ async def async_query_records(table_name, conditions=None, order_by=None, limit=
 
 if __name__ == "__main__":
     
-    # delete_table("wxapp_posts")
-    # delete_table("wxapp_users")
-    # delete_table("wxapp_feedback")
-    # delete_table("wxapp_notifications")
-    # delete_table("wxapp_comments")
+    delete_table("wxapp_posts")
+    delete_table("wxapp_users")
+    delete_table("wxapp_feedback")
+    delete_table("wxapp_notifications")
+    delete_table("wxapp_comments")
+    delete_table("wxapp_user_follows")
     # 初始化数据库
     init_database()
     # 测试其他功能

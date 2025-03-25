@@ -6,11 +6,25 @@ from fastapi.testclient import TestClient
 
 def test_sync_user(client: TestClient, test_user: dict):
     """测试同步用户信息"""
+    # 测试同步用户（只保存openid）
     response = client.post("/wxapp/users/sync", json=test_user)
     assert response.status_code == 200
     data = response.json()["data"]
     assert data["openid"] == test_user["openid"]
-    assert data["nick_name"] == test_user["nick_name"]
+    
+    # 再次请求，确保不会更新已有用户信息
+    modified_user = test_user.copy()
+    modified_user["nick_name"] = "修改后的名字"
+    response2 = client.post("/wxapp/users/sync", json=modified_user)
+    assert response2.status_code == 200
+    data2 = response2.json()["data"]
+    
+    # 验证返回的用户信息中，昵称没有被更新
+    assert data2["openid"] == test_user["openid"]
+    if "nick_name" in data and data["nick_name"] is not None:
+        assert data2["nick_name"] == data["nick_name"]
+    elif "nick_name" in data2 and data2["nick_name"] is not None:
+        assert data2["nick_name"] != modified_user["nick_name"]
 
 def test_get_user(client: TestClient, test_user: dict):
     """测试获取用户信息"""
@@ -49,6 +63,12 @@ def test_create_post(client: TestClient, test_post: dict):
     data = response.json()["data"]
     assert data["title"] == test_post["title"]
     assert data["content"] == test_post["content"]
+    
+    # 检查用户发帖数量是否增加
+    user_response = client.get(f"/wxapp/users/{openid}")
+    assert user_response.status_code == 200
+    user_data = user_response.json()["data"]
+    assert user_data["posts_count"] > 0
     
     # 将openid添加回test_post，以便其他测试使用
     test_post["openid"] = openid
@@ -231,6 +251,13 @@ def test_post_operations(client: TestClient, test_user: dict, test_post: dict):
     post_id = data["id"]
     assert "id" in data
     assert data["title"] == test_post["title"]
+    
+    # 获取用户信息，检查发帖数量
+    user_response = client.get(f"/wxapp/users/{openid}")
+    assert user_response.status_code == 200
+    user_data = user_response.json()["data"]
+    posts_count_before = user_data["posts_count"]
+    assert posts_count_before > 0
 
     # 获取帖子测试
     response = client.get(f"/wxapp/posts/{post_id}")
@@ -265,6 +292,13 @@ def test_post_operations(client: TestClient, test_user: dict, test_post: dict):
         params={"openid": openid}
     )
     assert response.status_code == 200
+    
+    # 检查用户发帖数量是否减少
+    user_response = client.get(f"/wxapp/users/{openid}")
+    assert user_response.status_code == 200
+    user_data = user_response.json()["data"]
+    posts_count_after = user_data["posts_count"]
+    assert posts_count_after < posts_count_before
 
     # 将openid添加回test_post，以便其他测试使用
     test_post["openid"] = openid

@@ -65,6 +65,9 @@ async def create_post(
     # 创建帖子
     post_id = await post_dao.create_post(post_data)
     
+    # 增加用户发帖数量
+    await user_dao.increment_user_posts_count(openid)
+    
     # 获取创建的帖子
     post = await post_dao.get_post_by_id(post_id)
     
@@ -238,7 +241,7 @@ async def delete_post(
     
     标记删除指定帖子
     """
-    from api.database.wxapp import post_dao
+    from api.database.wxapp import post_dao, user_dao
     
     api_logger.debug(f"删除帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
     
@@ -254,6 +257,9 @@ async def delete_post(
     
     # 标记删除帖子
     await post_dao.mark_post_deleted(post_id)
+    
+    # 减少用户发帖数量
+    await user_dao.decrement_user_posts_count(openid)
     
     return SimpleOperationResponse(
         success=True,

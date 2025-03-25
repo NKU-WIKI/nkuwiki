@@ -60,7 +60,7 @@
 ### 1.1 同步微信云用户
 
 **接口**：`POST /api/wxapp/users/sync`  
-**描述**：同步微信用户信息到服务器数据库  
+**描述**：同步微信用户openid到服务器数据库，只会在用户不存在时添加新用户，不会更新已存在用户的信息  
 **请求头**：
 - `X-Cloud-Source` - 可选，标记来源
 - `X-Prefer-Cloud-ID` - 可选，标记优先使用云ID
@@ -69,25 +69,25 @@
 
 ```json
 {
-  "openid": "微信用户唯一标识",
-  "unionid": "微信开放平台唯一标识（可选）",
-  "nick_name": "用户昵称（可选）",
-  "avatar": "头像URL（可选）",
-  "gender": 0,
-  "bio": "个人简介（可选）",
-  "country": "国家（可选）",
-  "province": "省份（可选）",
-  "city": "城市（可选）",
-  "language": "语言（可选）",
-  "birthday": "2004-06-28（可选）",
-  "wechatId": "微信号（可选）",
-  "qqId": "QQ号（可选）",
-  "platform": "wxapp",
-  "extra": {}
+  "openid": "微信用户唯一标识", // 必填
+  "unionid": "微信开放平台唯一标识（可选）", // 不会被保存
+  "nick_name": "用户昵称（可选）", // 不会被保存
+  "avatar": "头像URL（可选）", // 不会被保存
+  "gender": 0, // 不会被保存
+  "bio": "个人简介（可选）", // 不会被保存
+  "country": "国家（可选）", // 不会被保存
+  "province": "省份（可选）", // 不会被保存
+  "city": "城市（可选）", // 不会被保存
+  "language": "语言（可选）", // 不会被保存
+  "birthday": "2004-06-28（可选）", // 不会被保存
+  "wechatId": "微信号（可选）", // 不会被保存
+  "qqId": "QQ号（可选）", // 不会被保存
+  "platform": "wxapp", // 不会被保存
+  "extra": {} // 不会被保存
 }
 ```
 
-**响应**：
+**响应**：返回用户信息，仅包含数据库中的实际值。新用户只会有openid和系统默认字段。
 
 ```json
 {
@@ -96,21 +96,22 @@
   "data": {
     "id": 10001,
     "openid": "微信用户唯一标识",
-    "unionid": "微信开放平台唯一标识",
-    "nick_name": "用户昵称",
-    "avatar": "头像URL",
+    "unionid": null,
+    "nick_name": null,
+    "avatar": null,
     "gender": 0,
-    "bio": "个人简介",
-    "country": "国家",
-    "province": "省份",
-    "city": "城市",
-    "language": "语言",
-    "birthday": "2004-06-28",
-    "wechatId": "微信号",
-    "qqId": "QQ号",
+    "bio": null,
+    "country": null,
+    "province": null,
+    "city": null,
+    "language": null,
+    "birthday": null,
+    "wechatId": null,
+    "qqId": null,
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
+    "posts_count": 0,
     "followers_count": 0,
     "following_count": 0,
     "create_time": "2023-01-01 12:00:00",
@@ -119,7 +120,7 @@
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0,
-    "extra": {}
+    "extra": null
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -157,6 +158,7 @@
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
+    "posts_count": 0,
     "followers_count": 0,
     "following_count": 0,
     "create_time": "2023-01-01 12:00:00",
@@ -203,6 +205,7 @@
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
+    "posts_count": 0,
     "followers_count": 0,
     "following_count": 0,
     "create_time": "2023-01-01 12:00:00",
@@ -252,6 +255,7 @@
         "token_count": 0,
         "likes_count": 0,
         "favorites_count": 0,
+        "posts_count": 0,
         "followers_count": 0,
         "following_count": 0,
         "create_time": "2023-01-01 12:00:00",
@@ -326,6 +330,7 @@
     "token_count": 0,
     "likes_count": 0,
     "favorites_count": 0,
+    "posts_count": 0,
     "followers_count": 0,
     "following_count": 0,
     "create_time": "2023-01-01 12:00:00",
@@ -473,6 +478,7 @@
         "token_count": 0,
         "likes_count": 0,
         "favorites_count": 0,
+        "posts_count": 0,
         "followers_count": 0,
         "following_count": 0,
         "create_time": "2023-01-01 12:00:00",
@@ -528,6 +534,7 @@
         "token_count": 0,
         "likes_count": 0,
         "favorites_count": 0,
+        "posts_count": 0,
         "followers_count": 2,
         "following_count": 15,
         "create_time": "2023-01-01 12:00:00",
@@ -575,7 +582,7 @@
 ### 2.1 创建帖子
 
 **接口**：`POST /api/wxapp/posts`  
-**描述**：创建新帖子  
+**描述**：创建新帖子，成功后会增加用户的发帖计数(posts_count)  
 **查询参数**：
 - `openid`: 发布用户openid (必填)
 - `nick_name`: 用户昵称 (可选，如不提供则从用户表获取)
@@ -631,7 +638,8 @@
     "update_time": "2023-01-01 12:00:00",
     "status": 1,
     "platform": "wxapp",
-    "is_deleted": 0
+    "is_deleted": 0,
+    "posts_count": 1
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -673,7 +681,8 @@
     "update_time": "2023-01-01 12:00:00",
     "status": 1,
     "platform": "wxapp",
-    "is_deleted": 0
+    "is_deleted": 0,
+    "posts_count": 1
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -722,7 +731,8 @@
         "update_time": "2023-01-01 12:00:00",
         "status": 1,
         "platform": "wxapp",
-        "is_deleted": 0
+        "is_deleted": 0,
+        "posts_count": 1
       }
     ],
     "total": 100,
@@ -793,7 +803,8 @@
     "update_time": "2023-01-01 13:00:00",
     "status": 1,
     "platform": "wxapp",
-    "is_deleted": 0
+    "is_deleted": 0,
+    "posts_count": 1
   },
   "details": null,
   "timestamp": "2023-01-01 13:00:00"
@@ -803,7 +814,7 @@
 ### 2.5 删除帖子
 
 **接口**：`DELETE /api/wxapp/posts/{post_id}`  
-**描述**：删除帖子（标记删除）  
+**描述**：删除帖子（标记删除），同时会减少用户的发帖计数(posts_count)  
 **参数**：
 - `post_id` - 路径参数，帖子ID
 - `openid` - 查询参数，用户openid（必填，用于验证操作权限）
