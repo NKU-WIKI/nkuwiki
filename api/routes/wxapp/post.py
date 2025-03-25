@@ -107,7 +107,7 @@ async def get_post_detail(
     
     # 更新浏览量
     if update_view:
-        await post_dao.update_post_view_count(post_id)
+        await post_dao.increment_view_count(post_id)
         post["view_count"] += 1
     
     # 处理datetime对象
