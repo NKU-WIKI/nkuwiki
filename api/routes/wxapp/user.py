@@ -48,6 +48,37 @@ async def get_user_info(
     
     return user
 
+@wxapp_router.get("/users/me", response_model=UserModel)
+@handle_api_errors("获取当前用户信息")
+async def get_current_user_info(
+    openid: str = Query(..., description="用户openid"),
+    api_logger=Depends(get_api_logger_dep)
+):
+    """
+    获取当前用户信息
+    
+    根据openid获取当前登录用户的详细信息
+    """
+    from api.database.wxapp import user_dao
+    
+    api_logger.debug(f"获取当前用户信息 (openid: {openid[:8]}...)")
+    
+    # 查询用户信息
+    user = await user_dao.get_user_by_openid(openid)
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="用户不存在")
+    
+    # 手动处理datetime对象
+    if user and 'create_time' in user and isinstance(user['create_time'], datetime):
+        user['create_time'] = user['create_time'].strftime("%Y-%m-%d %H:%M:%S")
+    if user and 'update_time' in user and isinstance(user['update_time'], datetime):
+        user['update_time'] = user['update_time'].strftime("%Y-%m-%d %H:%M:%S")
+    if user and 'last_login' in user and isinstance(user['last_login'], datetime):
+        user['last_login'] = user['last_login'].strftime("%Y-%m-%d %H:%M:%S")
+    
+    return user
+
 @wxapp_router.get("/users", response_model=dict)
 @handle_api_errors("获取用户列表")
 async def get_user_list(
