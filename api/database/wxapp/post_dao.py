@@ -4,18 +4,10 @@
 """
 from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
+import json
 
-# 直接从etl模块导入方法
-from etl.load.py_mysql import (
-    insert_record,
-    update_record,
-    delete_record,
-    query_records,
-    count_records,
-    get_record_by_id,
-    execute_raw_query,
-    execute_custom_query
-)
+# 使用新的数据库核心模块
+from etl.load import db_core
 
 # 帖子表名
 TABLE_NAME = "wxapp_posts"
@@ -33,7 +25,6 @@ async def create_post(post_data: Dict[str, Any]) -> int:
     logger.debug(f"创建新帖子: {post_data}")
     
     # 处理列表和字典类型
-    import json
     processed_data = post_data.copy()
     
     if "images" in processed_data and processed_data["images"] is not None:
@@ -45,7 +36,7 @@ async def create_post(post_data: Dict[str, Any]) -> int:
     if "location" in processed_data and processed_data["location"] is not None:
         processed_data["location"] = json.dumps(processed_data["location"])
     
-    return insert_record(TABLE_NAME, processed_data)
+    return await db_core.async_insert(TABLE_NAME, processed_data)
 
 async def get_post_by_id(post_id: int) -> Optional[Dict[str, Any]]:
     """
@@ -58,7 +49,7 @@ async def get_post_by_id(post_id: int) -> Optional[Dict[str, Any]]:
         Optional[Dict[str, Any]]: 帖子数据，不存在则返回None
     """
     logger.debug(f"获取帖子 (ID: {post_id})")
-    return get_record_by_id(TABLE_NAME, post_id)
+    return await db_core.async_get_by_id(TABLE_NAME, post_id)
 
 async def get_posts(
     conditions: Dict[str, Any],
@@ -108,7 +99,7 @@ async def get_posts(
             order_by = order_by.replace(old_field, new_field)
     
     # 查询帖子列表
-    posts = query_records(
+    posts = await db_core.async_query_records(
         TABLE_NAME,
         conditions=where_conditions,
         order_by=order_by,
@@ -117,9 +108,9 @@ async def get_posts(
     )
     
     # 获取总数
-    total = count_records(TABLE_NAME, conditions=where_conditions)
+    total_count = await db_core.async_count_records(TABLE_NAME, conditions=where_conditions)
     
-    return posts, total
+    return posts, total_count
 
 async def update_post(post_id: int, update_data: Dict[str, Any]) -> bool:
     """
@@ -133,7 +124,7 @@ async def update_post(post_id: int, update_data: Dict[str, Any]) -> bool:
         bool: 更新是否成功
     """
     logger.debug(f"更新帖子 (ID: {post_id}): {update_data}")
-    return update_record(TABLE_NAME, post_id, update_data)
+    return await db_core.async_update(TABLE_NAME, post_id, update_data)
 
 async def mark_post_deleted(post_id: int) -> bool:
     """
@@ -146,11 +137,11 @@ async def mark_post_deleted(post_id: int) -> bool:
         bool: 操作是否成功
     """
     logger.debug(f"标记帖子删除 (ID: {post_id})")
-    return update_record(TABLE_NAME, post_id, {"is_deleted": 1})
+    return await db_core.async_update(TABLE_NAME, post_id, {"is_deleted": 1})
 
-async def update_post_view_count(post_id: int) -> bool:
+async def increment_view_count(post_id: int) -> bool:
     """
-    更新帖子浏览量
+    增加帖子浏览量
     
     Args:
         post_id: 帖子ID
@@ -160,7 +151,7 @@ async def update_post_view_count(post_id: int) -> bool:
     """
     logger.debug(f"更新帖子浏览量 (ID: {post_id})")
     sql = f"UPDATE {TABLE_NAME} SET view_count = view_count + 1 WHERE id = %s"
-    execute_raw_query(sql, [post_id])
+    result = await db_core.async_query(sql, [post_id])
     return True
 
 async def like_post(post_id: int, openid: str) -> bool:
@@ -186,7 +177,7 @@ async def like_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    execute_raw_query(sql, [openid, post_id])
+    await db_core.async_query(sql, [openid, post_id])
     return True
 
 async def unlike_post(post_id: int, openid: str) -> bool:
@@ -211,7 +202,7 @@ async def unlike_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    execute_raw_query(sql, [openid, post_id])
+    await db_core.async_query(sql, [openid, post_id])
     return True
 
 async def favorite_post(post_id: int, openid: str) -> bool:
@@ -237,7 +228,7 @@ async def favorite_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    execute_raw_query(sql, [openid, post_id])
+    await db_core.async_query(sql, [openid, post_id])
     return True
 
 async def unfavorite_post(post_id: int, openid: str) -> bool:
@@ -262,5 +253,5 @@ async def unfavorite_post(post_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    execute_raw_query(sql, [openid, post_id])
+    await db_core.async_query(sql, [openid, post_id])
     return True 

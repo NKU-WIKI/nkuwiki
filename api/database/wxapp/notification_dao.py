@@ -5,17 +5,8 @@
 from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 
-# 直接从etl模块导入方法
-from etl.load.py_mysql import (
-    insert_record,
-    update_record,
-    delete_record,
-    query_records,
-    count_records,
-    get_record_by_id,
-    execute_raw_query,
-    execute_custom_query
-)
+# 使用新的数据库核心模块
+from etl.load import db_core
 
 # 通知表名
 TABLE_NAME = "wxapp_notifications"
@@ -31,7 +22,7 @@ async def create_notification(notification_data: Dict[str, Any]) -> int:
         int: 通知ID
     """
     logger.debug(f"创建新通知: {notification_data}")
-    return insert_record(TABLE_NAME, notification_data)
+    return await db_core.async_insert(TABLE_NAME, notification_data)
 
 async def get_notification_by_id(notification_id: int) -> Optional[Dict[str, Any]]:
     """
@@ -44,7 +35,7 @@ async def get_notification_by_id(notification_id: int) -> Optional[Dict[str, Any
         Optional[Dict[str, Any]]: 通知数据，不存在则返回None
     """
     logger.debug(f"获取通知 (ID: {notification_id})")
-    return get_record_by_id(TABLE_NAME, notification_id)
+    return await db_core.async_get_by_id(TABLE_NAME, notification_id)
 
 async def get_user_notifications(
     openid: str,
@@ -81,7 +72,7 @@ async def get_user_notifications(
         conditions["is_read"] = 1 if is_read else 0
     
     # 查询通知列表
-    notifications = query_records(
+    notifications = await db_core.async_query_records(
         TABLE_NAME,
         conditions=conditions,
         order_by="create_time DESC",
@@ -90,7 +81,7 @@ async def get_user_notifications(
     )
     
     # 获取总数
-    total = count_records(TABLE_NAME, conditions=conditions)
+    total = await db_core.count_records(TABLE_NAME, conditions=conditions)
     
     # 获取未读数量
     unread_conditions = {
@@ -102,14 +93,14 @@ async def get_user_notifications(
     if notification_type:
         unread_conditions["type"] = notification_type
         
-    unread_count = count_records(TABLE_NAME, conditions=unread_conditions)
+    unread_count = await db_core.count_records(TABLE_NAME, conditions=unread_conditions)
     
     # 如果有发送者信息，获取发送者详情
     if notifications:
         from api.database.wxapp import user_dao
         for notification in notifications:
             if notification.get("sender_openid"):
-                sender = user_dao.get_user_by_openid(notification["sender_openid"])
+                sender = await user_dao.get_user_by_openid(notification["sender_openid"])
                 if sender:
                     notification["sender"] = {
                         "id": sender.get("id"),
@@ -131,7 +122,7 @@ async def mark_notification_read(notification_id: int) -> bool:
         bool: 操作是否成功
     """
     logger.debug(f"标记通知已读 (ID: {notification_id})")
-    return update_record(TABLE_NAME, notification_id, {"is_read": 1})
+    return await db_core.async_update(TABLE_NAME, notification_id, {"is_read": 1})
 
 async def mark_notifications_read(openid: str, notification_ids: Optional[List[int]] = None) -> int:
     """
@@ -158,14 +149,14 @@ async def mark_notifications_read(openid: str, notification_ids: Optional[List[i
     
     # 更新通知状态
     sql = f"UPDATE {TABLE_NAME} SET is_read = 1 WHERE {where_clause}"
-    execute_raw_query(sql, params)
+    await db_core.async_query(sql, params)
     
     # 返回更新的数量
     if notification_ids:
         return len(notification_ids) 
     else:
         # 使用conditions字典而不是condition字符串
-        return count_records(
+        return await db_core.count_records(
             TABLE_NAME,
             conditions={"openid": openid, "is_deleted": 0, "is_read": 1}
         )
@@ -181,7 +172,7 @@ async def mark_notification_deleted(notification_id: int) -> bool:
         bool: 操作是否成功
     """
     logger.debug(f"标记通知删除 (ID: {notification_id})")
-    return update_record(TABLE_NAME, notification_id, {"is_deleted": 1})
+    return await db_core.async_update(TABLE_NAME, notification_id, {"is_deleted": 1})
 
 async def get_unread_notification_count(openid: str, notification_type: Optional[str] = None) -> int:
     """
@@ -207,4 +198,4 @@ async def get_unread_notification_count(openid: str, notification_type: Optional
         conditions["type"] = notification_type
     
     # 计算未读通知数量
-    return count_records(TABLE_NAME, conditions=conditions) 
+    return await db_core.count_records(TABLE_NAME, conditions=conditions) 

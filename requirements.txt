@@ -115,4 +115,7 @@ LunarCalendar         # 农历日期处理
 
 python-multipart
 
+redis>=4.5.1
+psutil>=5.9.0
+
 

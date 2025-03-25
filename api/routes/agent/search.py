@@ -12,7 +12,7 @@ from api import agent_router
 from api.common import get_api_logger_dep, handle_api_errors
 from api.models.search import AgentSearchRequest
 from api.models.agent.rag import KnowledgeSearchResponse
-from etl.load.py_mysql import query_records
+from etl.load.db_core import query_records
 
 @agent_router.post("/search", response_model=KnowledgeSearchResponse)
 @handle_api_errors("知识搜索")

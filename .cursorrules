@@ -44,7 +44,7 @@ wechat_nku
 wxappp_posts
 wxappp_comments
 等
-用etl/load/py_mysql.py中的方法和数据库交互
+用etl/load/db_core.py中的方法和数据库交互
 
 写新代码把旧代码冗余代码删了。
 

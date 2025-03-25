@@ -22,17 +22,8 @@ STATUS_REVERSE_MAP = {
     3: "rejected"
 }
 
-# 直接从etl模块导入方法
-from etl.load.py_mysql import (
-    insert_record,
-    update_record,
-    delete_record,
-    query_records,
-    count_records,
-    get_record_by_id,
-    execute_raw_query,
-    execute_custom_query
-)
+# 直接使用数据库核心模块
+from etl.load import db_core
 
 # 反馈表名
 TABLE_NAME = "wxapp_feedback"
@@ -66,7 +57,7 @@ async def create_feedback(feedback_data: Dict[str, Any]) -> int:
         if isinstance(processed_data["device_info"], dict):
             processed_data["device_info"] = json.dumps(processed_data["device_info"])
     
-    return insert_record(TABLE_NAME, processed_data)
+    return await db_core.async_insert(TABLE_NAME, processed_data)
 
 async def get_feedback_by_id(feedback_id: int) -> Optional[Dict[str, Any]]:
     """
@@ -79,7 +70,7 @@ async def get_feedback_by_id(feedback_id: int) -> Optional[Dict[str, Any]]:
         Optional[Dict[str, Any]]: 反馈数据，不存在则返回None
     """
     logger.debug(f"获取反馈 (ID: {feedback_id})")
-    feedback = get_record_by_id(TABLE_NAME, feedback_id)
+    feedback = await db_core.async_get_by_id(TABLE_NAME, feedback_id)
     
     # 状态从整数转为字符串
     if feedback and "status" in feedback:
@@ -123,7 +114,7 @@ async def get_user_feedback(
         conditions["status"] = STATUS_MAP.get(status, 0)
     
     # 查询反馈列表
-    feedback_list = query_records(
+    feedback_list = await db_core.async_query_records(
         TABLE_NAME,
         conditions=conditions,
         order_by="create_time DESC",
@@ -132,7 +123,7 @@ async def get_user_feedback(
     )
     
     # 获取总数
-    total = count_records(TABLE_NAME, conditions=conditions)
+    total = await db_core.count_records(TABLE_NAME, conditions=conditions)
     
     # 转换状态从整数为字符串
     for feedback in feedback_list:
@@ -161,7 +152,7 @@ async def update_feedback(feedback_id: int, update_data: Dict[str, Any]) -> bool
     if "status" in processed_data and isinstance(processed_data["status"], str):
         processed_data["status"] = STATUS_MAP.get(processed_data["status"], 0)
     
-    return update_record(TABLE_NAME, feedback_id, processed_data)
+    return await db_core.async_update(TABLE_NAME, feedback_id, processed_data)
 
 async def mark_feedback_deleted(feedback_id: int) -> bool:
     """
@@ -174,4 +165,4 @@ async def mark_feedback_deleted(feedback_id: int) -> bool:
         bool: 操作是否成功
     """
     logger.debug(f"标记反馈删除 (ID: {feedback_id})")
-    return update_record(TABLE_NAME, feedback_id, {"is_deleted": 1}) 
+    return await db_core.async_update(TABLE_NAME, feedback_id, {"is_deleted": 1}) 

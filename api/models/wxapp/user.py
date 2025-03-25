@@ -35,6 +35,7 @@ class UserModel(BaseTimeStampModel):
     token_count: int = Field(0, description="用户Token数量")
     likes_count: int = Field(0, description="获得的点赞数")
     favorites_count: int = Field(0, description="获得的收藏数")
+    posts_count: int = Field(0, description="发布的帖子数")
     followers_count: int = Field(0, description="关注者数量")
     following_count: int = Field(0, description="关注的用户数量")
     last_login: Optional[str] = Field(None, description="最后登录时间")

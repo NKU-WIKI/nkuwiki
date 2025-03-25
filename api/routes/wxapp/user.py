@@ -160,15 +160,14 @@ async def sync_user_info(
     """
     同步用户信息
     
-    同步微信用户信息到系统
+    同步微信用户信息到系统，仅保存新用户的openid，不会覆盖已有用户信息
     """
     from api.database.wxapp import user_dao
     
     api_logger.debug(f"同步用户信息 (openid: {user_info.openid[:8]}...)")
     
-    # 同步用户信息
-    user_data = user_info.model_dump(exclude_unset=True)
-    user = await user_dao.upsert_user(user_data)
+    # 只获取openid，不处理其他信息
+    user = await user_dao.insert_user_if_not_exists(user_info.openid)
     
     # 手动处理datetime对象
     if user and 'create_time' in user and isinstance(user['create_time'], datetime):

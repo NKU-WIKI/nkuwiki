@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     `token_count` INT DEFAULT 0 COMMENT '用户Token数量',
     `likes_count` INT DEFAULT 0 COMMENT '获得的点赞数',
     `favorites_count` INT DEFAULT 0 COMMENT '获得的收藏数',
+    `posts_count` INT DEFAULT 0 COMMENT '发布的帖子数',
     `followers_count` INT DEFAULT 0 COMMENT '关注者数量',
     `following_count` INT DEFAULT 0 COMMENT '关注的用户数量',
     `extra` JSON COMMENT '扩展字段，存储额外信息',
