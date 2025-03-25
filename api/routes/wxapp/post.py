@@ -290,24 +290,27 @@ async def like_post(
     liked_users = post.get("liked_users", [])
     if liked_users is None:
         liked_users = []
-    if openid in liked_users:
-        # 已点赞，取消点赞
-        await post_dao.unlike_post(post_id, openid)
         
-        # 减少作者的点赞数
-        if author_openid != openid:  # 不是自己点赞自己的帖子
-            await user_dao.decrement_user_likes_count(author_openid)
+    # 添加日志便于排查问题
+    api_logger.debug(f"当前点赞用户列表: {liked_users}")
+    api_logger.debug(f"当前点赞数: {post['like_count']}")
+    
+    if openid in liked_users:
+        # 已点赞，返回当前状态，不做任何更改
+        # 这是修复的关键部分 - 不应该在点赞接口中自动取消点赞
+        api_logger.debug(f"用户 {openid[:8]}... 已经点赞过帖子 {post_id}，不做更改")
         
         result = {
             "success": True,
-            "message": "取消点赞成功",
-            "liked": False,
-            "like_count": post["like_count"] - 1,
+            "message": "已经点赞过",
+            "liked": True,
+            "like_count": post["like_count"],
             "post_id": post_id,
-            "action": "unlike"
+            "action": "like"
         }
     else:
         # 未点赞，添加点赞
+        api_logger.debug(f"用户 {openid[:8]}... 对帖子 {post_id} 进行点赞")
         await post_dao.like_post(post_id, openid)
         
         # 增加作者的点赞数
@@ -336,10 +339,13 @@ async def like_post(
             "success": True,
             "message": "点赞成功",
             "liked": True,
-            "like_count": post["like_count"] + 1,
+            "like_count": post["like_count"] + 1, 
             "post_id": post_id,
             "action": "like"
         }
+    
+    # 添加日志记录最终返回的点赞状态
+    api_logger.debug(f"点赞操作结果: {result}")
     
     return PostActionResponse(**result)
 
@@ -355,7 +361,7 @@ async def unlike_post(
     
     取消对指定帖子的点赞
     """
-    from api.database.wxapp import post_dao, user_dao, notification_dao
+    from api.database.wxapp import post_dao, user_dao
     
     api_logger.debug(f"取消点赞帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
     
@@ -372,8 +378,14 @@ async def unlike_post(
     liked_users = post.get("liked_users", [])
     if liked_users is None:
         liked_users = []
+    
+    # 添加日志便于排查问题
+    api_logger.debug(f"当前点赞用户列表: {liked_users}")
+    api_logger.debug(f"当前点赞数: {post['like_count']}")
+    
     if openid in liked_users:
         # 已点赞，取消点赞
+        api_logger.debug(f"用户 {openid[:8]}... 取消点赞帖子 {post_id}")
         await post_dao.unlike_post(post_id, openid)
         
         # 减少作者的点赞数
@@ -384,12 +396,13 @@ async def unlike_post(
             "success": True,
             "message": "取消点赞成功",
             "liked": False,
-            "like_count": post["like_count"] - 1,
+            "like_count": max(0, post["like_count"] - 1),  # 确保不会出现负数
             "post_id": post_id,
             "action": "unlike"
         }
     else:
         # 未点赞，状态未变
+        api_logger.debug(f"用户 {openid[:8]}... 尝试取消点赞帖子 {post_id}，但未点赞过")
         result = {
             "success": True,
             "message": "点赞状态未变",
@@ -398,6 +411,9 @@ async def unlike_post(
             "post_id": post_id,
             "action": "unlike"
         }
+    
+    # 添加日志记录最终返回的点赞状态
+    api_logger.debug(f"取消点赞操作结果: {result}")
     
     return PostActionResponse(**result)
 
