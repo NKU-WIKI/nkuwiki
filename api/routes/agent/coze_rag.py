@@ -20,7 +20,7 @@ from api.common import get_api_logger_dep, handle_api_errors
 from api import agent_router
 from api.models.agent.rag import RAGRequest, RAGResponse, Source
 from core.agent.coze.coze_agent import CozeAgent
-from etl.load.py_mysql import async_query_records
+from etl.load.db_core import async_query_records
 from config import Config
 from fastapi.responses import JSONResponse, StreamingResponse
 

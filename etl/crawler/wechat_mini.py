@@ -3,7 +3,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl import *
 from etl.crawler.base_crawler import BaseCrawler
-from etl.load.py_mysql import batch_insert, create_table, upsert_record
+from etl.load.db_core import batch_insert, create_table, upsert_record
 import json
 import requests
 from datetime import datetime

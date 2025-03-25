@@ -117,8 +117,8 @@ def test_create_comment(client: TestClient, test_comment: dict, test_post: dict)
     print(f"创建评论响应: {data}")
     
     # 直接从数据库查询评论
-    from etl.load.py_mysql import execute_raw_query
-    comments_in_db = execute_raw_query(
+    from etl.load.db_core import execute_custom_query
+    comments_in_db = execute_custom_query(
         "SELECT * FROM wxapp_comments WHERE id = %s",
         [data["id"]]
     )
@@ -149,8 +149,8 @@ def test_get_post_comments(client: TestClient, test_comment: dict, test_post: di
     print(f"测试信息 - 创建帖子ID: {post_id}, 评论ID: {comment_id}")
     
     # 直接从数据库查询评论
-    from etl.load.py_mysql import execute_raw_query
-    comments_in_db = execute_raw_query(
+    from etl.load.db_core import execute_custom_query
+    comments_in_db = execute_custom_query(
         "SELECT * FROM wxapp_comments WHERE post_id = %s AND is_deleted = 0",
         [post_id]
     )

@@ -6,17 +6,8 @@ from typing import Dict, Any, List, Optional, Tuple
 from loguru import logger
 import json
 
-# 直接从etl模块导入方法
-from etl.load.py_mysql import (
-    insert_record,
-    update_record,
-    delete_record,
-    query_records,
-    count_records,
-    get_record_by_id,
-    execute_raw_query,
-    execute_custom_query
-)
+# 直接使用数据库核心模块
+from etl.load import db_core
 
 # 评论表名
 TABLE_NAME = "wxapp_comments"
@@ -41,14 +32,12 @@ async def create_comment(comment_data: Dict[str, Any]) -> int:
         processed_data["images"] = json.dumps(processed_data["images"])
     
     # 创建评论
-    comment_id = insert_record(TABLE_NAME, processed_data)
+    comment_id = await db_core.async_insert(TABLE_NAME, processed_data)
     
     # 更新帖子评论数
     if comment_id and processed_data.get("post_id"):
-        execute_raw_query(
-            "UPDATE wxapp_posts SET comment_count = comment_count + 1 WHERE id = %s",
-            [processed_data["post_id"]]
-        )
+        sql = "UPDATE wxapp_posts SET comment_count = comment_count + 1 WHERE id = %s"
+        await db_core.async_query(sql, [processed_data["post_id"]])
     
     return comment_id
 
@@ -63,7 +52,7 @@ async def get_comment_by_id(comment_id: int) -> Optional[Dict[str, Any]]:
         Optional[Dict[str, Any]]: 评论数据，不存在则返回None
     """
     logger.debug(f"获取评论 (ID: {comment_id})")
-    return get_record_by_id(TABLE_NAME, comment_id)
+    return await db_core.async_get_by_id(TABLE_NAME, comment_id)
 
 async def get_post_comments(
     post_id: int,
@@ -100,8 +89,7 @@ async def get_post_comments(
     
     # 处理父评论为NULL的情况
     if parent_id is None:
-        # 避免使用execute_custom_query，直接使用query_records
-        # 通过sql语句手动实现NULL的比较
+        # 构建并执行查询
         query = f"""
             SELECT * FROM {TABLE_NAME} 
             WHERE post_id = %s AND is_deleted = 0 AND parent_id IS NULL 
@@ -116,12 +104,11 @@ async def get_post_comments(
         logger.debug(f"执行SQL查询: {query} 参数: {[post_id]}")
         
         try:
-            # 使用execute_raw_query
-            result = execute_raw_query(query, [post_id])
-            comments = result if result else []
+            # 使用async_query查询数据
+            comments = await db_core.async_query(query, [post_id])
             logger.debug(f"查询结果: {comments}")
             
-            count_result = execute_raw_query(count_query, [post_id])
+            count_result = await db_core.async_query(count_query, [post_id])
             total = count_result[0]['count'] if count_result else 0
             logger.debug(f"查询总数: {total}")
         except Exception as e:
@@ -139,7 +126,7 @@ async def get_post_comments(
         
         try:
             # 查询评论列表
-            comments = query_records(
+            comments = await db_core.async_query_records(
                 TABLE_NAME,
                 conditions=conditions,
                 order_by=sort_by,
@@ -149,7 +136,7 @@ async def get_post_comments(
             logger.debug(f"查询结果: {comments}")
             
             # 获取总数
-            total = count_records(TABLE_NAME, conditions=conditions)
+            total = await db_core.count_records(TABLE_NAME, conditions=conditions)
             logger.debug(f"查询总数: {total}")
         except Exception as e:
             logger.error(f"获取评论列表错误: {e}")
@@ -165,7 +152,7 @@ async def get_post_comments(
                     "is_deleted": 0
                 }
                 
-                replies = query_records(
+                replies = await db_core.async_query_records(
                     TABLE_NAME,
                     conditions=reply_conditions,
                     order_by="create_time DESC",
@@ -173,7 +160,7 @@ async def get_post_comments(
                 )
                 
                 # 获取回复总数
-                reply_count = count_records(
+                reply_count = await db_core.count_records(
                     TABLE_NAME,
                     conditions=reply_conditions
                 )
@@ -200,7 +187,7 @@ async def update_comment(comment_id: int, update_data: Dict[str, Any]) -> bool:
         bool: 更新是否成功
     """
     logger.debug(f"更新评论 (ID: {comment_id}): {update_data}")
-    return update_record(TABLE_NAME, comment_id, update_data)
+    return await db_core.async_update(TABLE_NAME, comment_id, update_data)
 
 async def mark_comment_deleted(comment_id: int) -> bool:
     """
@@ -215,19 +202,17 @@ async def mark_comment_deleted(comment_id: int) -> bool:
     logger.debug(f"标记评论删除 (ID: {comment_id})")
     
     # 获取评论信息
-    comment = get_record_by_id(TABLE_NAME, comment_id)
+    comment = await db_core.async_get_by_id(TABLE_NAME, comment_id)
     if not comment:
         return False
     
     # 标记删除
-    success = update_record(TABLE_NAME, comment_id, {"is_deleted": 1})
+    success = await db_core.async_update(TABLE_NAME, comment_id, {"is_deleted": 1})
     
     if success and comment.get("post_id"):
         # 更新帖子评论数
-        execute_raw_query(
-            "UPDATE wxapp_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = %s",
-            [comment["post_id"]]
-        )
+        sql = "UPDATE wxapp_posts SET comment_count = GREATEST(comment_count - 1, 0) WHERE id = %s"
+        await db_core.async_query(sql, [comment["post_id"]])
     
     return success
 
@@ -254,8 +239,8 @@ async def like_comment(comment_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    execute_raw_query(sql, [openid, comment_id])
-    return True
+    result = await db_core.async_query(sql, [openid, comment_id])
+    return result > 0
 
 async def unlike_comment(comment_id: int, openid: str) -> bool:
     """
@@ -279,5 +264,5 @@ async def unlike_comment(comment_id: int, openid: str) -> bool:
             )
         WHERE id = %s
     """
-    execute_raw_query(sql, [openid, comment_id])
-    return True 
+    result = await db_core.async_query(sql, [openid, comment_id])
+    return result > 0 
