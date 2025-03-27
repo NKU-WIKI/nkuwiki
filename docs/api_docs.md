@@ -13,7 +13,6 @@
 
 如，用户接口的完整路径为 `/api/wxapp/users/me`
 
-
 ## 后端响应标准格式：
 ```json
 {
@@ -54,6 +53,21 @@
 }
 ```
 
+### 错误代码说明
+
+| 状态码 | 说明 |
+|--------|------|
+| 200    | 成功 |
+| 400    | 请求参数错误 |
+| 401    | 未授权，需要登录 |
+| 403    | 禁止访问，无权限 |
+| 404    | 资源不存在 |
+| 422    | 请求验证失败 |
+| 429    | 请求过于频繁 |
+| 500    | 服务器内部错误 |
+| 502    | 网关错误 |
+| 503    | 服务不可用 |
+| 504    | 网关超时 |
 
 ## 一、用户接口
 
@@ -1631,25 +1645,9 @@
 }
 ```
 
-## 六、错误代码
+## 六、Agent智能体API
 
-| 状态码 | 说明 |
-|--------|------|
-| 200    | 成功 |
-| 400    | 请求参数错误 |
-| 401    | 未授权，需要登录 |
-| 403    | 禁止访问，无权限 |
-| 404    | 资源不存在 |
-| 422    | 请求验证失败 |
-| 429    | 请求过于频繁 |
-| 500    | 服务器内部错误 |
-| 502    | 网关错误 |
-| 503    | 服务不可用 |
-| 504    | 网关超时 |
-
-## 七、Agent智能体API
-
-### 7.1 智能体聊天接口
+### 6.1 智能体聊天接口
 
 **接口**：`POST /api/agent/chat`  
 **描述**：与智能体进行对话，支持普通文本和流式响应  
@@ -1730,18 +1728,30 @@ curl -N -X POST "http://localhost:8001/api/agent/chat" \
   -d '{"query": "南开大学有什么特色专业", "openid": "test_user", "stream": true, "format": "markdown", "bot_tag": "default"}'
 ```
 
-### 7.2 知识库搜索
+### 6.2 知识库搜索
 
 **接口**：`POST /api/agent/search`  
-**描述**：搜索知识库内容  
+**描述**：搜索知识库内容，支持跨表搜索和相关度排序，采用优化的相关度算法  
 **请求体**：
 
 ```json
 {
   "keyword": "南开大学历史",
-  "limit": 10
+  "limit": 10,
+  "include_content": false,
+  "tables": ["wxapp_posts", "website_nku", "wechat_nku"]
 }
 ```
+
+**请求参数说明**：
+- `keyword` - 字符串，必填，搜索关键词
+- `limit` - 整数，可选，默认10，最大50，返回结果数量限制
+- `include_content` - 布尔值，可选，默认false，是否包含完整内容
+- `tables` - 字符串数组，可选，要搜索的表名列表，支持以下表：
+  - `wxapp_posts` - 微信小程序帖子表（默认）
+  - `website_nku` - 南开大学网站内容
+  - `wechat_nku` - 南开大学微信公众号内容
+  - `market_nku` - 南开大学校园集市内容
 
 **响应**：
 
@@ -1761,7 +1771,9 @@ curl -N -X POST "http://localhost:8001/api/agent/chat" \
         "view_count": 1024,
         "like_count": 89,
         "comment_count": 15,
-        "relevance": 0.95
+        "relevance": 0.95,
+        "source": "wxapp_posts",
+        "content": "南开大学创建于1919年，由著名爱国教育家张伯苓先生创办..."  // 仅当include_content=true时包含
       },
       {
         "id": 2,
@@ -1769,11 +1781,12 @@ curl -N -X POST "http://localhost:8001/api/agent/chat" \
         "content_preview": "2019年，南开大学迎来百年华诞...",
         "author": "南开校友",
         "create_time": "2023-01-02 12:00:00",
-        "type": "文章",
+        "type": "网站",
         "view_count": 986,
         "like_count": 76,
         "comment_count": 12,
-        "relevance": 0.85
+        "relevance": 0.85,
+        "source": "website_nku"
       }
     ],
     "keyword": "南开大学历史",
@@ -1784,7 +1797,121 @@ curl -N -X POST "http://localhost:8001/api/agent/chat" \
 }
 ```
 
-### 7.3 获取Agent状态
+**响应参数说明**：
+- `results` - 数组，搜索结果列表，按相关度排序
+  - `id` - 整数，记录ID
+  - `title` - 字符串，标题
+  - `content_preview` - 字符串，内容预览，会智能截取关键词上下文
+  - `author` - 字符串，作者/发布者
+  - `create_time` - 字符串，创建/发布时间
+  - `type` - 字符串，内容类型，如"文章"、"网站"、"公众号"等
+  - `view_count` - 整数，浏览次数
+  - `like_count` - 整数，点赞次数
+  - `comment_count` - 整数，评论数量
+  - `relevance` - 浮点数，相关度得分，范围0~1
+  - `source` - 字符串，数据来源表名
+  - `content` - 字符串，完整内容（仅当include_content=true时包含）
+- `keyword` - 字符串，搜索关键词
+- `total` - 整数，结果总数
+
+**相关度计算优化**：
+- 标题匹配优先于内容匹配
+- 完整关键词匹配优先于部分关键词匹配
+- 考虑关键词出现位置，靠前位置有更高权重
+- 考虑关键词出现频率
+- 考虑内容长度因素，中等长度内容有轻微加权
+- 文档已删除状态自动排除
+
+**错误码**：
+- `400` - 请求参数错误（如不支持的表名）
+- `422` - 请求验证失败（如空关键词或超出限制）
+- `500` - 服务器内部错误
+
+**示例**：
+
+请求：
+```bash
+curl -X POST "http://localhost:8001/api/agent/search" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "南开大学历史", "limit": 10, "tables": ["wxapp_posts", "website_nku"]}'
+```
+
+包含完整内容的请求：
+```bash
+curl -X POST "http://localhost:8001/api/agent/search" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "南开大学历史", "limit": 5, "include_content": true, "tables": ["wxapp_posts"]}'
+```
+
+### 6.3 高级知识库搜索
+
+**接口**：`POST /api/agent/search/advanced`  
+**描述**：高级知识库搜索，支持更多搜索条件和排序方式  
+**请求体**：
+
+```json
+{
+  "keyword": "南开大学",
+  "title": "校史",
+  "content": "张伯苓",
+  "author": "南开百科",
+  "start_time": "2023-01-01T00:00:00",
+  "end_time": "2023-12-31T23:59:59", 
+  "limit": 10,
+  "include_content": false,
+  "tables": ["wxapp_posts", "website_nku"],
+  "sort_by": "time_desc"
+}
+```
+
+**请求参数说明**：
+- `keyword` - 字符串，可选，搜索关键词（标题和内容）
+- `title` - 字符串，可选，标题关键词
+- `content` - 字符串，可选，内容关键词
+- `author` - 字符串，可选，作者关键词
+- `start_time` - 字符串，可选，开始时间（ISO格式）
+- `end_time` - 字符串，可选，结束时间（ISO格式）
+- `limit` - 整数，可选，默认10，最大50，返回结果数量限制
+- `include_content` - 布尔值，可选，默认false，是否包含完整内容
+- `tables` - 字符串数组，可选，要搜索的表名列表，同普通搜索
+- `sort_by` - 字符串，可选，排序方式：
+  - `relevance` - 按相关度排序（默认）
+  - `time_desc` - 按时间降序（最新的在前）
+  - `time_asc` - 按时间升序（最早的在前）
+  - `likes` - 按点赞数排序
+  - `views` - 按浏览量排序
+
+**说明**：
+- 至少需要指定一个搜索条件（keyword, title, content, author中至少一个）
+- 如果同时指定多个条件，它们之间是"与"的关系
+- 当不指定关键词但指定排序方式时，相关度默认为0.5以保证结果有序
+- 响应格式与普通搜索相同，但排序方式可能不同
+
+**响应**：
+与普通知识库搜索接口相同的响应格式
+
+**错误码**：
+- `400` - 请求参数错误（如不支持的表名）
+- `422` - 请求验证失败（如无有效搜索条件或时间范围错误）
+- `500` - 服务器内部错误
+
+**示例**：
+
+按时间降序查询请求：
+```bash
+curl -X POST "http://localhost:8001/api/agent/search/advanced" \
+  -H "Content-Type: application/json" \
+  -d '{"keyword": "南开大学", "limit": 10, "tables": ["wxapp_posts", "website_nku"], "sort_by": "time_desc"}'
+```
+
+多条件查询请求：
+```bash
+curl -X POST "http://localhost:8001/api/agent/search/advanced" \
+  -H "Content-Type: application/json" \
+  -d '{"title": "校史", "author": "南开百科", "start_time": "2023-01-01T00:00:00", "limit": 5, "sort_by": "likes"}'
+```
+
+### 6.4 获取Agent状态
 
 **接口**：`GET /api/agent/status`  
 **描述**：获取Agent系统状态  
@@ -1805,3 +1932,294 @@ curl -N -X POST "http://localhost:8001/api/agent/chat" \
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
+
+### 智能搜索接口
+
+`POST /api/search`
+
+**请求参数**：
+```json
+{
+  "keyword": "南开",
+  "page": 1,
+  "page_size": 10,
+  "search_type": "all"
+}
+```
+
+**响应示例**：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "results": [
+      {
+        "post_id": 123,
+        "title": "南开大学简介",
+        "content": "南开大学是著名学府...",
+        "highlight_title": "南开...",
+        "highlight_content": "...大学是著名学府...",
+        "create_time": "2023-05-01 10:00:00",
+        "author": "张三",
+        "comment_count": 5
+      }
+    ],
+    "total": 15,
+    "current_page": 1
+  }
+}
+```
+
+**参数说明**：
+| 参数名 | 类型 | 必填 | 说明 |
+|--------|------|------|-----|
+| keyword | string | 是 | 搜索关键词，支持布尔模式 |
+| page | int | 否 | 页码，默认1 |
+| page_size | int | 否 | 每页数量（1-50），默认10 |
+| search_type | string | 否 | 搜索类型：all(默认)/post(仅文章)/comment(含评论的文章) |
+
+**搜索建议接口**：
+`GET /api/search/suggest?q=南开`
+
+**响应示例**：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    "南开大学简介",
+    "南开校园生活指南",
+    "南开校史"
+  ]
+}
+```
+
+**高级功能**：
+1. 支持高亮显示匹配片段（highlight_title/highlight_content）
+2. 支持多表联合搜索（wxapp_posts, website_nku等）
+3. 支持按时间范围、作者、分类等过滤
+4. 搜索结果自动分页，支持相关度/时间排序
+
+## 七、数据库MCP接口
+
+### 7.1 获取MCP清单
+
+**接口**：`GET /api/mcp`  
+**描述**：获取MCP（Model Context Protocol）清单，使用SSE格式返回工具列表  
+**返回**：Server-Sent Events (SSE) 流式响应，内容包括：
+
+1. 服务器信息事件
+```
+event: server_info
+data: {
+  "name": "nkuwiki-db-mcp",
+  "version": "1.0.0",
+  "capabilities": {
+    "methods": ["execute_sql", "show_tables", "describe_table", "query_table"],
+    "streaming": true,
+    "tools": true
+  },
+  "status": "ready",
+  "protocol_version": "2023-07-01"
+}
+```
+
+2. 会话创建事件
+```
+event: session_created
+data: {"session_id": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"}
+```
+
+3. 工具清单事件
+```
+event: manifest
+data: {
+  "type": "manifest",
+  "tools": [
+    {
+      "name": "execute_sql",
+      "description": "执行SQL查询并返回结果，仅支持SELECT语句",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "sql": {
+            "type": "string",
+            "description": "SQL查询语句(仅SELECT)"
+          },
+          "params": {
+            "type": "array",
+            "description": "查询参数列表",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["sql"]
+      }
+    },
+    {
+      "name": "show_tables",
+      "description": "显示数据库中所有表",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "describe_table",
+      "description": "显示表结构",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "description": "表名"
+          }
+        },
+        "required": ["table_name"]
+      }
+    },
+    {
+      "name": "query_table",
+      "description": "查询指定表的数据",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "table_name": {
+            "type": "string",
+            "description": "表名"
+          },
+          "conditions": {
+            "type": "object",
+            "description": "查询条件，字段名和值的映射"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "返回结果数量限制，默认20"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "分页偏移量，默认0"
+          },
+          "order_by": {
+            "type": "string",
+            "description": "排序方式，例如'id DESC'"
+          }
+        },
+        "required": ["table_name"]
+      }
+    }
+  ]
+}
+```
+
+4. 心跳事件（每15秒发送一次）
+```
+event: heartbeat
+data: {"timestamp": 1717027452.123456}
+```
+
+### 7.2 执行JSON-RPC调用
+
+**接口**：`POST /api/mcp/jsonrpc`  
+**描述**：通过JSON-RPC调用MCP工具，提供标准JSON-RPC 2.0接口  
+**请求体**：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "request-id-123",
+  "method": "execute_sql",
+  "params": {
+    "sql": "SELECT * FROM wxapp_posts LIMIT 5",
+    "params": []
+  }
+}
+```
+
+**响应**：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "request-id-123",
+  "result": {
+    "result": [
+      {"id": 1, "title": "帖子标题", "content": "帖子内容", "...": "..."},
+      {"id": 2, "title": "帖子标题2", "content": "帖子内容2", "...": "..."}
+    ],
+    "row_count": 2,
+    "sql": "SELECT * FROM wxapp_posts LIMIT 5"
+  }
+}
+```
+
+**错误响应**：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": "request-id-123",
+  "error": {
+    "code": -32600,
+    "message": "安全限制：只允许SELECT查询"
+  }
+}
+```
+
+**错误码**：
+- `-32700` - 无效的JSON请求
+- `-32600` - 参数验证错误
+- `-32601` - 未知方法
+- `-32602` - 非法参数
+- `-32603` - 内部错误
+
+**支持的JSON-RPC方法**：
+- `listOfferings` - 返回可用工具列表
+- `execute_sql` - 执行SQL查询（仅SELECT）
+- `show_tables` - 显示所有表
+- `describe_table` - 显示表结构
+- `query_table` - 查询表数据
+
+### 7.3 工具调用接口
+
+**接口**：`POST /api/mcp/tool`  
+**描述**：调用MCP工具（旧版接口，保留兼容性）  
+**请求体**：
+
+```json
+{
+  "tool": "execute_sql",
+  "parameters": {
+    "sql": "SELECT * FROM wxapp_posts LIMIT 5",
+    "params": []
+  }
+}
+```
+
+**响应**：
+
+```json
+{
+  "result": [
+    {"id": 1, "title": "帖子标题", "content": "帖子内容", "...": "..."},
+    {"id": 2, "title": "帖子标题2", "content": "帖子内容2", "...": "..."}
+  ],
+  "row_count": 2
+}
+```
+
+**错误响应**：
+
+```json
+{
+  "error": "安全限制：只允许SELECT查询"
+}
+```
+
+**支持的工具**：
+- `execute_sql` - 执行SQL查询
+- `show_tables` - 显示所有表
+- `describe_table` - 显示表结构
+- `query_table` - 查询表数据
