@@ -7,8 +7,9 @@ from core.bridge.reply import Reply
 from core.bridge.context import Context
 from core.agent.agent import Agent
 from core.agent.gemini.google_gemini_session import GoogleGeminiSessionManager
-from core.utils.common import singleton_decorator
-from loguru import logger
+from core.utils import singleton_decorator
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.gemini")
 
 @singleton_decorator
 class GoogleGeminiAgent(Agent):

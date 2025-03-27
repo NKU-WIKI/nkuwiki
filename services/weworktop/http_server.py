@@ -3,10 +3,12 @@
 """
 import json
 import asyncio
-from loguru import logger
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import PlainTextResponse
 import uvicorn
+from core.utils.logger import register_logger
+
+logger = register_logger("services.weworktop.http")
 
 class WeWorkTopServer:
     """企业微信自建应用HTTP服务器"""

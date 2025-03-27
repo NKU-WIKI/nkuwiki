@@ -1,95 +1,113 @@
 """
-加载模块，负责数据加载和索引构建
+加载模块，负责数据库操作和配置加载
 """
+import time
+import os
+import warnings
+from typing import Dict, Any, List, Optional, Union
 
-import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from etl import *
+# 明确导入etl模块中需要的内容
+from etl import etl_logger, config, DATA_PATH
+from core.utils.logger import register_logger
 
+# 创建模块专用日志记录器
+load_logger = register_logger("etl.load")
 
-import mysql.connector
-from mysql.connector import pooling
+# 导入新的数据库核心模块
+from etl.load import db_core
 
-# 连接池对象
-conn_pool = None
+# 从新的连接池管理模块导入所需功能
+try:
+    from etl.load.db_pool_manager import (
+        get_pool_stats as _get_pool_stats,
+        get_db_connection as _get_db_connection,
+        resize_pool_if_needed,
+        cleanup_pool as _cleanup_pool
+    )
+except ImportError:
+    load_logger.warning("无法导入db_pool_manager模块，连接池功能将不可用")
+    _get_pool_stats = lambda: {"error": "连接池管理模块未加载"}
+    _get_db_connection = None
+    resize_pool_if_needed = lambda force_size=None: None
+    _cleanup_pool = lambda: None
 
-# 创建加载模块专用logger
-load_logger = logger.bind(module="load")
-log_path = LOG_PATH / "load.log"
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
-)
-
-
-def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
-    """获取MySQL数据库连接
-    
-    Args:
-        use_database: 是否连接到特定数据库，False仅连接MySQL服务器
-        
-    Returns:
-        数据库连接对象
+# 为了向后兼容，提供相同的函数接口
+def get_conn():
     """
-    global conn_pool
+    获取数据库连接
     
-    params = {
-        'host': DB_HOST,
-        'port': DB_PORT,
-        'user': DB_USER,  # 使用配置文件中的用户
-        'password': DB_PASSWORD,
-        'charset': 'utf8mb4',
-        'autocommit': True,
-        'use_pure': True,  # 使用纯Python实现
-        'connection_timeout': 10,  # 连接超时时间
-        'pool_size': 20,  # 增加连接池大小
-        'pool_name': 'nkuwiki_pool'
-    }
+    注意：此函数现返回上下文管理器而非直接连接对象
+    建议使用`with get_conn() as conn:`的形式
+    """
+    warnings.warn(
+        "get_conn()函数现返回上下文管理器，建议使用with语句",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    return db_core.get_connection()
+
+def close_conn():
+    """
+    关闭当前线程的数据库连接
     
-    if use_database:
-        params["database"] = DB_NAME  # 使用配置的数据库名
-        
-    # 尝试使用连接池
-    try:
-        if conn_pool is None:
-            # 创建连接池 
-            conn_pool = pooling.MySQLConnectionPool(**params)
-            load_logger.debug("MySQL连接池已创建")
-        
-        # 从连接池获取连接
-        return conn_pool.get_connection()
-    except Exception as e:
-        load_logger.warning(f"连接池获取连接失败: {str(e)}, 尝试直接连接")
-        # 如果连接池失败，直接创建连接
-        return mysql.connector.connect(**params)
+    注意：此函数现在是空操作，因为连接在上下文管理器退出时自动关闭
+    """
+    warnings.warn(
+        "close_conn()不再需要手动调用，连接会自动关闭",
+        DeprecationWarning,
+        stacklevel=2
+    )
+    pass  # 空操作，兼容旧代码
 
 def close_conn_pool():
-    """关闭MySQL连接池
-    
-    在应用程序退出前调用，确保所有数据库连接被正确释放
-    """
-    global conn_pool
-    
-    if conn_pool is not None:
-        try:
-            # MySQL Connector/Python的连接池没有直接关闭的方法
-            # 将连接池设为None，让Python的垃圾回收机制处理
-            conn_pool = None
-            load_logger.debug("MySQL连接池已释放")
-        except Exception as e:
-            load_logger.error(f"关闭MySQL连接池时出错: {str(e)}")
+    """关闭连接池，应用退出时调用"""
+    _cleanup_pool()
 
-# 定义导出的变量和函数
-__all__ = [
-    'os', 'sys', 'json', 'time', 'asyncio', 'Path', 'Dict', 'List','Tuple','tqdm',
-    'Optional', 'Any', 'Union', 'load_logger', 'datetime',
-    'defaultdict', 'get_conn', 'close_conn_pool', 'mysql','re','json','time',
-    # 路径配置
-    'BASE_PATH', 'RAW_PATH', 'INDEX_PATH', 'CACHE_PATH', 'QDRANT_PATH', 'LOG_PATH',
+def get_connection_stats():
+    """获取连接统计信息"""
+    return _get_pool_stats()
+
+# 重要：添加对db_core的导出和引用
+from etl.load.db_core import (
+    execute_query,
+    insert_record,
+    update_record,
+    delete_record,
+    get_record_by_id,
+    query_records,
+    count_records,
+    execute_custom_query,
+    batch_insert,
+    upsert_record,
+    get_all_tables,
+    get_table_structure,
     
-    'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME'
+    # 异步函数
+    async_query,
+    async_insert,
+    async_update,
+    async_get_by_id,
+    async_query_records
+)
+
+# 版本信息
+__version__ = "2.0.0"
+
+# 导出模块API
+__all__ = [
+    # 连接管理
+    'get_conn', 'close_conn', 'close_conn_pool', 'get_connection_stats',
+    'resize_pool_if_needed',
+    
+    # 基本数据库操作
+    'execute_query', 'insert_record', 'update_record', 'delete_record',
+    'get_record_by_id', 'query_records', 'count_records', 'execute_custom_query',
+    'batch_insert', 'upsert_record', 'get_all_tables', 'get_table_structure',
+    
+    # 异步函数
+    'async_query', 'async_insert', 'async_update', 'async_get_by_id',
+    'async_query_records',
+    
+    # 核心模块
+    'db_core'
 ]

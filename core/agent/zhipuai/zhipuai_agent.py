@@ -4,13 +4,14 @@
 import json
 import time
 import requests
-from loguru import logger
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.zhipuai")
 from config import Config
 from core.bridge.reply import Reply
 from core.bridge.context import Context
 from core.agent.agent import Agent
 from core.agent.zhipuai.zhipu_ai_session import ZhipuAISession
-from core.utils.common import singleton_decorator
+from core.utils import singleton_decorator
 
 
 @singleton_decorator

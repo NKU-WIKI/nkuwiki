@@ -1,0 +1,1578 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>南开Wiki API文档 | 南开WIKI</title>
+    <meta name="description" content="- **2023-03-26**: 增加RAG（检索增强生成）相关接口（8.4-8.5），添加suggested_questions字段到返回结果" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="wiki-api">南开Wiki API文档</h1>
+<h2 id="_1">更新记录</h2>
+<ul>
+<li><strong>2023-03-26</strong>: 增加RAG（检索增强生成）相关接口（8.4-8.5），添加suggested_questions字段到返回结果</li>
+<li><strong>2024-03-27</strong>: 更新API路径，添加"api/"前缀；移除已废除的MySQL接口</li>
+</ul>
+<p>本文档包含南开Wiki平台的所有API接口，主要分为两类：
+1. 微信小程序API：提供给微信小程序客户端使用的API
+2. Agent智能体API：提供AI聊天和知识检索功能</p>
+<h2 id="_2">接口前缀</h2>
+<p>所有API都有对应的前缀路径：
+- 微信小程序API：<code>/api/wxapp/*</code>
+- Agent智能体API：<code>/api/agent/*</code></p>
+<p>如，用户接口的完整路径为 <code>/api/wxapp/users/me</code></p>
+<h2 id="_3">后端响应标准格式：</h2>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;key1&quot;</span><span class="p">:</span><span class="w"> </span><span class="err">value</span><span class="mi">1</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_4">一、用户接口</h2>
+<h3 id="11">1.1 同步微信云用户</h3>
+<p><strong>接口</strong>：<code>POST /api/wxapp/users/sync</code><br />
+<strong>描述</strong>：同步微信用户信息到服务器数据库<br />
+<strong>请求头</strong>：
+- <code>X-Cloud-Source</code> - 可选，标记来源
+- <code>X-Prefer-Cloud-ID</code> - 可选，标记优先使用云ID</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信用户唯一标识&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;unionid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信开放平台唯一标识（可选）&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称（可选）&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;头像URL（可选）&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;gender&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;country&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;国家（可选）&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;province&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;省份（可选）&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;city&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;城市（可选）&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;语言（可选）&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;university&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;login_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wechat&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10001</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信用户唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unionid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信开放平台唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;gender&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;country&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;国家&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;province&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;省份&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;city&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;城市&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;语言&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;token_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;likes_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorites_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;followers_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;following_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;last_login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="12">1.2 获取用户信息</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/users/{openid}</code><br />
+<strong>描述</strong>：获取指定用户的信息<br />
+<strong>参数</strong>：
+- <code>openid</code> - 路径参数，用户openid</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信用户唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unionid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信开放平台唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;gender&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;country&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;国家&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;province&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;省份&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;city&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;城市&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;语言&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;token_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;likes_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorites_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;followers_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;following_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;last_login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="13">1.3 获取当前用户信息</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/users/me</code><br />
+<strong>描述</strong>：获取当前登录用户的信息<br />
+<strong>参数</strong>：
+- <code>openid</code> - 查询参数，用户openid</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信用户唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unionid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信开放平台唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;gender&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;country&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;国家&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;province&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;省份&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;city&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;城市&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;语言&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;token_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;likes_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorites_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;followers_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;following_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;last_login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="14">1.4 查询用户列表</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/users</code><br />
+<strong>描述</strong>：获取用户列表<br />
+<strong>参数</strong>：
+- <code>limit</code> - 查询参数，返回记录数量限制，默认20，最大100
+- <code>offset</code> - 查询参数，分页偏移量，默认0
+- <code>status</code> - 查询参数，用户状态：1-正常，0-禁用，可选
+- <code>order_by</code> - 查询参数，排序方式，默认"create_time DESC"</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信用户唯一标识&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;unionid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信开放平台唯一标识&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;头像URL&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;gender&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;country&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;国家&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;province&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;省份&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;city&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;城市&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;语言&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;token_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;likes_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;favorites_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;followers_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;following_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;last_login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="15">1.5 更新用户信息</h3>
+<p><strong>接口</strong>：<code>PUT /api/wxapp/users/{openid}</code><br />
+<strong>描述</strong>：更新用户信息<br />
+<strong>参数</strong>：
+- <code>openid</code> - 路径参数，用户openid</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新昵称&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新头像URL&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;gender&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;country&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新国家&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;province&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新省份&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;city&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新城市&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新语言&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信用户唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unionid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;微信开放平台唯一标识&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;gender&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;country&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新国家&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;province&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新省份&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;city&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新城市&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;language&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新语言&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;token_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;likes_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorites_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;followers_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;following_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:30:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;last_login&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="16">1.6 删除用户</h3>
+<p><strong>接口</strong>：<code>DELETE /api/wxapp/users/{openid}</code><br />
+<strong>描述</strong>：删除用户（标记删除）<br />
+<strong>参数</strong>：
+- <code>openid</code> - 路径参数，用户openid</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户已删除&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_5">二、帖子接口</h2>
+<h3 id="21">2.1 创建帖子</h3>
+<p><strong>接口</strong>：<code>POST /api/wxapp/posts</code><br />
+<strong>描述</strong>：创建新帖子<br />
+<strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发布用户openid&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子标题&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;标签1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;标签2&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;category_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;位置信息&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发布用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子标题&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;标签1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;标签2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;category_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;位置信息&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;view_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;comment_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorite_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;favorite_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="22">2.2 获取帖子详情</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/posts/{post_id}</code><br />
+<strong>描述</strong>：获取指定帖子的详情<br />
+<strong>参数</strong>：
+- <code>post_id</code> - 路径参数，帖子ID
+- <code>update_view</code> - 查询参数，是否更新浏览量，默认true</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发布用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子标题&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;标签1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;标签2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;category_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;位置信息&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;view_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;comment_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorite_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;favorite_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="23">2.3 查询帖子列表</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/posts</code><br />
+<strong>描述</strong>：获取帖子列表<br />
+<strong>参数</strong>：
+- <code>limit</code> - 查询参数，返回记录数量限制，默认20，最大100
+- <code>offset</code> - 查询参数，分页偏移量，默认0
+- <code>openid</code> - 查询参数，按用户openid筛选，可选
+- <code>category_id</code> - 查询参数，按分类ID筛选，可选
+- <code>tag</code> - 查询参数，按标签筛选，可选
+- <code>status</code> - 查询参数，帖子状态：1-正常，0-禁用，默认1
+- <code>order_by</code> - 查询参数，排序方式，默认"update_time DESC"</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;posts&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发布用户openid&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子标题&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子内容&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;标签1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;标签2&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;category_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;位置信息&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;view_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;comment_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;favorite_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;用户openid1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid2&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid3&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid4&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid5&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;favorite_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">        </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">100</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="24">2.4 更新帖子</h3>
+<p><strong>接口</strong>：<code>PUT /api/wxapp/posts/{post_id}</code><br />
+<strong>描述</strong>：更新帖子信息<br />
+<strong>参数</strong>：
+- <code>post_id</code> - 路径参数，帖子ID</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新标题&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;新图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;新图片URL2&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;新标签1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;新标签2&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;category_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新位置信息&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发布用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新标题&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;新图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;新图片URL2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;tags&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;新标签1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;新标签2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;category_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;location&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新位置信息&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span><span class="w"> </span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;view_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;comment_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorite_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;用户openid1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid2&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid3&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid4&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid5&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;favorite_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 13:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="25">2.5 删除帖子</h3>
+<p><strong>接口</strong>：<code>DELETE /api/wxapp/posts/{post_id}</code><br />
+<strong>描述</strong>：删除帖子（标记删除）<br />
+<strong>参数</strong>：
+- <code>post_id</code> - 路径参数，帖子ID</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子已删除&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="26">2.6 点赞/取消点赞帖子</h3>
+<p><strong>接口</strong>：<code>POST /api/wxapp/posts/{post_id}/like</code><br />
+<strong>描述</strong>：点赞或取消点赞帖子<br />
+<strong>参数</strong>：
+- <code>post_id</code> - 路径参数，帖子ID
+- <code>openid</code> - 查询参数，用户openid</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;点赞成功&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">6</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="27">2.7 收藏/取消收藏帖子</h3>
+<p><strong>接口</strong>：<code>POST /api/wxapp/posts/{post_id}/favorite</code><br />
+<strong>描述</strong>：收藏或取消收藏帖子<br />
+<strong>参数</strong>：
+- <code>post_id</code> - 路径参数，帖子ID
+- <code>openid</code> - 查询参数，用户openid</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;is_favorite&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;收藏成功&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorite&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;favorite_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_6">三、评论接口</h2>
+<h3 id="31">3.1 创建评论</h3>
+<p><strong>接口</strong>：<code>POST /api/wxapp/comments</code><br />
+<strong>描述</strong>：创建新评论<br />
+<strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论用户openid&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;post_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;parent_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;post_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;parent_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="32">3.2 获取评论详情</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/comments/{comment_id}</code><br />
+<strong>描述</strong>：获取指定评论的详情<br />
+<strong>参数</strong>：
+- <code>comment_id</code> - 路径参数，评论ID</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;post_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;parent_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;用户openid1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid2&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid3&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;replies&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[],</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="33">3.3 获取帖子评论列表</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/posts/{post_id}/comments</code><br />
+<strong>描述</strong>：获取指定帖子的评论列表<br />
+<strong>参数</strong>：
+- <code>post_id</code> - 路径参数，帖子ID
+- <code>parent_id</code> - 查询参数，父评论ID，可选（为null时获取一级评论）
+- <code>limit</code> - 查询参数，返回记录数量限制，默认20，最大100
+- <code>offset</code> - 查询参数，分页偏移量，默认0
+- <code>sort_by</code> - 查询参数，排序方式，默认"latest"(latest-最新, oldest-最早, likes-最多点赞)</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;comments&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论用户openid&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;post_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论内容&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;parent_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;用户openid1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid2&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid3&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;reply_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;reply_preview&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">          </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;回复用户openid&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;回复用户昵称&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;回复用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;回复内容&quot;</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:30:00&quot;</span>
+<span class="w">          </span><span class="p">}</span>
+<span class="w">        </span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">50</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;post_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;parent_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="34">3.4 更新评论</h3>
+<p><strong>接口</strong>：<code>PUT /api/wxapp/comments/{comment_id}</code><br />
+<strong>描述</strong>：更新评论信息<br />
+<strong>参数</strong>：
+- <code>comment_id</code> - 路径参数，评论ID</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新评论内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户昵称&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户头像URL&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;post_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;新评论内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;parent_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked_users&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;用户openid1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid2&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;用户openid3&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 13:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="35">3.5 删除评论</h3>
+<p><strong>接口</strong>：<code>DELETE /api/wxapp/comments/{comment_id}</code><br />
+<strong>描述</strong>：删除评论（标记删除）<br />
+<strong>参数</strong>：
+- <code>comment_id</code> - 路径参数，评论ID
+- <code>openid</code> - 查询参数，用户openid，用于权限验证，可选</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;评论已删除&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="36">3.6 点赞评论</h3>
+<p><strong>接口</strong>：<code>PUT /api/wxapp/comments/{comment_id}/like</code><br />
+<strong>描述</strong>：点赞或取消点赞评论<br />
+<strong>参数</strong>：
+- <code>comment_id</code> - 路径参数，评论ID</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户openid&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;点赞成功&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;liked&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;like_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">4</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_7">四、通知接口</h2>
+<h3 id="41">4.1 获取用户通知列表</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/users/{openid}/notifications</code><br />
+<strong>描述</strong>：获取用户的通知列表<br />
+<strong>参数</strong>：
+- <code>openid</code> - 路径参数，用户openid
+- <code>type</code> - 查询参数，通知类型：system-系统通知, like-点赞, comment-评论, follow-关注，可选
+- <code>is_read</code> - 查询参数，是否已读：true-已读, false-未读，可选
+- <code>limit</code> - 查询参数，返回记录数量限制，默认20，最大100
+- <code>offset</code> - 查询参数，分页偏移量，默认0</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;notifications&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;接收者用户openid&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;通知标题&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;通知内容&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;comment&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;is_read&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;sender_openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发送者openid&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;sender&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发送者openid&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;nick_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发送者昵称&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;avatar&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发送者头像&quot;</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;related_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;123&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;related_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;post&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;unread&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="42">4.2 获取通知详情</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/notifications/{notification_id}</code><br />
+<strong>描述</strong>：获取通知详情<br />
+<strong>参数</strong>：
+- <code>notification_id</code> - 路径参数，通知ID</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;接收者用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;通知标题&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;通知内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;comment&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_read&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sender_openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发送者openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;related_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;123&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;related_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;post&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="43">4.3 标记通知为已读</h3>
+<p><strong>接口</strong>：<code>PUT /api/wxapp/notifications/{notification_id}</code><br />
+<strong>描述</strong>：标记单个通知为已读<br />
+<strong>参数</strong>：
+- <code>notification_id</code> - 路径参数，通知ID</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;is_read&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;接收者用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;通知标题&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;通知内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;comment&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_read&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sender_openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;发送者openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;related_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;123&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;related_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;post&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:30:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="44">4.4 批量标记通知为已读</h3>
+<p><strong>接口</strong>：<code>PUT /api/wxapp/users/{openid}/notifications/read</code><br />
+<strong>描述</strong>：标记用户所有或指定通知为已读<br />
+<strong>参数</strong>：
+- <code>openid</code> - 路径参数，用户openid</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;notification_ids&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span><span class="w"> </span><span class="mi">3</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;已将5条通知标记为已读&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="45">4.5 删除通知</h3>
+<p><strong>接口</strong>：<code>DELETE /api/wxapp/notifications/{notification_id}</code><br />
+<strong>描述</strong>：删除通知（标记删除）<br />
+<strong>参数</strong>：
+- <code>notification_id</code> - 路径参数，通知ID</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;通知已删除&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_8">五、反馈接口</h2>
+<h3 id="51">5.1 提交反馈</h3>
+<p><strong>接口</strong>：<code>POST /api/wxapp/feedback</code><br />
+<strong>描述</strong>：提交意见反馈<br />
+<strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户openid&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;反馈内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bug&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;contact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;联系方式&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;device_info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;设备型号&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;system&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;操作系统&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;平台&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;反馈内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bug&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;contact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;联系方式&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;device_info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;设备型号&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;system&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;操作系统&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;平台&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pending&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;admin_reply&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="52">5.2 获取用户反馈列表</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/users/{openid}/feedback</code><br />
+<strong>描述</strong>：获取用户的反馈列表<br />
+<strong>参数</strong>：
+- <code>openid</code> - 路径参数，用户openid
+- <code>type</code> - 查询参数，反馈类型：bug-问题反馈, suggestion-建议, other-其他，可选
+- <code>status</code> - 查询参数，反馈状态：pending-待处理, processing-处理中, resolved-已解决, rejected-已拒绝，可选
+- <code>limit</code> - 查询参数，返回记录数量限制，默认20，最大100
+- <code>offset</code> - 查询参数，分页偏移量，默认0</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;feedback_list&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户openid&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;反馈内容&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bug&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;contact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;联系方式&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">        </span><span class="nt">&quot;device_info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;设备型号&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;system&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;操作系统&quot;</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;平台&quot;</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;pending&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;admin_reply&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;total&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">20</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;offset&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="53">5.3 获取反馈详情</h3>
+<p><strong>接口</strong>：<code>GET /api/wxapp/feedback/{feedback_id}</code><br />
+<strong>描述</strong>：获取反馈详情<br />
+<strong>参数</strong>：
+- <code>feedback_id</code> - 路径参数，反馈ID</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;反馈内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bug&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;contact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;联系方式&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;device_info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;设备型号&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;system&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;操作系统&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;平台&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;resolved&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;admin_reply&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;管理员回复内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 13:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="54">5.4 更新反馈</h3>
+<p><strong>接口</strong>：<code>PUT /api/wxapp/feedback/{feedback_id}</code><br />
+<strong>描述</strong>：更新反馈信息<br />
+<strong>参数</strong>：
+- <code>feedback_id</code> - 路径参数，反馈ID</p>
+<p><strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;更新的反馈内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;resolved&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;admin_reply&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;管理员回复内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;用户openid&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;更新的反馈内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;bug&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;contact&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;联系方式&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;images&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;图片URL1&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;图片URL2&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;device_info&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;model&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;设备型号&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;system&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;操作系统&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;平台&quot;</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;resolved&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;admin_reply&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;管理员回复内容&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;create_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 12:00:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;update_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2023-01-01 13:30:00&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;platform&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;wxapp&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;is_deleted&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;extra&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="55">5.5 删除反馈</h3>
+<p><strong>接口</strong>：<code>DELETE /api/wxapp/feedback/{feedback_id}</code><br />
+<strong>描述</strong>：删除反馈（标记删除）<br />
+<strong>参数</strong>：
+- <code>feedback_id</code> - 路径参数，反馈ID</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;success&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;反馈已删除&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_9">六、错误代码</h2>
+<table>
+<thead>
+<tr>
+<th>状态码</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>200</td>
+<td>成功</td>
+</tr>
+<tr>
+<td>400</td>
+<td>请求参数错误</td>
+</tr>
+<tr>
+<td>401</td>
+<td>未授权，需要登录</td>
+</tr>
+<tr>
+<td>403</td>
+<td>禁止访问，无权限</td>
+</tr>
+<tr>
+<td>404</td>
+<td>资源不存在</td>
+</tr>
+<tr>
+<td>429</td>
+<td>请求过于频繁</td>
+</tr>
+<tr>
+<td>500</td>
+<td>服务器内部错误</td>
+</tr>
+<tr>
+<td>502</td>
+<td>网关错误</td>
+</tr>
+<tr>
+<td>503</td>
+<td>服务不可用</td>
+</tr>
+<tr>
+<td>504</td>
+<td>网关超时</td>
+</tr>
+</tbody>
+</table>
+<h2 id="agentapi">七、Agent智能体API</h2>
+<h3 id="81-agent">8.1 与Agent对话</h3>
+<p><strong>接口</strong>：<code>POST /api/agent/chat</code><br />
+<strong>描述</strong>：与AI智能体进行对话<br />
+<strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学的校训是什么？&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;history&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;你好&quot;</span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span><span class="nt">&quot;role&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;assistant&quot;</span><span class="p">,</span><span class="w"> </span><span class="nt">&quot;content&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;你好！我是南开Wiki智能助手，有什么可以帮助你的吗？&quot;</span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;stream&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user_openid&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学的校训是&quot;</span><span class="err">允公允能，日新月异</span><span class="s2">&quot;。这八个字出自《论语》，体现了南开大学追求公能日新的办学理念。&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学简介&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://nku.wiki/intro&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;snippet&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学校训为&quot;</span><span class="err">允公允能，日新月异</span><span class="s2">&quot;，出自《论语》...&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;suggested_questions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;南开大学的校徽有什么含义？&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;南开大学是什么时候创立的？&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;南开大学的创始人是谁？&quot;</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="82">8.2 知识库搜索</h3>
+<p><strong>接口</strong>：<code>POST /api/agent/search</code><br />
+<strong>描述</strong>：搜索知识库内容<br />
+<strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;keyword&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学历史&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;limit&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学校史&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://nku.wiki/history&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;snippet&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学创建于1919年，由著名爱国教育家张伯苓先生创办...&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.95</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学百年校庆&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;url&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;https://nku.wiki/100years&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;snippet&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;2019年，南开大学迎来百年华诞...&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;score&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.85</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="83-agent">8.3 获取Agent状态</h3>
+<p><strong>接口</strong>：<code>GET /api/agent/status</code><br />
+<strong>描述</strong>：获取Agent系统状态  </p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0.0&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;capabilities&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;chat&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;search&quot;</span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;formats&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;html&quot;</span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="84-rag">8.4 检索增强生成 (RAG)</h3>
+<p><strong>接口</strong>：<code>POST /api/agent/rag</code><br />
+<strong>描述</strong>：从知识库中检索相关信息，并结合大语言模型生成回答<br />
+<strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学历史&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;tables&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;wxapp_posts&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;wechat_nku&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;max_results&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;stream&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user_openid&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>请求参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数名</th>
+<th>类型</th>
+<th>必填</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>query</td>
+<td>string</td>
+<td>是</td>
+<td>-</td>
+<td>用户查询问题</td>
+</tr>
+<tr>
+<td>tables</td>
+<td>array</td>
+<td>否</td>
+<td>["wxapp_posts"]</td>
+<td>要检索的表名列表</td>
+</tr>
+<tr>
+<td>max_results</td>
+<td>int</td>
+<td>否</td>
+<td>5</td>
+<td>每个表返回的最大结果数</td>
+</tr>
+<tr>
+<td>stream</td>
+<td>bool</td>
+<td>否</td>
+<td>false</td>
+<td>是否流式返回</td>
+</tr>
+<tr>
+<td>format</td>
+<td>string</td>
+<td>否</td>
+<td>"markdown"</td>
+<td>回复格式: markdown/text/html</td>
+</tr>
+<tr>
+<td>openid</td>
+<td>string</td>
+<td>否</td>
+<td>null</td>
+<td>用户唯一标识</td>
+</tr>
+</tbody>
+</table>
+<p><strong>可用的表名列表</strong>：
+- <code>wxapp_posts</code>: 小程序帖子
+- <code>wxapp_comments</code>: 小程序评论
+- <code>wxapp_users</code>: 小程序用户
+- <code>wechat_nku</code>: 微信公众号文章
+- <code>website_nku</code>: 南开网站文章
+- <code>market_nku</code>: 校园集市帖子</p>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学创建于1919年，由著名爱国教育家张伯苓和严修创办...&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学创办历史&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;item_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">123</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开百科&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;suggested_questions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;南开大学的校训是什么？&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;南开大学有哪些著名校友？&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;南开大学的学科设置有哪些？&quot;</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;retrieved_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;response_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.518</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="85-rag2">8.5 增强版检索增强生成 (RAG2)</h3>
+<p><strong>接口</strong>：<code>POST /api/agent/rag2</code><br />
+<strong>描述</strong>：使用查询改写和两阶段处理的增强版RAG接口<br />
+<strong>请求体</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;怎样申请奖学金&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;tables&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;wxapp_posts&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;wechat_nku&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;max_results&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;stream&quot;</span><span class="p">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;openid&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;user_openid&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;query_bot_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;rewriter&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;flash_bot_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;flash&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<p><strong>请求参数说明</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数名</th>
+<th>类型</th>
+<th>必填</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>query</td>
+<td>string</td>
+<td>是</td>
+<td>-</td>
+<td>用户查询问题</td>
+</tr>
+<tr>
+<td>tables</td>
+<td>array</td>
+<td>否</td>
+<td>["wxapp_posts"]</td>
+<td>要检索的表名列表</td>
+</tr>
+<tr>
+<td>max_results</td>
+<td>int</td>
+<td>否</td>
+<td>5</td>
+<td>每个表返回的最大结果数</td>
+</tr>
+<tr>
+<td>stream</td>
+<td>bool</td>
+<td>否</td>
+<td>false</td>
+<td>是否流式返回</td>
+</tr>
+<tr>
+<td>format</td>
+<td>string</td>
+<td>否</td>
+<td>"markdown"</td>
+<td>回复格式: markdown/text/html</td>
+</tr>
+<tr>
+<td>openid</td>
+<td>string</td>
+<td>否</td>
+<td>null</td>
+<td>用户唯一标识</td>
+</tr>
+<tr>
+<td>query_bot_id</td>
+<td>string</td>
+<td>否</td>
+<td>"rewriter"</td>
+<td>查询改写机器人ID</td>
+</tr>
+<tr>
+<td>flash_bot_id</td>
+<td>string</td>
+<td>否</td>
+<td>"flash"</td>
+<td>回答生成机器人ID</td>
+</tr>
+</tbody>
+</table>
+<p><strong>响应</strong>：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;code&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">200</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;message&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;success&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;data&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;在南开大学，申请奖学金的流程如下...&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学奖学金申请指南&quot;</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;item_id&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">456</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开学生处&quot;</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;suggested_questions&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">      </span><span class="s2">&quot;南开大学有哪些类型的奖学金？&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;奖学金申请的时间节点是什么？&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="s2">&quot;获得奖学金的条件有哪些？&quot;</span>
+<span class="w">    </span><span class="p">],</span>
+<span class="w">    </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;retrieved_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;original_query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;怎样申请奖学金&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;rewritten_query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;南开大学奖学金申请流程和要求&quot;</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">&quot;response_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.723</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

@@ -1,82 +1,83 @@
 """
-检索模块，负责文档检索和重排序
+检索模块，实现文档检索和重排功能
 """
-
-# 从根模块导入共享配置
 import sys
-from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from etl import *
-
-import numpy as np
 import torch
+import numpy as np
+from pathlib import Path
+from typing import List, Dict, Any, Union
 
-# 检索相关配置
-RE_ONLY = config.get('etl.retrieval.re_only', False)
-RERANK_FUSION_TYPE = config.get('etl.retrieval.rerank_fusion_type', 1)
-ANS_REFINE_TYPE = config.get('etl.retrieval.ans_refine_type', 0)
-REINDEX = config.get('etl.retrieval.reindex', False)
-RETRIEVAL_TYPE = config.get('etl.retrieval.retrieval_type', 3)
-F_TOPK = config.get('etl.retrieval.f_topk', 128)
-F_TOPK_1 = config.get('etl.retrieval.f_topk_1', 288)
-F_TOPK_2 = config.get('etl.retrieval.f_topk_2', 192)
-F_TOPK_3 = config.get('etl.retrieval.f_topk_3', 6)
-BM25_TYPE = config.get('etl.retrieval.bm25_type', 0)
+# 添加项目根目录到系统路径
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-# 重排配置
-R_TOPK = config.get('etl.reranker.r_topk', 6)
-R_TOPK_1 = config.get('etl.reranker.r_topk_1', 6)
-R_EMBED_BS = config.get('etl.reranker.r_embed_bs', 32)
-RERANKER_NAME = config.get('etl.reranker.name', "cross-encoder/stsb-distilroberta-base")
-R_USE_EFFICIENT = config.get('etl.reranker.r_use_efficient', 0)
-
-HYDE_ENABLED = config.get('etl.hyde.enabled', False)
-HYDE_MERGING = config.get('etl.hyde.merging', False)
-
-COMPRESS_METHOD = config.get('etl.compression.compress_method', "")
-COMPRESS_RATE = config.get('etl.compression.compress_rate', 0.5)
-
-# 本地LLM配置
-LOCAL_LLM_NAME = config.get('etl.local_llm_name', "")
-
-# Qdrant配置
-QDRANT_URL = config.get('etl.data.qdrant.url', 'http://localhost:6333')
-QDRANT_TIMEOUT = config.get('etl.data.qdrant.timeout', 30.0)
-COLLECTION_NAME = config.get('etl.data.qdrant.collection', 'main_index')
-VECTOR_SIZE = config.get('etl.data.qdrant.vector_size', 1024)
-
-# 创建检索模块专用logger
-retrieval_logger = logger.bind(module="retrieval")
-log_path = LOG_PATH / "retrieval.log"
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
+# 明确导入需要的内容
+from etl import (
+    config, DATA_PATH, COLLECTION_NAME, VECTOR_SIZE, 
+    QDRANT_URL, QDRANT_TIMEOUT
 )
 
-# 定义导出的变量和函数
+from core.utils.logger import register_logger
+
+# 创建模块专用日志记录器
+retrieval_logger = register_logger("etl.retrieval")
+
+# ---------- 检索配置 ----------
+# 是否只使用检索进行回答
+RE_ONLY = True
+
+# 混合检索的融合方式
+# 'reciprocal_rank_fusion' - 倒数排名融合
+# 'merge' - 简单合并
+RERANK_FUSION_TYPE = "reciprocal_rank_fusion"
+
+# 答案精炼方式
+# 'refine' - 逐步精炼
+# 'compact' - 紧凑精炼
+# 'tree_summarize' - 树状总结
+ANS_REFINE_TYPE = "refine"
+
+# 是否重建索引
+REINDEX = False
+
+# 检索类型
+# 'dense_retriever' - 稠密检索
+# 'hybrid_retriever' - 混合检索
+# 'sparse_retriever' - 稀疏检索
+RETRIEVAL_TYPE = "hybrid_retriever"
+
+# 检索TopK配置（不同召回器）
+F_TOPK_SPARSE = 6  # sparse召回数量
+F_TOPK_DENSE = 15  # dense召回数量
+F_TOPK_HYBRID = 15 # hybrid召回数量
+
+# ---------- 重排配置 ----------
+# 重排TopK
+R_TOPK = 5
+# 重排嵌入批大小
+R_EMBED_BS = 32
+# 重排模型名称（可选值：bge-reranker-large, bge-reranker-base, BAAI/bge-reranker-v2.5-large）
+RERANKER_NAME = "bge-reranker-base"
+
+# 本地LLM配置
+LOCAL_LLM_NAME = "mistral-7b-instruct-v0.2.Q4_K_M"
+LOCAL_LLM_PATH = "" # config.get("retrieval.local_llm_path", "")
+
+# 从子模块导入
+from etl.retrieval.retrievers import (
+    QdrantRetriever, BM25Retriever, HybridRetriever
+)
+from etl.retrieval.rerankers import (
+    SentenceTransformerRerank, LLMRerank
+)
+
+# 导出API
 __all__ = [
-    'os', 'sys', 'np', 'torch', 'json', 'Path', 'Dict', 'List', 'Optional', 
-    'Any', 'Union', 'Tuple', 'retrieval_logger', 'asyncio', 'defaultdict', 'datetime',
-    
-    # 路径配置
-    'BASE_PATH', 'INDEX_PATH', 'CACHE_PATH', 'QDRANT_PATH', 'LOG_PATH',
-    
-    # 检索配置
+    'retrieval_logger',
+    'COLLECTION_NAME', 'VECTOR_SIZE', 'QDRANT_URL', 'QDRANT_TIMEOUT',
     'RE_ONLY', 'RERANK_FUSION_TYPE', 'ANS_REFINE_TYPE', 'REINDEX', 'RETRIEVAL_TYPE',
-    'F_TOPK', 'F_TOPK_1', 'F_TOPK_2', 'F_TOPK_3', 'BM25_TYPE',
-    
-    # 重排配置
-    'R_TOPK', 'R_TOPK_1', 'R_EMBED_BS', 'RERANKER_NAME', 'R_USE_EFFICIENT',
-    
-    # LLM和Qdrant配置
-    'LOCAL_LLM_NAME', 'QDRANT_URL', 'QDRANT_TIMEOUT', 'COLLECTION_NAME', 'VECTOR_SIZE',
-    
-    # 重排配置
-    'HYDE_ENABLED', 'HYDE_MERGING',
-    
-    # 压缩配置
-    'COMPRESS_METHOD', 'COMPRESS_RATE'
+    'F_TOPK_SPARSE', 'F_TOPK_DENSE', 'F_TOPK_HYBRID',
+    'R_TOPK', 'R_EMBED_BS', 'RERANKER_NAME',
+    'LOCAL_LLM_NAME', 'LOCAL_LLM_PATH',
+    'QdrantRetriever', 'BM25Retriever', 'HybridRetriever',
+    'SentenceTransformerRerank', 'LLMRerank',
 ] 

@@ -14,7 +14,7 @@ from core.bridge.context import ContextType
 from core.bridge.reply import Reply, ReplyType
 from app import App
 from config import Config               
-from core.utils.common.token_bucket import TokenBucket
+from core.utils.rate_limit import TokenBucket
 
 
 

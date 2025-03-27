@@ -1,7 +1,8 @@
 from core.agent.session_manager import Session
-from app import App 
+from core.utils.logger import register_logger
+logger = register_logger('core.agent')
 from config import Config
-from core.utils.common import const
+from core.utils import const
 
 """
     e.g.  [
@@ -27,7 +28,7 @@ class ChatGPTSession(Session):
             precise = False
             if cur_tokens is None:
                 raise e
-            App().logger.debug("Exception when counting tokens precisely for query: {}".format(e))
+            logger.debug("Exception when counting tokens precisely for query: {}".format(e))
         while cur_tokens > max_tokens:
             if len(self.messages) > 2:
                 self.messages.pop(1)
@@ -39,10 +40,10 @@ class ChatGPTSession(Session):
                     cur_tokens = cur_tokens - max_tokens
                 break
             elif len(self.messages) == 2 and self.messages[1]["role"] == "user":
-                App().logger.warn("user message exceed max_tokens. total_tokens={}".format(cur_tokens))
+                logger.warning("user message exceed max_tokens. total_tokens={}".format(cur_tokens))
                 break
             else:
-                App().logger.debug("max_tokens={}, total_tokens={}, len(messages)={}".format(max_tokens, cur_tokens, len(self.messages)))
+                logger.debug("max_tokens={}, total_tokens={}, len(messages)={}".format(max_tokens, cur_tokens, len(self.messages)))
                 break
             if precise:
                 cur_tokens = self.calc_tokens()
@@ -71,7 +72,7 @@ def num_tokens_from_messages(messages, model):
     try:
         encoding = tiktoken.encoding_for_model(model)
     except KeyError:
-        App().logger.debug("Warning: model not found. Using cl100k_base encoding.")
+        logger.debug("Warning: model not found. Using cl100k_base encoding.")
         encoding = tiktoken.get_encoding("cl100k_base")
     if model == "gpt-3.5-turbo":
         tokens_per_message = 4  # every message follows <|start|>{role/name}\n{content}<|end|>\n
@@ -80,7 +81,7 @@ def num_tokens_from_messages(messages, model):
         tokens_per_message = 3
         tokens_per_name = 1
     else:
-        App().logger.warn(f"num_tokens_from_messages() is not implemented for model {model}. Returning num tokens assuming gpt-3.5-turbo.")
+        logger.warn(f"num_tokens_from_messages() is not implemented for model {model}. Returning num tokens assuming gpt-3.5-turbo.")
         return num_tokens_from_messages(messages, model="gpt-3.5-turbo")
     num_tokens = 0
     for message in messages:

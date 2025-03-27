@@ -1,85 +1,118 @@
 """
-agent factory
+Agent工厂模块，负责创建不同类型的智能体实例
 """
-import os
-import sys
-from loguru import logger
+from core.utils.logger import register_logger
 
-# 添加项目根目录到 sys.path
-current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if current_dir not in sys.path:
-    sys.path.append(current_dir)
+logger = register_logger("core.agent.factory")
 
-from core.utils.common import const
+from core.agent.agent import Agent
 
+class AgentFactory:
+    """智能体工厂类，负责创建和管理不同类型的智能体实例"""
+    
+    _instance_cache = {}  # 智能体实例缓存
+    
+    @classmethod
+    def get_agent(cls, agent_type: str, **kwargs) -> Agent:
+        """
+        获取智能体实例，优先从缓存获取，没有则创建新实例
+        
+        Args:
+            agent_type: 智能体类型，如coze、openai等
+            **kwargs: 附加参数
+            
+        Returns:
+            Agent: 智能体实例
+        """
+        if not agent_type:
+            logger.warning("未指定智能体类型，使用默认智能体")
+            agent_type = "coze"  # 默认使用coze
+            
+        agent_type = agent_type.lower()
+        
+        # 检查缓存
+        if agent_type in cls._instance_cache:
+            logger.debug(f"从缓存获取{agent_type}智能体")
+            return cls._instance_cache[agent_type]
+        
+        # 创建新实例
+        agent = create_agent(agent_type, **kwargs)
+        
+        # 缓存实例
+        cls._instance_cache[agent_type] = agent
+        
+        return agent
+    
+    @classmethod
+    def clear_cache(cls):
+        """清空智能体实例缓存"""
+        cls._instance_cache.clear()
 
-def create_agent(agent_type):
+def create_agent(agent_type: str = "coze", **kwargs) -> Agent:
     """
-    创建指定类型的智能体实例
-    :param agent_type: 智能体类型代码
-    :return: 智能体实例
+    创建智能体实例
+    
+    Args:
+        agent_type: 智能体类型，如coze、openai等
+        **kwargs: 附加参数
+        
+    Returns:
+        Agent: 智能体实例
     """
+    agent_type = agent_type.lower()
+   
     try:
-        if agent_type == const.HIAGENT:
-            from core.agent.hiagent.hiagent_agent import HiagentAgent
-            return HiagentAgent()
-        elif agent_type == const.COZE:
+        if agent_type == "coze":
             from core.agent.coze.coze_agent import CozeAgent
-            return CozeAgent()
-        elif agent_type == const.BAIDU:
-            from core.agent.baidu.baidu_wenxin import BaiduWenxinAgent
-            return BaiduWenxinAgent()
-        elif agent_type == const.CHATGPT:
+            tag = kwargs.get("tag", "default")
+            return CozeAgent(tag)
+        elif agent_type == "chatgpt":
             from core.agent.chatgpt.chat_gpt_agent import ChatGPTAgent
             return ChatGPTAgent()
-        elif agent_type == const.OPEN_AI:
-            from core.agent.openai.open_ai_agent import OpenAIAgent
-            return OpenAIAgent()
-        elif agent_type == const.CHATGPTONAZURE:
-            from core.agent.chatgpt.chat_gpt_agent import AzureChatGPTAgent
-            return AzureChatGPTAgent()
-        elif agent_type == const.LINKAI:
-            from core.agent.linkai.link_ai_agent import LinkAIAgent
-            return LinkAIAgent()
-        elif agent_type == const.XUNFEI:
-            from core.agent.xunfei.xunfei_spark_agent import XunFeiAgent
-            return XunFeiAgent()
-        elif agent_type == const.CLAUDEAPI:
-            from core.agent.claudeapi.claude_api_agent import ClaudeAPIAgent
-            return ClaudeAPIAgent()
-        elif agent_type == const.GEMINI:
-            from core.agent.gemini.google_gemini_agent import GoogleGeminiAgent
-            return GoogleGeminiAgent()
-        elif agent_type == const.DEEPSEEK:
-            from core.agent.deepseek.deepseek_agent import DeepSeekAgent
-            return DeepSeekAgent()
-        elif agent_type == const.BYTEDANCE_COZE:
-            from core.agent.bytedance.bytedance_coze_agent import ByteDanceCozeAgent
-            return ByteDanceCozeAgent()
-        elif agent_type == const.QWEN:
-            from core.agent.ali.ali_qwen_agent import AliQwenAgent
-            return AliQwenAgent()
-        elif agent_type == const.QWEN_DASHSCOPE:
-            from core.agent.dashscope.dashscope_agent import DashscopeAgent
-            return DashscopeAgent()
-        elif agent_type == const.ZHIPU_AI:
-            from core.agent.zhipuai.zhipuai_agent import ZHIPUAIAgent
-            return ZHIPUAIAgent()
-        elif agent_type == const.MOONSHOT:
-            from core.agent.moonshot.moonshot_agent import MoonshotAgent
-            return MoonshotAgent()
-        elif agent_type == const.MiniMax:
-            from core.agent.minimax.minimax_agent import MinimaxAgent
-            return MinimaxAgent()
-        elif agent_type == const.DIFY:
+        elif agent_type == "dify":
             from core.agent.dify.dify_agent import DifyAgent
             return DifyAgent()
+        elif agent_type == "openai":
+            from core.agent.openai.open_ai_agent import OpenAIAgent
+            return OpenAIAgent()
+        elif agent_type == "claude":
+            from core.agent.claudeapi.claude_api_agent import ClaudeAPIAgent
+            return ClaudeAPIAgent()
+        elif agent_type == "baidu":
+            from core.agent.baidu.baidu_wenxin import BaiduWenxin
+            return BaiduWenxin()
+        elif agent_type == "gemini":
+            from core.agent.gemini.google_gemini_agent import GoogleGeminiAgent
+            return GoogleGeminiAgent()
+        elif agent_type == "dashscope":
+            from core.agent.dashscope.dashscope_agent import DashscopeAgent
+            return DashscopeAgent()
+        elif agent_type == "zhipuai":
+            from core.agent.zhipuai.zhipuai_agent import ZhipuAIAgent
+            return ZhipuAIAgent()
+        elif agent_type == "tongyi":
+            from core.agent.ali.ali_qwen_agent import AliQwenAgent
+            return AliQwenAgent()
+        elif agent_type == "minimax":
+            from core.agent.minimax.minimax_agent import MinimaxAgent
+            return MinimaxAgent()
+        elif agent_type == "moonshot":
+            from core.agent.moonshot.moonshot_agent import MoonshotAgent
+            return MoonshotAgent()
+        elif agent_type == "deepseek":
+            from core.agent.deepseek.deepseek_agent import DeepseekAgent
+            return DeepseekAgent()
+        elif agent_type == "hiagent":
+            from core.agent.hiagent.hiagent_agent import HiAgentAgent
+            return HiAgentAgent()
+        elif agent_type == "xunfei":
+            from core.agent.xunfei.xunfei_spark_agent import XunfeiSparkAgent
+            return XunfeiSparkAgent()
         else:
-            logger.error(f"不支持的智能体类型: {agent_type}")
             raise ValueError(f"不支持的智能体类型: {agent_type}")
-    except ImportError as e:
-        logger.error(f"导入智能体模块失败: {e}")
-        raise ImportError(f"导入智能体模块失败，请确保安装了相应的依赖: {e}")
     except Exception as e:
-        logger.error(f"创建智能体实例失败: {e}")
-        raise RuntimeError(f"创建智能体实例失败: {e}")
+        logger.exception(e)
+        return Agent()
+
+# 导出工厂方法为模块级函数
+get_agent = AgentFactory.get_agent

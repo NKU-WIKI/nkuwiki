@@ -20,12 +20,8 @@ import requests
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
-from loguru import logger
 from typing import Dict, List, Any, Set, Union, Optional
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from config import Config
-# 导入配置
-config = Config()
 
 # ---------- 全局共享配置项 ----------
 # 基础路径配置
@@ -34,16 +30,24 @@ LOG_PATH = Path(__file__).resolve().parent / "logs"
 for path in [LOG_PATH]:
     path.mkdir(parents=True, exist_ok=True)
 
-# 设置日志目录
-LOG_PATH.mkdir(exist_ok=True, parents=True)
-logger.add(LOG_PATH / "core.log", rotation="1 day", retention="3 months", level="DEBUG")
+# 初始化核心日志
+from core.utils.logger import register_logger, logger
+# 注册core模块的日志记录器
+core_logger = register_logger("core")
+
+# 在初始化日志后再导入Config，避免循环导入
+from config import Config
+# 导入配置
+config = Config()
+
 # 版本信息
 __version__ = "1.0.0"
 
 # 定义导出的符号列表 
 __all__ = [
     # 基础库和工具
-    'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests','asyncio',
+    'os', 'sys', 'Path', 'logger', 'core_logger', 'config', 're', 'json', 'time', 'datetime', 
+    'Dict', 'List', 'Optional', 'Any', 'Set', 'datetime', 'timedelta', 'Union', 'requests', 'asyncio',
     # 路径配置
     'LOG_PATH'    
 ]

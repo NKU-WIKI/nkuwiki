@@ -6,13 +6,14 @@ import time  # noqa: F401
 import requests
 from typing import List, Tuple  # noqa: F401
 from requests import Response
-from loguru import logger  # noqa: F401
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.bytedance")
 from config import Config
 from core.bridge.reply import Reply, ReplyType
 from core.bridge.context import Context
 from core.agent.agent import Agent
 from core.agent.session_manager import Session, SessionManager
-from core.utils.common import singleton_decorator
+from core.utils import singleton_decorator
 
 
 class ByteDanceCozeSession(Session):

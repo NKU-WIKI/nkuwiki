@@ -6,7 +6,7 @@ import time
 import asyncio
 import threading
 from typing import List
-from loguru import logger
+from core.utils.logger import register_logger
 from config import Config
 from services.channel import Channel
 from services.chat_message import ChatMessage
@@ -15,6 +15,8 @@ from .weworktop_message import WeWorkTopMessage
 from .weworkapi_model import WeworkApiClient
 from core.bridge.bridge import Bridge
 from core.utils.voice import Voice
+
+logger = register_logger("services.weworktop")
 
 class WeWorkTopChannel(Channel):
     """企业微信自建应用通道"""

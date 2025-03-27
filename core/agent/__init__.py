@@ -3,19 +3,25 @@ agent模块，负责与大模型进行交互
 """
 # 从根模块导入共享配置
 import sys
+import json
+import time
+import requests
+from datetime import datetime
 from pathlib import Path
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from core import *
-from core.agent.agent import Agent
-# 创建agent模块专用logger
-agent_logger = logger.bind(module="agent")
-log_path = LOG_PATH / 'agent.log'
-log_format = "{time:YYYY-MM-DD HH:mm:ss} | {level} | {module} | {message}"
-logger.configure(
-    handlers=[
-        {"sink": sys.stdout, "format": log_format},
-        {"sink": log_path, "format": log_format, "rotation": "1 day", "retention": "3 months", "level": "INFO"},
-    ]
-)
 
-__all__ = ['agent_logger','config','Agent','requests','json','time','datetime','Path','logger','sys'] 
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from config import Config
+
+# 导入 Agent 类
+from core.agent.agent import Agent
+from core.utils.logger import register_logger
+from core.agent.agent_factory import get_agent
+
+# 配置引用
+config = Config()
+
+# 创建agent模块专用logger
+logger = register_logger("core.agent")
+logger.debug("core.agent模块初始化")
+
+__all__ = ['logger', 'config', 'Agent', 'get_agent', 'requests', 'json', 'time', 'datetime', 'Path', 'sys'] 

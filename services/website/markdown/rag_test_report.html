@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>RAG接口测试报告 | 南开WIKI</title>
+    <meta name="description" content="本报告记录了对南开Wiki RAG API接口的测试结果，测试内容包括基本功能验证、性能评估和错误处理能力。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="rag">RAG接口测试报告</h1>
+<h2 id="_1">测试概述</h2>
+<p>本报告记录了对南开Wiki RAG API接口的测试结果，测试内容包括基本功能验证、性能评估和错误处理能力。</p>
+<p>测试日期: 2025-03-24</p>
+<h2 id="_2">测试环境</h2>
+<ul>
+<li><strong>测试服务</strong>: 简易RAG测试服务</li>
+<li><strong>服务端口</strong>: 8888</li>
+<li><strong>测试工具</strong>: Python requests库</li>
+<li><strong>测试脚本</strong>: api/test/test_simple_rag.py</li>
+</ul>
+<h2 id="_3">测试项目与结果</h2>
+<h3 id="1">1. 基础功能测试</h3>
+<table>
+<thead>
+<tr>
+<th>测试项</th>
+<th>描述</th>
+<th>结果</th>
+<th>备注</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>状态接口</td>
+<td>验证/status接口响应</td>
+<td>✅ 通过</td>
+<td>正确返回服务状态、版本、能力信息</td>
+</tr>
+<tr>
+<td>基本查询</td>
+<td>验证/rag接口基本查询功能</td>
+<td>✅ 通过</td>
+<td>成功返回查询结果与来源</td>
+</tr>
+<tr>
+<td>不同格式</td>
+<td>测试markdown、text、html格式</td>
+<td>✅ 通过</td>
+<td>三种格式均正确返回</td>
+</tr>
+</tbody>
+</table>
+<h3 id="2">2. 接口参数测试</h3>
+<p>测试了以下参数的有效性：</p>
+<ul>
+<li><strong>query</strong>: 不同长度和内容的查询</li>
+<li><strong>tables</strong>: 单表和多表查询</li>
+<li><strong>max_results</strong>: 不同结果数量限制</li>
+<li><strong>format</strong>: 不同输出格式</li>
+</ul>
+<p>所有参数测试均通过，接口能够正确处理各种参数组合。</p>
+<h3 id="3">3. 响应内容测试</h3>
+<table>
+<thead>
+<tr>
+<th>检查点</th>
+<th>预期结果</th>
+<th>实际结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>response字段</td>
+<td>包含基于查询生成的回答</td>
+<td>✓ 符合预期</td>
+</tr>
+<tr>
+<td>sources字段</td>
+<td>包含检索到的信息来源</td>
+<td>✓ 符合预期</td>
+</tr>
+<tr>
+<td>format字段</td>
+<td>与请求中指定的格式一致</td>
+<td>✓ 符合预期</td>
+</tr>
+<tr>
+<td>retrieved_count字段</td>
+<td>显示检索到的结果数量</td>
+<td>✓ 符合预期</td>
+</tr>
+</tbody>
+</table>
+<h3 id="4">4. 性能测试</h3>
+<table>
+<thead>
+<tr>
+<th>测试项</th>
+<th>预期结果</th>
+<th>实际结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>响应时间</td>
+<td>&lt; 1秒</td>
+<td>✓ 平均0.01秒</td>
+</tr>
+<tr>
+<td>并发请求</td>
+<td>支持多个并发请求</td>
+<td>✓ 能够处理5个并发请求</td>
+</tr>
+</tbody>
+</table>
+<h3 id="5">5. 错误处理测试</h3>
+<table>
+<thead>
+<tr>
+<th>错误类型</th>
+<th>预期结果</th>
+<th>实际结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>无效表名</td>
+<td>返回400错误和明确提示</td>
+<td>✓ 符合预期</td>
+</tr>
+<tr>
+<td>无效格式</td>
+<td>返回400错误和格式建议</td>
+<td>✓ 符合预期</td>
+</tr>
+<tr>
+<td>空查询</td>
+<td>返回400错误提示查询不能为空</td>
+<td>✓ 符合预期</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_4">改进建议</h2>
+<ol>
+<li>
+<p><strong>缓存机制</strong>: 对于常见查询可实现缓存，提高响应速度</p>
+</li>
+<li>
+<p><strong>细粒度权限控制</strong>: 增加对不同用户查询范围的控制</p>
+</li>
+<li>
+<p><strong>查询语义理解增强</strong>: 进一步优化查询改写功能，提高检索质量</p>
+</li>
+<li>
+<p><strong>流式响应优化</strong>: 优化流式响应的实现，减少首字节时间</p>
+</li>
+</ol>
+<h2 id="_5">结论</h2>
+<p>本次测试表明RAG接口功能正常，基础功能、参数处理和错误处理均符合预期。接口响应速度快、稳定性好，已经可以支持小程序应用集成。</p>
+<p>后续可考虑根据改进建议优化服务性能和用户体验。 </p>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

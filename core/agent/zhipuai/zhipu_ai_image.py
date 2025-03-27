@@ -3,7 +3,8 @@
 """
 import json
 import requests
-from loguru import logger
+from core.utils.logger import register_logger
+logger = register_logger("core.agent.zhipuai")
 from config import Config
 
 

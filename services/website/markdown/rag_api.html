@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>RAG API接口文档 | 南开WIKI</title>
+    <meta name="description" content="RAG（Retrieval-Augmented Generation）检索增强生成接口用于从知识库中检索相关信息，并结合大语言模型生成回答。本接口支持多种格式输出和多表查询。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="rag-api">RAG API接口文档</h1>
+<h2 id="_1">概述</h2>
+<p>RAG（Retrieval-Augmented Generation）检索增强生成接口用于从知识库中检索相关信息，并结合大语言模型生成回答。本接口支持多种格式输出和多表查询。</p>
+<h2 id="_2">基础信息</h2>
+<ul>
+<li><strong>接口地址</strong>: <code>http://localhost:8000/agent/rag</code> 或 <code>https://nkuwiki.com/agent/rag</code></li>
+<li><strong>请求方法</strong>: POST</li>
+<li><strong>内容类型</strong>: application/json</li>
+<li><strong>响应格式</strong>: JSON</li>
+</ul>
+<h2 id="_3">请求参数</h2>
+<table>
+<thead>
+<tr>
+<th>参数名</th>
+<th>类型</th>
+<th>必填</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>query</td>
+<td>string</td>
+<td>是</td>
+<td>-</td>
+<td>用户查询问题</td>
+</tr>
+<tr>
+<td>tables</td>
+<td>array</td>
+<td>否</td>
+<td>["wxapp_posts"]</td>
+<td>要检索的表名列表</td>
+</tr>
+<tr>
+<td>max_results</td>
+<td>int</td>
+<td>否</td>
+<td>5</td>
+<td>每个表返回的最大结果数</td>
+</tr>
+<tr>
+<td>stream</td>
+<td>bool</td>
+<td>否</td>
+<td>false</td>
+<td>是否流式返回</td>
+</tr>
+<tr>
+<td>format</td>
+<td>string</td>
+<td>否</td>
+<td>"markdown"</td>
+<td>回复格式: markdown/text/html</td>
+</tr>
+<tr>
+<td>openid</td>
+<td>string</td>
+<td>否</td>
+<td>null</td>
+<td>用户唯一标识</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_4">表名说明</h3>
+<p>可用的表名列表：
+- <code>wxapp_posts</code>: 小程序帖子
+- <code>wxapp_comments</code>: 小程序评论
+- <code>wxapp_users</code>: 小程序用户
+- <code>wechat_nku</code>: 微信公众号文章
+- <code>website_nku</code>: 南开网站文章
+- <code>market_nku</code>: 校园集市帖子</p>
+<h2 id="_5">响应格式</h2>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;生成的回答内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;相关内容标题&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;作者名称&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;retrieved_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;response_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_6">响应字段说明</h3>
+<table>
+<thead>
+<tr>
+<th>字段名</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>response</td>
+<td>string</td>
+<td>生成的回答内容</td>
+</tr>
+<tr>
+<td>sources</td>
+<td>array</td>
+<td>引用的知识来源</td>
+</tr>
+<tr>
+<td>format</td>
+<td>string</td>
+<td>返回格式类型</td>
+</tr>
+<tr>
+<td>retrieved_count</td>
+<td>int</td>
+<td>检索到的结果数量</td>
+</tr>
+<tr>
+<td>response_time</td>
+<td>float</td>
+<td>响应时间(秒)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="_7">使用示例</h2>
+<h3 id="python">Python 示例</h3>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+
+<span class="n">url</span> <span class="o">=</span> <span class="s2">&quot;http://localhost:8000/agent/rag&quot;</span>
+
+<span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;南开大学历史&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tables&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;wxapp_posts&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;max_results&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">&quot;stream&quot;</span><span class="p">:</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;markdown&quot;</span>
+<span class="p">}</span>
+
+<span class="n">headers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;Accept&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span>
+<span class="p">}</span>
+
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="n">payload</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">response</span><span class="o">.</span><span class="n">status_code</span> <span class="o">==</span> <span class="mi">200</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;响应内容: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;response&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;检索到的结果数量: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;retrieved_count&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="k">else</span><span class="p">:</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;请求失败: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">status_code</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;错误信息: </span><span class="si">{</span><span class="n">response</span><span class="o">.</span><span class="n">text</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="curl">cURL 示例</h3>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span><span class="s2">&quot;http://localhost:8000/agent/rag&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s2">&quot;Content-Type: application/json&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">&#39;{</span>
+<span class="s1">    &quot;query&quot;: &quot;南开大学历史&quot;,</span>
+<span class="s1">    &quot;tables&quot;: [&quot;wxapp_posts&quot;],</span>
+<span class="s1">    &quot;max_results&quot;: 3,</span>
+<span class="s1">    &quot;format&quot;: &quot;markdown&quot;</span>
+<span class="s1">  }&#39;</span>
+</code></pre></div>
+
+<h2 id="rag-rag2">增强版RAG接口 (rag2)</h2>
+<p>南开wiki还提供了增强版RAG接口，支持查询改写和更多高级功能。</p>
+<ul>
+<li><strong>接口地址</strong>: <code>http://localhost:8000/agent/rag2</code> 或 <code>https://nkuwiki.com/agent/rag2</code></li>
+<li><strong>请求方法</strong>: POST</li>
+</ul>
+<h3 id="_8">附加请求参数</h3>
+<table>
+<thead>
+<tr>
+<th>参数名</th>
+<th>类型</th>
+<th>必填</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>query_bot_id</td>
+<td>string</td>
+<td>否</td>
+<td>"rewriter"</td>
+<td>查询改写机器人ID</td>
+</tr>
+<tr>
+<td>flash_bot_id</td>
+<td>string</td>
+<td>否</td>
+<td>"flash"</td>
+<td>回答生成机器人ID</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_9">增强版响应格式</h3>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;生成的回答内容&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;sources&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;id&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;帖子&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;title&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;相关内容标题&quot;</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">&quot;author&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;作者名称&quot;</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;format&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;retrieved_count&quot;</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;original_query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;原始查询&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;rewritten_query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;改写后的查询&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;response_time&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.5</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_10">状态接口</h2>
+<p>获取RAG服务状态信息。</p>
+<ul>
+<li><strong>接口地址</strong>: <code>http://localhost:8000/agent/status</code> 或 <code>https://nkuwiki.com/agent/status</code></li>
+<li><strong>请求方法</strong>: GET</li>
+</ul>
+<h3 id="_11">响应示例</h3>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;status&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;running&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;version&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;1.0.0&quot;</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">&quot;capabilities&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;chat&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;search&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;rag&quot;</span><span class="p">],</span>
+<span class="w">  </span><span class="nt">&quot;formats&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;markdown&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;text&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;html&quot;</span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_12">错误处理</h2>
+<p>接口可能返回以下错误：</p>
+<table>
+<thead>
+<tr>
+<th>状态码</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>400</td>
+<td>请求参数错误</td>
+</tr>
+<tr>
+<td>404</td>
+<td>未找到资源</td>
+</tr>
+<tr>
+<td>500</td>
+<td>服务器内部错误</td>
+</tr>
+</tbody>
+</table>
+<h3 id="_13">错误响应示例</h3>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;detail&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;不支持的表: invalid_table，有效的表为: wxapp_posts, wxapp_comments, wxapp_users, wechat_nku, website_nku, market_nku&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_14">测试环境</h2>
+<p>为了方便测试，我们还提供了一个简化版测试API：</p>
+<ul>
+<li><strong>接口地址</strong>: <code>http://localhost:8888/rag</code></li>
+<li><strong>请求方法</strong>: POST</li>
+</ul>
+<p>该测试接口实现了RAG的基本功能，但使用了模拟数据，适合前端开发和接口测试。 </p>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

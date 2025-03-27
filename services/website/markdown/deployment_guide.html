@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>nkuwiki 部署指南 | 南开WIKI</title>
+    <meta name="description" content="本文档提供了nkuwiki项目的部署说明，包括运行项目、部署MySQL和Qdrant服务等内容。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="nkuwiki">nkuwiki 部署指南</h1>
+<p>本文档提供了nkuwiki项目的部署说明，包括运行项目、部署MySQL和Qdrant服务等内容。</p>
+<h2 id="_1">运行项目</h2>
+<h3 id="_2">基本运行</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 启动智能问答服务</span>
+<span class="nb">cd</span><span class="w"> </span>nkuwiki<span class="w"> </span><span class="p">&amp;</span><span class="w"> </span>python3<span class="w"> </span>app.py
+
+<span class="c1"># 启动爬虫任务 (示例)</span>
+<span class="c1"># 确保已安装 playwright install chromium</span>
+<span class="nb">cd</span><span class="w"> </span>nkuwiki<span class="w"> </span><span class="p">&amp;</span><span class="w"> </span>python3<span class="w"> </span>./etl/crawler/wechat.py
+</code></pre></div>
+
+<h2 id="_3">数据库服务部署</h2>
+<h3 id="docker">Docker部署</h3>
+<h4 id="docker_1">安装Docker</h4>
+<h5 id="linuxubuntudebian">Linux系统（Ubuntu/Debian）</h5>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update
+sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>docker.io<span class="w"> </span>docker-compose
+sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>docker
+sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>docker
+
+<span class="c1"># 添加当前用户到docker组（免sudo运行docker）</span>
+sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="nv">$USER</span>
+
+<span class="c1"># 重新登录以使权限生效</span>
+</code></pre></div>
+
+<h5 id="centosrhel">CentOS/RHEL系统</h5>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>yum-utils
+sudo<span class="w"> </span>yum-config-manager<span class="w"> </span>--add-repo<span class="w"> </span>https://download.docker.com/linux/centos/docker-ce.repo
+sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>docker-ce<span class="w"> </span>docker-ce-cli<span class="w"> </span>containerd.io<span class="w"> </span>docker-compose-plugin
+sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>docker
+sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>docker
+
+<span class="c1"># 添加当前用户到docker组（免sudo运行docker）</span>
+sudo<span class="w"> </span>usermod<span class="w"> </span>-aG<span class="w"> </span>docker<span class="w"> </span><span class="nv">$USER</span>
+
+<span class="c1"># 重新登录以使权限生效</span>
+</code></pre></div>
+
+<h5 id="windows">Windows系统</h5>
+<ol>
+<li>下载Docker Desktop安装程序：https://www.docker.com/products/docker-desktop/</li>
+<li>运行安装程序，按照提示完成安装</li>
+<li>安装完成后启动Docker Desktop</li>
+</ol>
+<h5 id="macos">macOS系统</h5>
+<ol>
+<li>下载Docker Desktop安装程序：https://www.docker.com/products/docker-desktop/</li>
+<li>将下载的.dmg文件拖到Applications文件夹</li>
+<li>启动Docker Desktop</li>
+</ol>
+<h4 id="mysqlqdrant">部署MySQL和Qdrant</h4>
+<h5 id="mysql">MySQL</h5>
+<div class="codehilite"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>mysql<span class="w"> </span>-p<span class="w"> </span><span class="m">3306</span>:3306<span class="w"> </span>-e<span class="w"> </span><span class="nv">MYSQL_ROOT_PASSWORD</span><span class="o">=</span>your_password<span class="w"> </span>-v<span class="w"> </span>path<span class="se">\t</span>o<span class="se">\y</span>our<span class="se">\d</span>ata<span class="se">\m</span>ysql:/var/lib/mysql<span class="w"> </span>mysql:latest
+
+<span class="c1"># 示例</span>
+<span class="c1"># docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 -v d:\code\nkuwiki\etl\data\mysql:/var/lib/mysql mysql:latest</span>
+</code></pre></div>
+
+<h5 id="qdrant">Qdrant</h5>
+<div class="codehilite"><pre><span></span><code>docker<span class="w"> </span>run<span class="w"> </span>-d<span class="w"> </span>--name<span class="w"> </span>qdrant<span class="w"> </span>-p<span class="w"> </span><span class="m">6333</span>:6333<span class="w"> </span>-p<span class="w"> </span><span class="m">6334</span>:6334<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>-v<span class="w"> </span>path<span class="se">\t</span>o<span class="se">\y</span>our<span class="se">\d</span>ata<span class="se">\q</span>drant:/qdrant/storage<span class="w"> </span><span class="se">\</span>
+<span class="w">    </span>qdrant/qdrant:latest
+
+<span class="c1"># 示例</span>
+<span class="c1"># docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v d:\code\nkuwiki\etl\data\qdrant:/qdrant/storage qdrant/qdrant:latest</span>
+</code></pre></div>
+
+<h3 id="_4">源代码部署</h3>
+<h4 id="mysql_1">MySQL</h4>
+<h5 id="linuxubuntudebian_1">Linux系统（Ubuntu/Debian）</h5>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>apt<span class="w"> </span>update
+sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>mysql-server
+sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>mysql
+sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>mysql
+
+<span class="c1"># 设置root密码</span>
+sudo<span class="w"> </span>mysql_secure_installation
+</code></pre></div>
+
+<h5 id="centosrhel_1">CentOS/RHEL系统</h5>
+<div class="codehilite"><pre><span></span><code>sudo<span class="w"> </span>yum<span class="w"> </span>install<span class="w"> </span>mysql-server
+sudo<span class="w"> </span>systemctl<span class="w"> </span><span class="nb">enable</span><span class="w"> </span>mysqld
+sudo<span class="w"> </span>systemctl<span class="w"> </span>start<span class="w"> </span>mysqld
+
+<span class="c1"># 获取临时root密码</span>
+sudo<span class="w"> </span>grep<span class="w"> </span><span class="s1">&#39;temporary password&#39;</span><span class="w"> </span>/var/log/mysqld.log
+
+<span class="c1"># 设置新密码</span>
+mysql<span class="w"> </span>-uroot<span class="w"> </span>-p
+ALTER<span class="w"> </span>USER<span class="w"> </span><span class="s1">&#39;root&#39;</span>@<span class="s1">&#39;localhost&#39;</span><span class="w"> </span>IDENTIFIED<span class="w"> </span>BY<span class="w"> </span><span class="s1">&#39;your_new_password&#39;</span><span class="p">;</span>
+</code></pre></div>
+
+<h5 id="windows_1">Windows系统</h5>
+<ol>
+<li>下载MySQL安装程序：https://dev.mysql.com/downloads/installer/</li>
+<li>运行安装程序，按照提示完成安装</li>
+<li>安装过程中会提示设置root密码</li>
+</ol>
+<h5 id="macos_1">macOS系统</h5>
+<div class="codehilite"><pre><span></span><code>brew<span class="w"> </span>install<span class="w"> </span>mysql
+brew<span class="w"> </span>services<span class="w"> </span>start<span class="w"> </span>mysql
+
+<span class="c1"># 设置root密码</span>
+mysql_secure_installation
+</code></pre></div>
+
+<h4 id="qdrant_1">Qdrant</h4>
+<h5 id="linuxubuntudebiancentosrhel">Linux系统（Ubuntu/Debian/CentOS/RHEL）</h5>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-L<span class="w"> </span>https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-gnu.tar.gz<span class="w"> </span>-o<span class="w"> </span>qdrant.tar.gz
+tar<span class="w"> </span>-xvf<span class="w"> </span>qdrant.tar.gz
+<span class="nb">cd</span><span class="w"> </span>qdrant
+
+<span class="c1"># 启动qdrant服务</span>
+./qdrant
+</code></pre></div>
+
+<h5 id="windows_2">Windows系统</h5>
+<ol>
+<li>下载Qdrant：https://github.com/qdrant/qdrant/releases</li>
+<li>解压下载的文件</li>
+<li>运行qdrant.exe</li>
+</ol>
+<h5 id="macos_2">macOS系统</h5>
+<div class="codehilite"><pre><span></span><code>curl<span class="w"> </span>-L<span class="w"> </span>https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-apple-darwin.tar.gz<span class="w"> </span>-o<span class="w"> </span>qdrant.tar.gz
+tar<span class="w"> </span>-xvf<span class="w"> </span>qdrant.tar.gz
+<span class="nb">cd</span><span class="w"> </span>qdrant
+
+<span class="c1"># 启动qdrant服务</span>
+./qdrant
+</code></pre></div>
+
+<h4 id="mysql_2">配置MySQL服务</h4>
+<div class="codehilite"><pre><span></span><code><span class="c1"># mysql配置（根据需要修改）</span>
+<span class="c1"># linux/macos</span>
+sudo<span class="w"> </span>mysql
+CREATE<span class="w"> </span>USER<span class="w"> </span><span class="s1">&#39;your_user&#39;</span>@<span class="s1">&#39;localhost&#39;</span><span class="w"> </span>IDENTIFIED<span class="w"> </span>BY<span class="w"> </span><span class="s1">&#39;your_password&#39;</span><span class="p">;</span>
+GRANT<span class="w"> </span>ALL<span class="w"> </span>PRIVILEGES<span class="w"> </span>ON<span class="w"> </span>*.*<span class="w"> </span>TO<span class="w"> </span><span class="s1">&#39;your_user&#39;</span>@<span class="s1">&#39;localhost&#39;</span><span class="p">;</span>
+FLUSH<span class="w"> </span>PRIVILEGES<span class="p">;</span>
+</code></pre></div>
+
+<h2 id="_5">开发指南</h2>
+<h3 id="_6">添加新爬虫</h3>
+<ol>
+<li>在<code>etl/crawler</code>目录创建新的爬虫类，继承<code>BaseCrawler</code></li>
+<li>添加<code>self.platform</code>, <code>self.base_url</code>, <code>self.content_type</code>等配置</li>
+<li>实现<code>login_for_cookies</code>方法（如果需要登录）, <code>scrape</code>和<code>download</code>方法</li>
+</ol>
+<h3 id="_7">添加新服务通道</h3>
+<ol>
+<li>在<code>services</code>目录创建新的通道类</li>
+<li>在<code>services/channel_factory.py</code>中注册新通道</li>
+</ol>
+<h3 id="ai">添加新AI智能体</h3>
+<ol>
+<li>在<code>core/agent/</code>目录下添加新的AI提供商目录</li>
+<li>实现继承自<code>Agent</code>类的自定义智能体</li>
+<li>在<code>agent_factory.py</code>中注册您的智能体</li>
+</ol>
+<h3 id="_8">调试</h3>
+<ul>
+<li>建议使用<code>services/terminal</code>模块进行命令行调试，配置<code>channel_type = terminal</code></li>
+<li>查看<code>logs/</code>目录下的日志文件排查问题</li>
+</ul>
+<p>更详细的开发文档请参考<a href="../docs">docs</a>目录。 </p>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

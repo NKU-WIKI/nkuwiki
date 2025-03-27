@@ -13,9 +13,10 @@ import time
 import re
 import uuid
 import requests
+import hashlib
 from PIL import Image
 from concurrent.futures import Future
-from loguru import logger
+from core.utils.logger import register_logger
 import ntwork
 
 from core.bridge.context import *
@@ -24,6 +25,8 @@ from services.chat_channel import ChatChannel
 from services.wework.wework_message import WeworkMessage, get_with_retry
 from config import Config
 from services.wework.run import wework, forever as run_forever
+
+logger = register_logger("services.wework")
 
 
 def get_wxid_by_name(room_members, group_wxid, name):

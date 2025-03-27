@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>Coze 智能体后端 API 文档 | 南开WIKI</title>
+    <meta name="description" content="南开Wiki项目文档" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="coze-api">Coze 智能体后端 API 文档</h1>
+<h2 id="_1">一、调用说明</h2>
+<h3 id="_2">调用流程</h3>
+<ol>
+<li>
+<p>获取 API URL 和 {{ApiKey}}</p>
+</li>
+<li>
+<p>请求头设置：</p>
+</li>
+<li>Header 添加 <code>Apikey={{ApiKey}}</code></li>
+<li>
+<p>Body 包含 <code>AppKey={{ApiKey}}</code> 和 <code>UserID</code>（1-20字符唯一标识）</p>
+</li>
+<li>
+<p>对话流程：</p>
+</li>
+<li><code>CreateConversation</code> 创建会话</li>
+<li><code>ChatQuery</code> 进行流式对话</li>
+<li>可选操作：<code>StopMessage</code>/<code>QueryAgain</code>/<code>Feedback</code></li>
+</ol>
+<hr />
+<h2 id="api">二、核心 API 接口</h2>
+<h3 id="_3">会话管理</h3>
+<h4 id="post-create_conversation">创建会话 <code>POST /create_conversation</code></h4>
+<p><strong>请求参数</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AppKey</td>
+<td>string</td>
+<td>✓</td>
+<td>应用 key</td>
+</tr>
+<tr>
+<td>Inputs</td>
+<td>map<string,string></td>
+<td>✗</td>
+<td>变量输入</td>
+</tr>
+<tr>
+<td>UserID</td>
+<td>string</td>
+<td>✓</td>
+<td>用户唯一标识</td>
+</tr>
+</tbody>
+</table>
+<p><strong>响应参数</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Conversation</td>
+<td>AppConversationBrief</td>
+<td>会话信息</td>
+</tr>
+<tr>
+<td>BaseResp</td>
+<td>BaseResp</td>
+<td>状态响应</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="_4">对话交互</h3>
+<h4 id="post-chat_query">发起对话 <code>POST /chat_query</code></h4>
+<p><strong>请求参数</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AppKey</td>
+<td>string</td>
+<td>✓</td>
+<td>应用 key</td>
+</tr>
+<tr>
+<td>AppConversationID</td>
+<td>string</td>
+<td>✓</td>
+<td>会话 ID</td>
+</tr>
+<tr>
+<td>Query</td>
+<td>string</td>
+<td>✓</td>
+<td>用户输入内容</td>
+</tr>
+<tr>
+<td>ResponseMode</td>
+<td>string</td>
+<td>✓</td>
+<td>streaming/blocking</td>
+</tr>
+<tr>
+<td>PubAgentJump</td>
+<td>bool</td>
+<td>✗</td>
+<td>是否输出agent信息</td>
+</tr>
+<tr>
+<td>UserID</td>
+<td>string</td>
+<td>✓</td>
+<td>用户唯一标识</td>
+</tr>
+</tbody>
+</table>
+<p><strong>响应</strong>：SSE 格式数据流</p>
+<h4 id="_5">消息流响应格式</h4>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>event</td>
+<td>string</td>
+<td>数据类型：text/image/audio/video/file 等</td>
+</tr>
+<tr>
+<td>data</td>
+<td>object</td>
+<td>包含事件类型和内容：</td>
+</tr>
+<tr>
+<td>- event</td>
+<td>string</td>
+<td>事件类型：message_start/message_end/knowledge_retrieve_start 等</td>
+</tr>
+<tr>
+<td>- docs</td>
+<td>object</td>
+<td>当事件为知识检索结束时返回：</td>
+</tr>
+<tr>
+<td>- outputList</td>
+<td>array</td>
+<td>检索结果列表，包含 output 等字段</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h4 id="post-query_again">重新生成 <code>POST /query_again</code></h4>
+<p><strong>请求参数</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AppKey</td>
+<td>string</td>
+<td>✓</td>
+<td>应用 key</td>
+</tr>
+<tr>
+<td>AppConversationID</td>
+<td>string</td>
+<td>✓</td>
+<td>会话 ID</td>
+</tr>
+<tr>
+<td>MessageID</td>
+<td>string</td>
+<td>✓</td>
+<td>上轮消息 ID</td>
+</tr>
+<tr>
+<td>UserID</td>
+<td>string</td>
+<td>✓</td>
+<td>用户唯一标识</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="_6">会话历史</h3>
+<h4 id="post-get_conversation_messages">获取消息历史 <code>POST /get_conversation_messages</code></h4>
+<p><strong>请求参数</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>必填</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AppKey</td>
+<td>string</td>
+<td>✓</td>
+<td>应用 key</td>
+</tr>
+<tr>
+<td>AppConversationID</td>
+<td>string</td>
+<td>✓</td>
+<td>会话 ID</td>
+</tr>
+<tr>
+<td>Limit</td>
+<td>i32</td>
+<td>✓</td>
+<td>返回条数限制</td>
+</tr>
+<tr>
+<td>UserID</td>
+<td>string</td>
+<td>✓</td>
+<td>用户唯一标识</td>
+</tr>
+</tbody>
+</table>
+<p><strong>响应参数</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>参数</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Messages</td>
+<td>list<ChatMessageInfo></td>
+<td>历史消息列表</td>
+</tr>
+<tr>
+<td>BaseResp</td>
+<td>BaseResp</td>
+<td>状态响应</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="api_1">三、全量 API 列表</h2>
+<table>
+<thead>
+<tr>
+<th>接口名称</th>
+<th>方法</th>
+<th>路径</th>
+<th>功能说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>获取应用配置</td>
+<td>POST</td>
+<td>/get_app_config_preview</td>
+<td>获取变量配置和开场白</td>
+</tr>
+<tr>
+<td>更新会话</td>
+<td>POST</td>
+<td>/update_conversation</td>
+<td>修改会话名称和变量</td>
+</tr>
+<tr>
+<td>删除消息</td>
+<td>POST</td>
+<td>/delete_message</td>
+<td>删除指定消息</td>
+</tr>
+<tr>
+<td>设置默认回答</td>
+<td>POST</td>
+<td>/set_message_answer_used</td>
+<td>设置多回答中的默认选项</td>
+</tr>
+<tr>
+<td>工作流测试</td>
+<td>POST</td>
+<td>/run_app_workflow</td>
+<td>同步测试工作流</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_7">四、数据结构详情</h2>
+<h3 id="appconversationbrief">AppConversationBrief</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>AppConversationID</td>
+<td>string</td>
+<td>会话 ID</td>
+</tr>
+<tr>
+<td>ConversationName</td>
+<td>string</td>
+<td>会话名称</td>
+</tr>
+</tbody>
+</table>
+<h3 id="chatmessageinfo">ChatMessageInfo</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>QueryID</td>
+<td>string</td>
+<td>询问 ID</td>
+</tr>
+<tr>
+<td>AnswerInfo</td>
+<td>MessageAnswerInfo</td>
+<td>主回答信息</td>
+</tr>
+<tr>
+<td>OtherAnswers</td>
+<td>list<MessageAnswerInfo></td>
+<td>其他备选回答</td>
+</tr>
+<tr>
+<td>QueryExtends</td>
+<td>QueryExtendsInfo</td>
+<td>附件文件信息</td>
+</tr>
+</tbody>
+</table>
+<h3 id="messageanswerinfo">MessageAnswerInfo</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>MessageID</td>
+<td>string</td>
+<td>消息唯一 ID</td>
+</tr>
+<tr>
+<td>TotalTokens</td>
+<td>i32</td>
+<td>消耗 token 总数</td>
+</tr>
+<tr>
+<td>Latency</td>
+<td>double</td>
+<td>响应耗时（秒）</td>
+</tr>
+<tr>
+<td>TracingJsonStr</td>
+<td>string</td>
+<td>调试追踪信息</td>
+</tr>
+</tbody>
+</table>
+<h3 id="messagestreamresponse">MessageStreamResponse</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>event</td>
+<td>string</td>
+<td>数据类型：text/image/audio/video/file 等</td>
+</tr>
+<tr>
+<td>data</td>
+<td>object</td>
+<td>包含事件类型和内容：</td>
+</tr>
+<tr>
+<td>- event</td>
+<td>string</td>
+<td>事件类型：message_start/message_end/knowledge_retrieve_start 等</td>
+</tr>
+<tr>
+<td>- docs</td>
+<td>object</td>
+<td>当事件为 knowledge_retrieve_end 或 qa_retrieve_end 时返回：</td>
+</tr>
+<tr>
+<td>- OutputList</td>
+<td>array</td>
+<td>检索结果列表，每个元素包含 output 字段</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="_8">五、枚举类型</h2>
+<h3 id="liketype">LikeType</h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>-1</td>
+<td>踩</td>
+</tr>
+<tr>
+<td>0</td>
+<td>默认</td>
+</tr>
+<tr>
+<td>1</td>
+<td>赞</td>
+</tr>
+</tbody>
+</table>
+<h3 id="variabletype">VariableType</h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Text</td>
+<td>文本类型</td>
+</tr>
+<tr>
+<td>Enum</td>
+<td>枚举类型</td>
+</tr>
+<tr>
+<td>Paragraph</td>
+<td>段落类型</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<blockquote>
+<p>注：保留全部技术参数，优化表格展示和层级结构，修正格式问题，关键字段用<strong>加粗</strong>突出显示。</p>
+</blockquote>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

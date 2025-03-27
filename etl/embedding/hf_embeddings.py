@@ -1,4 +1,9 @@
-from __init__ import *
+import asyncio
+from typing import List, Any
+from sentence_transformers import SentenceTransformer
+from llama_index.core.base.embeddings.base import BaseEmbedding
+from llama_index.core.bridge.pydantic import Field, ConfigDict
+from llama_index.core.schema import BaseNode
 from etl.embedding.ingestion import get_node_content
 
 class HuggingFaceEmbedding(BaseEmbedding):
@@ -75,3 +80,6 @@ class HuggingFaceEmbedding(BaseEmbedding):
             node.embedding = embedding
 
         return nodes
+
+# 定义HFEmbeddings作为HuggingFaceEmbedding的别名
+HFEmbeddings = HuggingFaceEmbedding

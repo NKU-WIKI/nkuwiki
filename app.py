@@ -2,168 +2,85 @@
 
 import sys
 import threading
+import uvicorn
+import uuid
+import time
+import argparse
+import atexit
+import warnings
+import asyncio
 from pathlib import Path
-from loguru import logger
 from contextvars import ContextVar
-from fastapi import FastAPI, Depends, Request
+from contextlib import asynccontextmanager
+from datetime import datetime
+
+from fastapi import FastAPI, Request, APIRouter, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-import uvicorn
+from fastapi.middleware.gzip import GZipMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from api.models.common import create_response, StandardResponseModel
 from config import Config
-from core.api.mysql_api import mysql_router
-from core.api.agent_api import agent_router
-from core.api.wxapp_api import wxapp_router
-from core.utils.common.singleton import singleton
-from fastapi.responses import RedirectResponse
+from api import register_routers
+from core.utils.logger import register_logger
+from api.common import handle_api_errors
+
+# 过滤pydub的ffmpeg警告
+warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", category=RuntimeWarning)
+
+# =============================================================================
+# 初始化配置和日志
+# =============================================================================
 
 # 创建配置对象
 config = Config()
 
-# 创建日志目录
-log_dir = Path('./infra/deploy/log')
-log_dir.mkdir(exist_ok=True, parents=True)
-
-# 移除默认的控制台日志处理器
-logger.remove()
-
-# 添加文件日志处理器
-logger.add("logs/app.log", 
-    rotation="1 day",  # 每天轮换一次日志文件
-    retention="7 days",  # 保留7天的日志
-    level="DEBUG",
-    encoding="utf-8"
-)
-
-# 定义全局App单例类
-@singleton
-class App:
-    """
-    应用程序单例，提供全局访问点
-    """
-    def __init__(self):
-        self.config = config
-        self.logger = logger
-        
-    def get_config(self):
-        """获取配置对象"""
-        return self.config
-        
-    def get_logger(self):
-        """获取日志对象"""
-        return self.logger
-
+# 初始化日志系统
+logger = register_logger("nkuwiki")
 # 创建应用上下文
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
 
-# 创建FastAPI应用
-app = FastAPI(
-    title="nkuwiki API",
-    description="南开百科知识平台API服务",
-    version="1.0.0",
-)
+# =============================================================================
+# 应用生命周期管理
+# =============================================================================
 
-# 添加CORS中间件
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源的请求，生产环境应限制
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],  # 明确指定允许的方法
-    allow_headers=["*"],  # 允许所有HTTP头
-    expose_headers=["*"]  # 暴露所有响应头
-)
-
-# 集成MySQL路由
-app.include_router(mysql_router)
-# 集成Agent路由
-app.include_router(agent_router)
-# 集成微信小程序路由
-app.include_router(wxapp_router)
-
-# 挂载静态文件目录，用于微信校验文件等
-app.mount("/static", StaticFiles(directory="static"), name="static_files")
-
-# 请求日志中间件
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    import uuid
-    import time
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """应用生命周期管理"""
+    # 启动前执行
+    logger.debug("应用正在启动...")
     
-    # 生成请求ID并存储在上下文变量中
-    request_id = str(uuid.uuid4())
-    request_id_var.set(request_id)
-    
-    # 记录请求开始
-    start_time = time.time()
-    method = request.method
-    url = request.url.path
-    
-    logger.info(f"Request started: {method} {url} [ID: {request_id}]")
-    
-    # 处理请求
-    response = await call_next(request)
-    
-    # 计算处理时间并记录
-    process_time = time.time() - start_time
-    logger.info(f"Request completed: {method} {url} [ID: {request_id}] - Status: {response.status_code} - Time: {process_time:.3f}s")
-    
-    return response
-
-# 依赖注入函数
-def get_logger():
-    """提供日志记录器的依赖注入"""
-    return logger.bind(request_id=request_id_var.get())
-
-def get_config():
-    """提供配置对象的依赖注入"""
-    return config
-
-# 根路由重定向
-# 不需要重定向了，下面的app.mount('/')定义了静态网页地址
-# @app.get("/")
-# async def redirect_to_web():
-#     return RedirectResponse(url="/nkuwiki_web")
-
-# 网站路由
-website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
-app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
-
-# 额外的静态文件挂载点
-app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
-app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
-
-# 健康检查端点
-@app.get("/health")
-async def health_check(logger=Depends(get_logger)):
-    """健康检查"""
-    from datetime import datetime
-    from etl.load import get_conn
-    
-    # 检查数据库连接
+    # 预热资源
+    logger.debug("正在预热应用资源...")
     try:
-        with get_conn() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT 1")
-                db_status = "connected"
+        # 初始化表结构
+        logger.debug("初始化数据库表结构...")
+        try:
+            # 初始化用户关注关系表
+            from api.database.wxapp.follow_dao import init_follow_table
+            await init_follow_table()
+            logger.debug("用户关注关系表初始化完成")
+        except Exception as e:
+            logger.error(f"初始化表结构失败: {str(e)}")
+        
+        # 可以在这里预加载模型、建立连接池等
+        pass
     except Exception as e:
-        logger.error(f"数据库连接失败: {str(e)}")
-        db_status = f"error: {str(e)}"
+        logger.error(f"资源预热失败: {str(e)}")
     
-    return {
-        "status": "ok",
-        "timestamp": datetime.now().isoformat(),
-        "database": db_status
-    }
-
-# 信号处理函数
-def setup_signal_handlers():
-    """设置信号处理函数，用于优雅退出"""
-    # 确保只在主线程注册信号处理器
-    if threading.current_thread() is threading.main_thread():
-        import signal
-        signal.signal(signal.SIGINT, handle_signal)
-        signal.signal(signal.SIGTERM, handle_signal)
-        if hasattr(signal, 'SIGUSR1'):
-            signal.signal(signal.SIGUSR1, handle_signal)
+    logger.debug("应用启动完成，准备接收请求")
+    yield
+    # 关闭时执行
+    logger.debug("应用正在关闭...")
+    
+    # 清理资源
+    try:
+        cleanup_resources()
+    except Exception as e:
+        logger.error(f"资源清理失败: {str(e)}")
+    
+    logger.debug("应用已安全关闭")
 
 def cleanup_resources():
     """清理系统资源，确保优雅退出"""
@@ -192,7 +109,6 @@ def cleanup_resources():
     try:
         logger.debug("正在关闭日志处理器...")
         # 确保日志完全写入
-        import sys
         sys.stdout.flush()
         sys.stderr.flush()
     except Exception as e:
@@ -200,21 +116,160 @@ def cleanup_resources():
     
     logger.info("资源清理完成")
 
-def handle_signal(signum, frame):
-    """信号处理回调函数"""
-    logger.info(f"收到信号 {signum}，准备退出...")
-    cleanup_resources()
-    sys.exit(0)
+# =============================================================================
+# 创建FastAPI应用
+# =============================================================================
 
-# 启动问答服务
+# 创建FastAPI应用
+app = FastAPI(
+    title="nkuwiki API",
+    description="南开百科知识平台API服务",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/api/docs",
+    redoc_url="/api/redoc",
+    openapi_url="/api/openapi.json",
+    default_response_class=JSONResponse,
+    openapi_cache_max_age=3600,  # OpenAPI文档缓存1小时
+)
+
+# 添加API路由器，所有路由统一添加/api前缀
+api_router = APIRouter(prefix="/api")
+
+# =============================================================================
+# 中间件配置
+# =============================================================================
+
+# 添加CORS中间件
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 允许所有来源的请求
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+    expose_headers=["*"]
+)
+
+# 添加GZip压缩中间件
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # 大于1KB的响应将被压缩
+
+# 请求日志中间件
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    # 生成请求ID并存储在上下文变量中
+    request_id = str(uuid.uuid4())
+    request_id_var.set(request_id)
+    
+    # 记录请求开始
+    start_time = time.time()
+    method = request.method
+    url = request.url.path
+    
+    logger.info(f"Request started: {method} {url} [ID: {request_id}]")
+    
+    # 处理请求
+    response = await call_next(request)
+    
+    # 计算处理时间并记录
+    process_time = time.time() - start_time
+    logger.info(f"Request completed: {method} {url} [ID: {request_id}] - Status: {response.status_code} - Time: {process_time:.3f}s")
+    
+    return response
+
+# =============================================================================
+# 异常处理
+# =============================================================================
+
+@app.exception_handler(StarletteHTTPException)
+async def global_http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """全局HTTP异常处理器，确保异常也返回标准格式"""
+    # 特别处理404错误
+    if exc.status_code == 404:
+        logger.warning(
+            f"404 未找到: {request.method} {request.url.path} | "
+            f"客户端: {request.client.host if request.client else 'unknown'} | "
+            f"UA: {request.headers.get('User-Agent', 'unknown')}"
+        )
+    
+    # 直接构建响应内容
+    response_data = StandardResponseModel(
+        data=None,
+        code=exc.status_code,
+        message=str(exc.detail)
+    ).model_dump()
+    
+    # 手动处理时间戳
+    if "timestamp" in response_data and isinstance(response_data["timestamp"], datetime):
+        response_data["timestamp"] = response_data["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+        
+    return JSONResponse(
+        status_code=exc.status_code,
+        content=response_data
+    )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """全局通用异常处理器，确保所有异常都返回标准格式"""
+    logger.error(f"未捕获的异常: {str(exc)}")
+    # 修复: 不使用create_response函数创建JSONResponse对象，而是直接构建内容
+    response_data = StandardResponseModel(
+        data=None,
+        code=500,
+        message=f"服务器内部错误: {str(exc)}"
+    ).model_dump()
+    
+    # 手动处理时间戳
+    if "timestamp" in response_data and isinstance(response_data["timestamp"], datetime):
+        response_data["timestamp"] = response_data["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+    
+    return JSONResponse(
+        status_code=500,
+        content=response_data
+    )
+
+# =============================================================================
+# 路由注册
+# =============================================================================
+
+# 添加健康检查端点
+@api_router.get("/health", response_class=JSONResponse)
+@handle_api_errors("健康检查")
+async def health_check():
+    """健康检查端点，返回服务状态"""
+    return {
+        "status": "ok",
+        "server_time": time.time(),
+        "version": config.get("version", "1.0.0")
+    }
+
+# 注册所有API路由
+logger.info("开始注册API路由...")
+register_routers(api_router)  # 把路由注册到api_router上
+app.include_router(api_router)  # 将api_router添加到主应用
+logger.info("API路由注册完成")
+
+# 挂载静态文件目录，用于微信校验文件等
+app.mount("/static", StaticFiles(directory="static"), name="static_files")
+
+# 挂载Mihomo控制面板静态文件
+app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
+
+# 网站路由 - 确保具体路径挂载在根路径之前
+website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
+app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
+app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
+
+# 挂载网站根目录 - 放在最后
+app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
+
+# =============================================================================
+# 服务启动相关函数
+# =============================================================================
+
 def run_qa_service():
     """启动问答服务"""
-    # 设置信号处理
-    setup_signal_handlers()
-    
-    # 获取渠道类型
     channel_type = config.get("services.channel_type", "terminal")
-    logger.info(f"Starting QA service with channel type: {channel_type}")
+    logger.debug(f"Starting QA service with channel type: {channel_type}")
     
     try:
         # 导入渠道工厂
@@ -231,154 +286,42 @@ def run_qa_service():
         logger.error(f"Error starting channel {channel_type}: {str(e)}")
         sys.exit(1)
 
-# 启动API服务
-def run_api_service():
-    """启动API服务，同时支持HTTP和HTTPS双模式"""
-    # 设置信号处理
-    setup_signal_handlers()
+def run_api_service(port):
+    """启动API服务，通过Nginx反向代理实现HTTP/HTTPS访问"""
+    host = "127.0.0.1"  # 只监听本地接口，由Nginx转发请求
     
-    host = "0.0.0.0"  # 固定监听所有网络接口
-    
-    # 获取SSL证书配置
-    ssl_key_path = config.get("services.website.ssl_key_path", None)
-    ssl_cert_path = config.get("services.website.ssl_cert_path", None)
-    
-    # 检查SSL证书配置
-    has_ssl = ssl_key_path and ssl_cert_path and Path(ssl_key_path).exists() and Path(ssl_cert_path).exists()
-    
-    # 增加调试信息
-    if has_ssl:
-        logger.debug(f"SSL证书路径: 私钥={ssl_key_path}, 证书={ssl_cert_path}")
-        logger.debug(f"证书文件存在: 私钥={Path(ssl_key_path).exists()}, 证书={Path(ssl_cert_path).exists()}")
-    else:
-        logger.warning("SSL证书配置不完整或文件不存在，将尝试使用HTTP模式启动")
-    
-    # 端口配置
-    http_port = config.get("services.website.http_port", 80)
-    https_port = config.get("services.website.https_port", 443)  # 回归使用标准HTTPS端口
-    
-    # 确定生产/调试模式
-    debug_mode = config.get("services.website.debug_mode", False)
-    if debug_mode:
-        # 调试模式 - 使用调试端口
-        debug_port = config.get("services.website.debug_port", 8443)
-        logger.info(f"检测到调试模式，使用调试端口: {debug_port}")
-        https_port = debug_port
-    else:
-        # 生产模式 - 使用标准端口
-        logger.info(f"以生产模式启动，使用标准端口: {https_port}")
-    
-    # 检查是否使用Cloudflare
-    use_cloudflare = config.get("services.website.use_cloudflare", True)
-    if use_cloudflare:
-        logger.info("检测到Cloudflare模式，优化配置用于Cloudflare反向代理")
-    
-    # 检查端口是否被占用
-    def is_port_in_use(port):
-        import socket
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            result = s.connect_ex((host, port)) == 0
-            logger.debug(f"端口 {port} 占用状态: {'已占用' if result else '未占用'}")
-            return result
-    
-    # 计算worker数量
-    def calculate_workers(manual_workers=None):
-        """计算合适的worker数量，考虑CPU核心数和手动指定数量"""
-        import os, multiprocessing
-        
-        # 如果手动指定了worker数量，优先使用
-        if manual_workers is not None and manual_workers > 0:
-            logger.info(f"使用手动指定的worker数量: {manual_workers}")
-            return manual_workers
-            
-        # 否则基于CPU核心数计算
-        try:
-            cpu_count = multiprocessing.cpu_count()
-            # 使用 (2 * CPU核心数 + 1) 的通用公式，但最大限制为8
-            recommended = min(2 * cpu_count + 1, 8)
-            logger.info(f"基于CPU核心数({cpu_count})计算的推荐worker数量: {recommended}")
-            return recommended
-        except:
-            # 如果无法获取CPU核心数，使用安全默认值
-            logger.warning("无法确定CPU核心数，使用默认worker数量: 4")
-            return 4
-    
-    # 获取worker数量设置
-    worker_arg = config.get("services.website.worker_count", None)
-    
-    # 尝试启动服务
     try:
-        # 导入uvicorn
-        import uvicorn
-        
-        # 确定最优启动方案 - 通过配置和环境决定
-        use_http = False  # 默认不使用HTTP
-        use_https = has_ssl  # 有SSL证书才启用HTTPS
-        worker_count = calculate_workers(worker_arg)  # 根据CPU和配置计算worker
-        
-        # Cloudflare优先使用HTTP (灵活模式)
-        if use_cloudflare:
-            use_http = True
-            logger.info("Cloudflare灵活模式: 使用HTTP连接提供服务")
-            
-            # 检查HTTP端口是否可用
-            if is_port_in_use(http_port):
-                logger.error(f"HTTP端口 {http_port} 已被占用，无法启动HTTP服务")
-                use_http = False
-        
-        # 检查是否为特权端口（需要root权限）
-        def is_privileged_port(port):
-            return port < 1024
-            
-        # 准备启动参数
+        # 准备启动参数 - 单进程稳定模式
         common_params = {
             "reload": False,
-            "workers": worker_count,
-            "log_level": "debug" if debug_mode else "info",
-            "limit_concurrency": 2000,  # 增加并发限制
-            "timeout_keep_alive": 75,  # 增加保活时间
-            "backlog": 4096,  # 增加队列长度
+            "workers": 1,           
+            "log_level": "info",
+            "limit_concurrency": 500, 
+            "timeout_keep_alive": 30, 
+            "backlog": 1024,        
             "proxy_headers": True,
             "forwarded_allow_ips": "*"
         }
         
-        # 为特权端口提供警告
-        if (use_http and is_privileged_port(http_port)) or (use_https and is_privileged_port(https_port)):
-            logger.warning(f"使用特权端口 (HTTP:{http_port} 或 HTTPS:{https_port})，如果不是root用户可能无法绑定")
-            logger.warning("请确保应用有足够权限，或考虑使用 setcap 设置权限: sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3")
-            
-        # 确定使用哪种协议启动
-        if use_http:
-            logger.info(f"以HTTP模式启动 ({host}:{http_port})，worker数量: {worker_count}")
-            uvicorn.run(
-                "app:app", 
-                host=host, 
-                port=http_port,
-                **common_params
-            )
-        elif use_https:
-            logger.info(f"以HTTPS模式启动 ({host}:{https_port})，worker数量: {worker_count}")
-            uvicorn.run(
-                "app:app", 
-                host=host, 
-                port=https_port,
-                ssl_keyfile=ssl_key_path,
-                ssl_certfile=ssl_cert_path,
-                **common_params
-            )
-        else:
-            logger.error("无法启动服务：既没有可用的HTTP端口，也没有配置SSL证书")
+        # 启动HTTP服务
+        logger.debug(f"以单进程稳定模式启动 ({host}:{port})，worker数量: 1")
+        uvicorn.run(
+            "app:app", 
+            host=host, 
+            port=port,
+            **common_params
+        )
     except Exception as e:
         logger.error(f"服务启动失败: {str(e)}", exc_info=True)
     finally:
         # 清理资源
         cleanup_resources()
 
+# =============================================================================
 # 主函数
+# =============================================================================
+
 if __name__ == "__main__":
-    import argparse
-    import atexit
-    
     # 注册退出时的清理函数
     atexit.register(cleanup_resources)
     
@@ -386,66 +329,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="nkuwiki服务启动工具")
     parser.add_argument("--qa", action="store_true", help="启动问答服务")
     parser.add_argument("--api", action="store_true", help="启动API服务")
-    parser.add_argument("--http-only", action="store_true", help="仅启动HTTP服务，适用于Cloudflare灵活模式")
-    parser.add_argument("--worker", type=int, help="指定worker数量，不指定则根据CPU核心数自动计算")
+    parser.add_argument("--port", type=int, default=8000, help="API服务监听端口")
     
     args = parser.parse_args()
     
-    # 把worker数量参数传入配置
-    if args.worker is not None:
-        config.set("services.website.worker_count", args.worker)
-        logger.info(f"从命令行指定worker数量: {args.worker}")
-    
-    # 如果指定了HTTP-only模式
-    if args.http_only:
-        logger.info("使用HTTP-only模式启动，适用于Cloudflare灵活模式")
-        try:
-            # 检查端口
-            http_port = config.get("services.website.http_port", 80)
-            host = "0.0.0.0"
-            
-            # 计算worker数量
-            import os, multiprocessing
-            worker_arg = config.get("services.website.worker_count", None)
-            
-            if worker_arg is not None:
-                worker_count = worker_arg
-            else:
-                try:
-                    cpu_count = multiprocessing.cpu_count()
-                    worker_count = min(2 * cpu_count + 1, 8)  # 使用标准公式，但最大限制为8
-                except:
-                    worker_count = 4  # 默认安全值
-            
-            logger.info(f"使用 {worker_count} 个worker启动HTTP服务")
-            
-            # 检查是否为特权端口
-            if http_port < 1024:
-                logger.warning(f"使用特权端口 {http_port}，如果不是root用户可能无法绑定")
-                logger.warning("请确保应用有足够权限，或考虑使用 setcap 设置权限: sudo setcap 'cap_net_bind_service=+ep' /usr/bin/python3")
-            
-            import uvicorn
-            uvicorn.run(
-                "app:app", 
-                host=host, 
-                port=http_port,
-                reload=False,
-                workers=worker_count,
-                log_level="info",
-                limit_concurrency=2000,
-                timeout_keep_alive=75,  # 增加保活时间
-                backlog=4096,  # 增加队列长度
-                proxy_headers=True,
-                forwarded_allow_ips="*"
-            )
-            sys.exit(0)
-        except Exception as e:
-            logger.error(f"HTTP-only模式启动失败: {str(e)}", exc_info=True)
-            sys.exit(1)
-    
-    # 如果没有指定任何服务，默认只启动问答服务
+    # 修改默认行为：如果没有指定任何服务，默认启动API服务
     if not (args.qa or args.api):
-        args.qa = True
+        args.api = True
+        logger.warning("未指定服务类型，默认启动API服务。请明确使用--api或--qa参数。")
     
     # 启动指定的服务
     if args.qa:
@@ -456,8 +347,8 @@ if __name__ == "__main__":
         logger.info("问答服务已在后台启动")
     
     if args.api:
-        # 主线程启动API服务
-        run_api_service()
+        # 启动API服务
+        run_api_service(args.port)
     elif args.qa:
         # 如果只启动了问答服务，则等待问答服务线程结束
         qa_thread.join()

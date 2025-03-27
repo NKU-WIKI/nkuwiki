@@ -1,0 +1,324 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>nkuwiki 配置指南 | 南开WIKI</title>
+    <meta name="description" content="本文档提供了nkuwiki项目的配置说明，包括创建配置文件、配置通道、配置智能体等内容。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="nkuwiki">nkuwiki 配置指南</h1>
+<p>本文档提供了nkuwiki项目的配置说明，包括创建配置文件、配置通道、配置智能体等内容。</p>
+<h2 id="_1">配置项目</h2>
+<h3 id="_2">创建配置文件</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 复制配置模板（根据使用场景选择合适的模板）</span>
+<span class="c1"># 以下是可用的配置模板：</span>
+<span class="c1"># config-terminal.json - 终端调试通道配置</span>
+<span class="c1"># config-wechatmp.json - 微信公众号通道配置</span>
+<span class="c1"># config-wework.json - 企业微信通道配置</span>
+<span class="c1"># config-wechatcom.json - 微信客服通道配置</span>
+<span class="c1"># config-feishu.json - 飞书通道配置</span>
+<span class="c1"># config-dingtalk.json - 钉钉通道配置</span>
+<span class="c1"># config-website.json - 网站通道配置</span>
+<span class="c1"># config-complete.json - 完整配置示例</span>
+
+<span class="c1"># 例如，使用终端配置</span>
+cp<span class="w"> </span>config-template/config-terminal.json<span class="w"> </span>config.json
+
+<span class="c1"># 或者使用完整配置模板</span>
+<span class="c1"># cp config-template/config-complete.json config.json</span>
+</code></pre></div>
+
+<h3 id="_3">配置说明</h3>
+<p>以下是主要配置项说明：</p>
+<ol>
+<li>
+<p><strong>通道配置</strong>:
+   <code>json
+   "services": {
+     "channel_type": "terminal", // 通道类型：terminal, wechatmp, wework, wechatcom, feishu, dingtalk, website
+     "agent_type": "coze",       // 智能体类型：coze, zhipu, gemini, openai等
+     "terminal": {               // 特定通道的配置
+       "stream_output": true,
+       "show_welcome": true,
+       "welcome_message": "欢迎使用 NKU Wiki 智能助手!"
+     }
+   }</code></p>
+</li>
+<li>
+<p><strong>智能体配置</strong>:
+   <code>json
+   "core": {
+     "agent": {
+       "coze": {                 // Coze智能体配置
+         "base_url": "https://api.coze.cn",
+         "api_key": "",
+         "bot_id": ["your_bot_id_here"]
+       }
+     }
+   }</code></p>
+</li>
+<li>
+<p><strong>ETL配置</strong>:
+   <code>json
+   "etl": {
+     "data": {
+       "base_path": "./etl/data",
+       "qdrant": {
+         "url": "http://localhost:6333",
+         "collection": "main_index"
+       },
+       "mysql": {
+         "host": "127.0.0.1",
+         "port": 3306,
+         "user": "root",
+         "password": "",
+         "name": "mysql"
+       }
+     },
+     "retrieval": {
+       "retrieval_type": 3,
+       "f_topk": 128
+     },
+     "embedding": {
+       "name": "BAAI/bge-large-zh-v1.5"
+     }
+   }</code></p>
+</li>
+</ol>
+<p>完整的可用配置和注释请参见<a href="../config.py">config.py</a>的<code>available_setting</code>和<code>config-template/config-complete.json</code>。</p>
+<h2 id="_4">通道配置示例</h2>
+<h3 id="_5">终端通道</h3>
+<p>适用于开发调试，配置简单：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 复制终端配置模板</span>
+cp<span class="w"> </span>config-template/config-terminal.json<span class="w"> </span>config.json
+
+<span class="c1"># 2. 修改配置文件，设置bot_id和api_key</span>
+
+<span class="c1"># 3. 运行服务</span>
+python<span class="w"> </span>app.py
+</code></pre></div>
+
+<h3 id="_6">微信公众号通道</h3>
+<p>用于在微信公众号中部署智能问答服务：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 复制微信公众号配置模板</span>
+cp<span class="w"> </span>config-template/config-wechatmp.json<span class="w"> </span>config.json
+
+<span class="c1"># 2. 修改配置文件，设置必要的参数</span>
+<span class="c1"># - 设置bot_id和api_key</span>
+<span class="c1"># - 设置微信公众号相关配置：app_id, app_secret, token, encoding_aes_key</span>
+
+<span class="c1"># 3. 运行服务</span>
+python<span class="w"> </span>app.py
+</code></pre></div>
+
+<h3 id="_7">企业微信通道</h3>
+<p>用于在企业微信中部署智能问答服务：</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. 复制企业微信配置模板</span>
+cp<span class="w"> </span>config-template/config-wework.json<span class="w"> </span>config.json
+
+<span class="c1"># 2. 修改配置文件，设置必要的参数</span>
+<span class="c1"># - 设置bot_id和api_key</span>
+<span class="c1"># - 设置企业微信相关配置：corp_id, corp_secret, token, encoding_aes_key</span>
+
+<span class="c1"># 3. 运行服务</span>
+python<span class="w"> </span>app.py
+</code></pre></div>
+
+<h3 id="_8">飞书/钉钉/网站通道</h3>
+<p>同样的方式，使用对应的配置模板，修改相关参数后运行服务。</p>
+<p>更多通道配置详情请参考<code>config-template</code>目录下的模板文件和<code>config.py</code>的说明。 </p>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

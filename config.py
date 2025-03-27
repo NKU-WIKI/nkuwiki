@@ -3,7 +3,12 @@ import pickle
 import json
 import copy
 from singleton_decorator import singleton
-from loguru import logger
+import logging
+from typing import Any, Dict, Optional
+
+# 初始化日志
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger('config')
 
 # 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
@@ -349,9 +354,9 @@ available_setting = {
                 "path": "/mysql",                            # MySQL数据路径
                 "host": "127.0.0.1",                         # 数据库主机地址
                 "port": 3306,                                # 数据库端口
-                "user": "root",                              # 数据库用户名
-                "password": "",                              # 数据库密码
-                "name": "mysql"                              # 数据库名称
+                "user": "your_username",                     # 数据库用户名
+                "password": "your_password",                 # 数据库密码
+                "name": "your_database_name"                # 数据库名称
             },
             "nltk": {
                 "path": "/nltk"                         # NLTK数据路径
@@ -373,6 +378,11 @@ class Config(dict):
     def __init__(self, d=None):
         """初始化配置实例"""
         super().__init__()
+        # 延迟导入logger，避免循环导入
+        from core.utils.logger import register_logger
+        global logger
+        logger = register_logger('config')
+        
         self.update(available_setting)  # 先加载默认配置
         if d is None:
             d = {}
@@ -480,7 +490,7 @@ class Config(dict):
     
     def get_appdata_dir(self):
         """获取应用数据存储目录"""
-        data_path = os.path.join(self.get_root(), self.get("etl.data.cache.path", ""))
+        data_path = self.get("etl.data.base_path", "") + self.get("etl.data.cache.path", "")
         if not os.path.exists(data_path):
             logger.info("[INIT] data path not exists, create it: {}".format(data_path))
             os.makedirs(data_path)
@@ -580,4 +590,6 @@ class Config(dict):
         except Exception as e:
             logger.exception(e)
             return self
-#         return self
+
+# 创建全局配置实例
+config = Config()

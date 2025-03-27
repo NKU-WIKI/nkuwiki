@@ -12,22 +12,22 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from config import Config
-from loguru import logger
 
 # 导入配置
 config = Config()
 
-# 创建日志目录
-LOG_PATH = Path(__file__).resolve().parent / "logs"
-LOG_PATH.mkdir(exist_ok=True, parents=True)
-logger.add(LOG_PATH / "infra.log", rotation="1 day", retention="3 months", level="DEBUG")
+# 使用core中的日志模块
+from core.utils.logger import register_logger
+
+# 初始化基础设施模块日志
+infra_logger = register_logger("infra")
 
 # 版本信息
 __version__ = "1.0.0"
 
 # 定义导出的符号列表
 __all__ = [
-    'config', 'logger', 'LOG_PATH'
+    'config', 'infra_logger', 'LOG_PATH'
 ]
 
 # Infra模块主要功能：
