@@ -1649,8 +1649,6 @@
 
 ## 七、Agent智能体API
 
-Agent智能体API提供了基于大语言模型的智能交互能力，支持普通聊天、知识检索等功能。
-
 ### 7.1 智能体聊天接口
 
 **接口**：`POST /api/agent/chat`  
@@ -1732,11 +1730,64 @@ curl -N -X POST "http://localhost:8001/api/agent/chat" \
   -d '{"query": "南开大学有什么特色专业", "openid": "test_user", "stream": true, "format": "markdown", "bot_tag": "default"}'
 ```
 
-### 7.2 智能体状态接口
+### 7.2 知识库搜索
+
+**接口**：`POST /api/agent/search`  
+**描述**：搜索知识库内容  
+**请求体**：
+
+```json
+{
+  "keyword": "南开大学历史",
+  "limit": 10
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "results": [
+      {
+        "id": 1,
+        "title": "南开大学校史",
+        "content_preview": "南开大学创建于1919年，由著名爱国教育家张伯苓先生创办...",
+        "author": "南开百科",
+        "create_time": "2023-01-01 12:00:00",
+        "type": "文章",
+        "view_count": 1024,
+        "like_count": 89,
+        "comment_count": 15,
+        "relevance": 0.95
+      },
+      {
+        "id": 2,
+        "title": "南开大学百年校庆",
+        "content_preview": "2019年，南开大学迎来百年华诞...",
+        "author": "南开校友",
+        "create_time": "2023-01-02 12:00:00",
+        "type": "文章",
+        "view_count": 986,
+        "like_count": 76,
+        "comment_count": 12,
+        "relevance": 0.85
+      }
+    ],
+    "keyword": "南开大学历史",
+    "total": 2
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 7.3 获取Agent状态
 
 **接口**：`GET /api/agent/status`  
-**描述**：获取智能体系统状态  
-**参数**：无  
+**描述**：获取Agent系统状态  
 
 **响应**：
 
@@ -1747,22 +1798,10 @@ curl -N -X POST "http://localhost:8001/api/agent/chat" \
   "data": {
     "status": "running",
     "version": "1.0.0",
-    "capabilities": ["chat", "search"],
+    "capabilities": ["chat", "search", "rag"],
     "formats": ["markdown", "text", "html"]
   },
   "details": null,
-  "timestamp": "2025-03-27 16:47:42"
+  "timestamp": "2023-01-01 12:00:00"
 }
-```
-
-**响应参数说明**：
-- `status` - 字符串，智能体状态，如"running"
-- `version` - 字符串，版本号
-- `capabilities` - 数组，支持的能力列表
-- `formats` - 数组，支持的格式列表
-
-**示例**：
-
-```bash
-curl -X GET "http://localhost:8001/api/agent/status"
 ```
