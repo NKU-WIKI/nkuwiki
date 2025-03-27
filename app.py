@@ -12,14 +12,15 @@ import asyncio
 from pathlib import Path
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
+from datetime import datetime
 
-from fastapi import FastAPI, Request, APIRouter
+from fastapi import FastAPI, Request, APIRouter, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from api.models.common import create_response
+from api.models.common import create_response, StandardResponseModel
 from config import Config
 from api import register_routers
 from core.utils.logger import register_logger
@@ -189,27 +190,41 @@ async def global_http_exception_handler(request: Request, exc: StarletteHTTPExce
             f"客户端: {request.client.host if request.client else 'unknown'} | "
             f"UA: {request.headers.get('User-Agent', 'unknown')}"
         )
+    
+    # 直接构建响应内容
+    response_data = StandardResponseModel(
+        data=None,
+        code=exc.status_code,
+        message=str(exc.detail)
+    ).model_dump()
+    
+    # 手动处理时间戳
+    if "timestamp" in response_data and isinstance(response_data["timestamp"], datetime):
+        response_data["timestamp"] = response_data["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
         
     return JSONResponse(
         status_code=exc.status_code,
-        content=create_response(
-            data=None,
-            code=exc.status_code,
-            message=str(exc.detail)
-        )
+        content=response_data
     )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """全局通用异常处理器，确保所有异常都返回标准格式"""
     logger.error(f"未捕获的异常: {str(exc)}")
+    # 修复: 不使用create_response函数创建JSONResponse对象，而是直接构建内容
+    response_data = StandardResponseModel(
+        data=None,
+        code=500,
+        message=f"服务器内部错误: {str(exc)}"
+    ).model_dump()
+    
+    # 手动处理时间戳
+    if "timestamp" in response_data and isinstance(response_data["timestamp"], datetime):
+        response_data["timestamp"] = response_data["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
+    
     return JSONResponse(
         status_code=500,
-        content=create_response(
-            data=None,
-            code=500,
-            message=f"服务器内部错误: {str(exc)}"
-        )
+        content=response_data
     )
 
 # =============================================================================
@@ -236,10 +251,15 @@ logger.info("API路由注册完成")
 # 挂载静态文件目录，用于微信校验文件等
 app.mount("/static", StaticFiles(directory="static"), name="static_files")
 
-# 网站路由 - 放在最后，确保API路由优先级更高
+# 挂载Mihomo控制面板静态文件
+app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
+
+# 网站路由 - 确保具体路径挂载在根路径之前
 website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
 app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
 app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
+
+# 挂载网站根目录 - 放在最后
 app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
 
 # =============================================================================

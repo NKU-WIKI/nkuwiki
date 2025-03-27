@@ -12,6 +12,7 @@ from api.common import format_response_content
 from core.bridge.reply import ReplyType
 from core.utils.logger import register_logger
 import json
+import time
 
 # 请求和响应模型
 logger = register_logger("api.agent")
@@ -76,14 +77,26 @@ async def chat_with_agent(
     if request.stream and reply.type == ReplyType.STREAM:
         async def sse_generator():
             """生成SSE格式的流式响应"""
+            chunk_count = 0
+            total_length = 0
             try:
+                api_logger.info(f"开始流式响应 query={request.query[:30]}...")
+                start_time = time.time()
+                
                 for chunk in reply.content:
                     if chunk:
+                        # 统计信息
+                        chunk_count += 1
+                        total_length += len(chunk)
+                        
                         # 简单格式化文本
                         if request.format != 'text':
                             yield f"data: {json.dumps({'content': chunk})}\n\n"
                         else:
                             yield f"data: {json.dumps({'content': chunk})}\n\n"
+                
+                elapsed = time.time() - start_time
+                api_logger.info(f"流式响应完成: 共{chunk_count}块, 总长度={total_length}, 耗时={elapsed:.2f}秒")
             except Exception as e:
                 api_logger.error(f"流式响应生成失败: {str(e)}")
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"

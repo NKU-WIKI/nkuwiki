@@ -96,9 +96,28 @@ class CozeAgent(Agent):
                 logger.info("[COZE] 使用流式输出")
                 
                 def stream_wrapper():
+                    chunk_count = 0
+                    total_chars = 0
+                    wrapper_start = time.time()
+                    logger.info(f"[COZE] 启动流式输出包装器，openid={openid}")
+                    
                     try:
                         for chunk in self._stream_reply(query, format_type, openid):
+                            chunk_count += 1
+                            total_chars += len(chunk)
+                            
+                            # 记录一些关键点的状态
+                            if chunk_count == 1:
+                                logger.debug(f"[COZE] 转发首个响应块: '{chunk[:20]}...'")
+                            elif chunk_count % 50 == 0:  # 每50个块记录一次
+                                time_elapsed = time.time() - wrapper_start
+                                logger.debug(f"[COZE] 已转发 {chunk_count} 个块，总字符数: {total_chars}，运行时间: {time_elapsed:.2f}秒")
+                                
                             yield chunk
+                            
+                        # 记录完成信息
+                        wrapper_time = time.time() - wrapper_start
+                        logger.info(f"[COZE] 流式输出完成: {chunk_count} 个块，{total_chars} 字符，耗时: {wrapper_time:.2f}秒")
                     except Exception as e:
                         logger.error(f"[COZE] 流式回复出错: {str(e)}")
                         yield f"\n[错误: {str(e)}]"
@@ -111,27 +130,48 @@ class CozeAgent(Agent):
             else:
                 # 非流式输出
                 logger.info("[COZE] 使用非流式输出")
-                try:
-                    response = self.client.chat.create_and_poll(
-                        bot_id=self.bot_id,
-                        user_id=openid,
-                        additional_messages=[
-                            Message.build_user_question_text(query, meta_data=meta_data)
-                        ]
-                    )
-                    
-                    # 提取回复内容
-                    for message in response.messages:
-                        if message.role == "assistant" and message.type == "answer":
-                            # 处理完成后更新会话
-                            completion_tokens, total_tokens = self._calc_tokens(session.messages, message.content)
-                            self.sessions.session_reply(message.content, session_id, total_tokens)
-                            return Reply(ReplyType.TEXT, message.content)
-                    
-                    return Reply(ReplyType.TEXT, "未获取到有效回复")
-                except Exception as e:
-                    logger.error(f"[COZE] 非流式回复出错: {str(e)}")
-                    return Reply(ReplyType.TEXT, f"请求失败: {str(e)}")
+                max_retries = 3
+                retry_count = 0
+                
+                while retry_count < max_retries:
+                    try:
+                        logger.debug(f"开始非流式请求，尝试次数: {retry_count + 1}")
+                        response = self.client.chat.create_and_poll(
+                            bot_id=self.bot_id,
+                            user_id=openid,
+                            additional_messages=[
+                                Message.build_user_question_text(query, meta_data=meta_data)
+                            ]
+                        )
+                        
+                        # 提取回复内容
+                        for message in response.messages:
+                            if message.role == "assistant" and message.type == "answer":
+                                # 处理完成后更新会话
+                                completion_tokens, total_tokens = self._calc_tokens(session.messages, message.content)
+                                self.sessions.session_reply(message.content, session_id, total_tokens)
+                                return Reply(ReplyType.TEXT, message.content)
+                        
+                        return Reply(ReplyType.TEXT, "未获取到有效回复")
+                        
+                    except Exception as e:
+                        retry_count += 1
+                        error_msg = str(e)
+                        logger.warning(f"非流式请求失败 (尝试 {retry_count}/{max_retries}): {error_msg}")
+                        
+                        # 如果是网络断开错误，尝试重试
+                        if "RemoteProtocolError" in error_msg or "Server disconnected" in error_msg:
+                            if retry_count < max_retries:
+                                wait_time = retry_count * 2  # 指数退避
+                                logger.info(f"等待 {wait_time} 秒后重试...")
+                                time.sleep(wait_time)
+                                continue
+                        
+                        # 达到最大重试次数或其他错误
+                        if retry_count >= max_retries:
+                            return Reply(ReplyType.TEXT, f"请求失败 (尝试 {retry_count}/{max_retries}): {error_msg}")
+                        
+                return Reply(ReplyType.TEXT, "请求过程中发生未知错误")
             
         elif context.type == ContextType.IMAGE_CREATE:
             return Reply(ReplyType.TEXT, "暂不支持图片生成")
@@ -148,30 +188,73 @@ class CozeAgent(Agent):
 
     def _stream_reply(self, query, format_type="text", openid="default_user"):
         """流式返回对话响应"""
-        try:
-            logger.debug(f"开始流式请求: {query[:30]}...")
-            
-            # 设置元数据
-            meta_data = {"format": format_type} if format_type != "text" else None
-            
-            # 使用SDK的流式接口
-            stream = self.client.chat.stream(
-                bot_id=self.bot_id,
-                user_id=openid,
-                additional_messages=[
-                    Message.build_user_question_text(query, meta_data=meta_data)
-                ]
-            )
-            
-            # 处理流式响应
-            for event in stream:
-                if event.event == ChatEventType.CONVERSATION_MESSAGE_DELTA:
-                    if event.message and event.message.content:
-                        yield event.message.content
+        max_retries = 3
+        retry_count = 0
+        chunk_count = 0
+        total_chars = 0
+        start_time = time.time()
+        
+        logger.info(f"开始流式会话: query={query[:30]}..., format={format_type}, openid={openid}")
+        
+        while retry_count < max_retries:
+            try:
+                logger.debug(f"开始流式请求: {query[:30]}...，尝试次数: {retry_count + 1}")
+                request_time = time.time()
+                
+                # 设置元数据
+                meta_data = {"format": format_type} if format_type != "text" else None
+                
+                # 使用SDK的流式接口
+                stream = self.client.chat.stream(
+                    bot_id=self.bot_id,
+                    user_id=openid,
+                    additional_messages=[
+                        Message.build_user_question_text(query, meta_data=meta_data)
+                    ]
+                )
+                
+                logger.debug(f"已连接到流，等待响应...")
+                first_chunk_received = False
+                
+                # 处理流式响应
+                for event in stream:
+                    if event.event == ChatEventType.CONVERSATION_MESSAGE_DELTA:
+                        if event.message and event.message.content:
+                            chunk = event.message.content
+                            chunk_count += 1
+                            total_chars += len(chunk)
+                            
+                            # 只记录首个响应块
+                            if not first_chunk_received:
+                                first_chunk_received = True
+                                time_to_first = time.time() - request_time
+                                logger.debug(f"收到首个响应: 耗时={time_to_first:.2f}秒")
+                            
+                            yield chunk
+                
+                # 如果成功完成，记录完成信息并跳出循环
+                total_time = time.time() - start_time
+                logger.info(f"流式请求完成: 共 {chunk_count} 个响应块，{total_chars} 字符，总耗时: {total_time:.2f}秒")
+                break
                         
-        except Exception as e:
-            logger.exception(f"流式请求失败: {e}")
-            yield f"请求失败: {e}"
+            except Exception as e:
+                retry_count += 1
+                error_msg = str(e)
+                error_time = time.time() - start_time
+                logger.warning(f"流式请求失败 (尝试 {retry_count}/{max_retries}): {error_msg}, 耗时: {error_time:.2f}秒")
+                
+                # 如果是网络断开错误，尝试重试
+                if "RemoteProtocolError" in error_msg or "Server disconnected" in error_msg:
+                    if retry_count < max_retries:
+                        wait_time = retry_count * 2  # 指数退避
+                        logger.info(f"等待 {wait_time} 秒后重试...")
+                        time.sleep(wait_time)
+                        continue
+                
+                # 达到最大重试次数或其他错误，返回错误消息
+                logger.error(f"流式请求最终失败，已尝试 {retry_count} 次，返回错误消息")
+                yield f"请求失败 (尝试 {retry_count}/{max_retries}): {error_msg}"
+                break
 
     def get_knowledge_results(self, query, openid="default_user"):
         """获取对话的知识库召回结果"""
