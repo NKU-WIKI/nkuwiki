@@ -14,6 +14,29 @@ class MessageRole(str, Enum):
     FUNCTION = "function"
     TOOL = "tool"
 
+# class ChatRequest(BaseModel):
+#     query: str = Field(..., description="用户输入的问题")
+#     history: Optional[List[Dict[str, str]]] = Field(default=[], description="对话历史")
+#     stream: bool = Field(default=False, description="是否使用流式响应")
+#     format: Optional[str] = Field(default="markdown", description="返回格式，支持 'markdown', 'text', 'html'")
+#     user_id: Optional[str] = Field(default="default_user", description="用户唯一标识")
+    
+#     def validate_query(cls, v):
+#         if not v.strip():
+#             raise ValueError("问题不能为空")
+#         return v.strip()
+    
+#     def validate_format(cls, v):
+#         valid_formats = ['markdown', 'text', 'html']
+#         if v.lower() not in valid_formats:
+#             raise ValueError(f"格式必须是以下之一: {', '.join(valid_formats)}")
+#         return v.lower()
+    
+#     def validate_user_id(cls, v):
+#         if not v.strip():
+#             return "default_user"
+#         return v.strip()
+
 class ChatMessage(BaseAPIModel):
     """聊天消息"""
     role: MessageRole = Field(..., description="消息角色")
@@ -29,22 +52,18 @@ class ChatMessage(BaseAPIModel):
 
 class ChatRequest(BaseAPIModel):
     """聊天请求"""
-    messages: List[ChatMessage] = Field(default_factory=list, description="消息历史")
-    query: Optional[str] = Field(None, description="用户查询，会添加到messages")
+    query: str = Field(..., description="用户查询")
+    openid: str = Field(..., description="用户openid")
     stream: bool = Field(False, description="是否流式返回")
-    model: str = Field("default", description="模型名称")
-    max_tokens: Optional[int] = Field(None, description="最大生成token数")
-    temperature: float = Field(0.7, ge=0, le=2.0, description="温度参数")
-    system_prompt: Optional[str] = Field(None, description="系统提示词")
-    plugins: List[str] = Field(default_factory=list, description="启用的插件列表")
     format: str = Field("markdown", description="输出格式，如markdown、text或html")
+    bot_tag: Optional[str] = Field("default", description="机器人tag，用于指定使用哪个机器人")
 
     @field_validator("query")
-    def validate_query_or_messages(cls, v, values):
-        """验证query和messages至少有一个不为空"""
-        if not v and (not hasattr(values, "data") or not values.data.get("messages")):
-            raise ValueError("query和messages不能同时为空")
-        return v
+    def validate_query(cls, v):
+        """验证query不为空"""
+        if not v or not v.strip():
+            raise ValueError("query不能为空")
+        return v.strip()
 
     @field_validator("format")
     def validate_format(cls, v):
@@ -56,8 +75,10 @@ class ChatRequest(BaseAPIModel):
 
 class ChatResponse(BaseAPIModel):
     """聊天响应"""
-    message: ChatMessage = Field(..., description="生成的消息")
-    usage: Dict[str, int] = Field(..., description="token使用情况")
+    message: str = Field(..., description="生成的消息内容")
+    sources: List[str] = Field(default_factory=list, description="知识来源")
+    format: str = Field("markdown", description="输出格式")
+    usage: Optional[Dict[str, int]] = Field(default_factory=dict, description="token使用情况")
     finish_reason: Optional[str] = Field(None, description="完成原因")
 
 class FunctionDefinition(BaseAPIModel):

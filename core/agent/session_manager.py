@@ -1,7 +1,7 @@
 from core.utils.data_structures import ExpiredDict
-from app import App
 from config import Config   
-
+from core.utils.logger import register_logger
+logger = register_logger('core.agent')
 
 class Session(object):
     def __init__(self, session_id, system_prompt=None):
@@ -69,9 +69,9 @@ class SessionManager(object):
         try:
             max_tokens = self.config.get("services.conversation_max_tokens", 1000)
             total_tokens = session.discard_exceeding(max_tokens, None)
-            App().logger.debug("prompt tokens used={}".format(total_tokens))
+            logger.debug("prompt tokens used={}".format(total_tokens))
         except Exception as e:
-            App().logger.exception("Exception when counting tokens precisely for prompt: {}".format(str(e)))
+            logger.exception("Exception when counting tokens precisely for prompt: {}".format(str(e)))
         return session
 
     def session_reply(self, reply, session_id, total_tokens=None):
@@ -80,9 +80,9 @@ class SessionManager(object):
         try:
             max_tokens = self.config.get("services.conversation_max_tokens", 1000)
             tokens_cnt = session.discard_exceeding(max_tokens, total_tokens)
-            App().logger.debug("raw total_tokens={}, savesession tokens={}".format(total_tokens, tokens_cnt))
+            logger.debug("raw total_tokens={}, savesession tokens={}".format(total_tokens, tokens_cnt))
         except Exception as e:
-            App().logger.exception("Exception when counting tokens precisely for session: {}".format(str(e)))
+            logger.exception("Exception when counting tokens precisely for session: {}".format(str(e)))
         return session
 
     def clear_session(self, session_id):

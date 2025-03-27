@@ -1649,111 +1649,94 @@
 
 ## 七、Agent智能体API
 
-### 7.1 与Agent对话
+Agent智能体API提供了基于大语言模型的智能交互能力，支持普通聊天、知识检索等功能。
+
+### 7.1 智能体聊天接口
 
 **接口**：`POST /api/agent/chat`  
-**描述**：与AI智能体进行对话  
+**描述**：与智能体进行对话，支持普通文本和流式响应  
 **请求体**：
 
 ```json
 {
-  "query": "南开大学的校训是什么？",
-  "messages": [
-    {"role": "user", "content": "你好"},
-    {"role": "assistant", "content": "你好！我是南开Wiki智能助手，有什么可以帮助你的吗？"}
-  ],
+  "query": "用户提问内容",
+  "openid": "用户唯一标识",
   "stream": false,
   "format": "markdown",
-  "openid": "user_openid"
+  "bot_tag": "default"
 }
 ```
 
-**响应**：
+**请求参数说明**：
+- `query` - 字符串，必填，用户的提问内容
+- `openid` - 字符串，必填，用户的唯一标识，用于区分不同用户
+- `stream` - 布尔值，可选，默认false，是否使用流式响应(服务器发送事件SSE)
+- `format` - 字符串，可选，默认"markdown"，响应格式，支持"markdown"、"text"、"html"
+- `bot_tag` - 字符串，可选，默认"default"，用于指定使用哪个机器人，配置在config中
+
+**非流式响应**：
 
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "response": "南开大学的校训是"允公允能，日新月异"。这八个字出自《论语》，体现了南开大学追求公能日新的办学理念。",
-    "sources": [
-      {
-        "type": "小程序帖子",
-        "title": "南开大学简介",
-        "content": "南开大学校训为"允公允能，日新月异"，出自《论语》...",
-        "author": "南开百科"
-      }
-    ],
-    "suggested_questions": [
-      "南开大学的校徽有什么含义？",
-      "南开大学是什么时候创立的？",
-      "南开大学的创始人是谁？"
-    ],
-    "format": "markdown"
+    "message": "AI回复的内容",
+    "sources": [],
+    "format": "markdown",
+    "usage": {},
+    "finish_reason": null
   },
   "details": null,
-  "timestamp": "2023-01-01 12:00:00"
+  "timestamp": "2025-03-27 16:47:42"
 }
 ```
 
-### 7.2 知识库搜索
+**流式响应**：
+使用服务器发送事件(SSE)格式，每个事件包含部分回复内容，格式如下：
 
-**接口**：`POST /api/agent/search`  
-**描述**：搜索知识库内容  
-**请求体**：
+```
+data: {"content": "内容片段1"}
 
-```json
-{
-  "keyword": "南开大学历史",
-  "limit": 10
-}
+data: {"content": "内容片段2"}
+
+...
+
+data: {"content": "内容片段n"}
 ```
 
-**响应**：
+**响应参数说明**：
+- `message` - 字符串，AI回复的内容
+- `sources` - 数组，知识来源，目前为空数组
+- `format` - 字符串，输出格式
+- `usage` - 对象，token使用情况
+- `finish_reason` - 字符串或null，完成原因
 
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "results": [
-      {
-        "id": 1,
-        "title": "南开大学校史",
-        "content_preview": "南开大学创建于1919年，由著名爱国教育家张伯苓先生创办...",
-        "author": "南开百科",
-        "create_time": "2023-01-01 12:00:00",
-        "type": "文章",
-        "view_count": 1024,
-        "like_count": 89,
-        "comment_count": 15,
-        "relevance": 0.95
-      },
-      {
-        "id": 2,
-        "title": "南开大学百年校庆",
-        "content_preview": "2019年，南开大学迎来百年华诞...",
-        "author": "南开校友",
-        "create_time": "2023-01-02 12:00:00",
-        "type": "文章",
-        "view_count": 986,
-        "like_count": 76,
-        "comment_count": 12,
-        "relevance": 0.85
-      }
-    ],
-    "keyword": "南开大学历史",
-    "total": 2
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
+**错误码**：
+- `400` - 请求参数错误
+- `500` - 服务器内部错误
+
+**示例**：
+
+请求：
+```bash
+curl -X POST "http://localhost:8001/api/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "南开大学有什么特色专业", "openid": "test_user", "stream": false, "format": "markdown", "bot_tag": "default"}'
 ```
 
-### 7.3 获取Agent状态
+流式请求：
+```bash
+curl -N -X POST "http://localhost:8001/api/agent/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "南开大学有什么特色专业", "openid": "test_user", "stream": true, "format": "markdown", "bot_tag": "default"}'
+```
+
+### 7.2 智能体状态接口
 
 **接口**：`GET /api/agent/status`  
-**描述**：获取Agent系统状态  
+**描述**：获取智能体系统状态  
+**参数**：无  
 
 **响应**：
 
@@ -1764,10 +1747,22 @@
   "data": {
     "status": "running",
     "version": "1.0.0",
-    "capabilities": ["chat", "search", "rag"],
+    "capabilities": ["chat", "search"],
     "formats": ["markdown", "text", "html"]
   },
   "details": null,
-  "timestamp": "2023-01-01 12:00:00"
+  "timestamp": "2025-03-27 16:47:42"
 }
+```
+
+**响应参数说明**：
+- `status` - 字符串，智能体状态，如"running"
+- `version` - 字符串，版本号
+- `capabilities` - 数组，支持的能力列表
+- `formats` - 数组，支持的格式列表
+
+**示例**：
+
+```bash
+curl -X GET "http://localhost:8001/api/agent/status"
 ```

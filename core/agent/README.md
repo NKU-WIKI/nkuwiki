@@ -239,3 +239,140 @@ class MyAgent(Agent):
 ```text
 
 请在`config.json`文件中配置相应的参数。
+
+# 南开Wiki智能助手模块
+
+本模块实现了南开Wiki的智能助手功能，支持多种大语言模型(LLM)，提供对话、知识检索等能力。
+
+## 主要功能
+
+1. 提供统一Agent接口，支持多种智能体实现
+2. 会话状态管理，维护用户对话历史
+3. 流式输出支持，减少响应延迟
+4. 知识库检索增强，提高回答准确性
+
+## 使用方法
+
+### 智能体工厂
+
+使用工厂方法获取智能体实例：
+
+```python
+from core.agent.agent_factory import get_agent
+
+# 获取默认智能体
+agent = get_agent()
+
+# 获取指定类型智能体
+agent = get_agent("coze")  # 使用Coze智能体
+
+# 获取指定类型和标签的智能体
+agent = get_agent("coze", tag="rewrite")  # 使用特定bot_id的Coze智能体
+```
+
+### 基本对话
+
+```python
+from core.bridge.context import Context, ContextType
+from core.bridge.reply import Reply, ReplyType
+
+# 创建上下文
+context = Context()
+context.type = ContextType.TEXT
+context["session_id"] = "user_session_123"
+context["stream"] = False  # 是否流式输出
+
+# 发送请求并获取回复
+reply = agent.reply("南开大学有什么特色专业？", context)
+
+# 处理回复
+if reply.type == ReplyType.TEXT:
+    print(reply.content)
+```
+
+### 流式对话
+
+```python
+# 开启流式输出
+context["stream"] = True
+
+# 发送请求并获取流式回复
+reply = agent.reply("南开大学有什么特色专业？", context)
+
+# 处理流式回复
+if reply.type == ReplyType.STREAM:
+    for chunk in reply.content:
+        print(chunk, end="", flush=True)
+```
+
+### CozeAgent特性
+
+Coze智能体是基于Coze官方API的实现，支持多个机器人(bot)，通过标签区分：
+
+```python
+# 引入CozeAgent
+from core.agent.coze.coze_agent import CozeAgent
+
+# 使用默认bot
+agent = CozeAgent()
+
+# 使用指定标签的bot
+agent = CozeAgent(tag="knowledge")  # 使用knowledge标签的bot
+```
+
+#### 配置说明
+
+CozeAgent的配置位于config.json中：
+
+```json
+{
+  "core": {
+    "agent": {
+      "coze": {
+        "api_key": "your_coze_api_key",
+        "default_bot_id": "default_bot_id",
+        "knowledge_bot_id": "knowledge_bot_id",
+        "rewrite_bot_id": "rewrite_bot_id"
+      }
+    }
+  }
+}
+```
+
+即可通过标签引用特定bot：
+
+```python
+agent = CozeAgent(tag="knowledge")
+# 使用config中的knowledge_bot_id
+```
+
+## 开发指南
+
+### 添加新的智能体
+
+1. 创建新的智能体类，继承自`Agent`基类
+2. 实现`reply`方法
+3. 在`agent_factory.py`中注册新的智能体
+
+```python
+# 示例：实现新的智能体
+from core.agent import Agent
+from core.bridge.context import Context
+from core.bridge.reply import Reply, ReplyType
+
+class MyNewAgent(Agent):
+    def __init__(self):
+        super().__init__()
+        # 初始化代码...
+        
+    def reply(self, query: str, context: Context) -> Reply:
+        # 实现回复逻辑...
+        return Reply(ReplyType.TEXT, "回复内容")
+```
+
+### 优化与改进
+
+当前优先事项：
+- 改进知识库检索质量
+- 优化流式输出性能
+- 增强对话上下文管理
