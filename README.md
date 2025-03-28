@@ -2,7 +2,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)
 
-![](./docs/assets/wiki.png)
+<img src="./docs/assets/wiki.png" width="200" alt="nkuwiki logo" />
 
 ## 🚀 立即体验
 
