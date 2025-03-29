@@ -7,6 +7,7 @@ API模块
 - agent_router: 智能体接口
 - health_router: 健康检查接口
 - admin_router: 管理员接口
+- mcp_router: MCP协议接口
 """
 from fastapi import APIRouter
 
@@ -14,9 +15,10 @@ from fastapi import APIRouter
 health_router = APIRouter(tags=["health"])
 wxapp_router = APIRouter(prefix="/wxapp", tags=["wxapp"])
 agent_router = APIRouter(prefix="/agent", tags=["agent"])
+mcp_router = APIRouter(prefix="/mcp", tags=["mcp"])
 
 # 导入各子模块的路由，这会触发子模块中的路由注册
-from api.routes import wxapp, agent, admin
+from api.routes import wxapp, agent, admin, mcp
 
 # 导入admin_router以便将其注册
 from api.routes.admin import admin_router
@@ -27,6 +29,7 @@ __all__ = [
     "health_router", 
     "agent_router",
     "admin_router",
+    "mcp_router",
     "register_routers",
 ]
 
@@ -45,3 +48,4 @@ def register_routers(app):
     app.include_router(wxapp_router)
     app.include_router(agent_router)
     app.include_router(admin_router)
+    app.include_router(mcp_router)
