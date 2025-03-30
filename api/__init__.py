@@ -6,6 +6,7 @@ API模块
 - wxapp_router: 微信小程序接口
 - agent_router: 智能体接口
 - admin_router: 管理员接口
+- mcp_router: MCP协议接口
 """
 from api.routes import router
 __all__ = [

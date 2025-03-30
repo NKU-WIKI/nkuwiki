@@ -7,7 +7,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-
+.bat
 # 构建和打包
 build/
 develop-eggs/
