@@ -1,256 +1,136 @@
 """
-反馈相关API接口
-处理反馈的创建、查询、更新和删除等功能
+微信小程序用户反馈API
 """
-from typing import Dict, Any, Optional, List
-from fastapi import Depends, HTTPException, Query, Path
-import json
+from typing import List, Dict, Any, Optional
+from fastapi import Query, APIRouter
+from api.models.common import Response, Request, validate_params
 
-from api import wxapp_router
-from api.common import handle_api_errors, get_api_logger_dep
-from api.models.common import SimpleOperationResponse
-from api.models.wxapp.feedback import (
-    FeedbackModel, 
-    FeedbackCreateRequest, 
-    FeedbackUpdateRequest,
-    FeedbackListResponse
+from etl.load.db_core import (
+    async_query_records, async_get_by_id, async_insert, async_update
 )
 
-@wxapp_router.post("/feedback", response_model=FeedbackModel)
-@handle_api_errors("提交反馈")
-async def create_feedback(
-    request: FeedbackCreateRequest,
-    openid: str = Query(..., description="用户openid"),
-    api_logger=Depends(get_api_logger_dep)
-):
-    """
-    提交新反馈
-    
-    用户提交问题反馈、建议或其他类型的反馈
-    """
-    from api.database.wxapp import feedback_dao
-    
-    api_logger.debug(f"创建新反馈 (用户: {openid[:8]}...)")
-    
-    # 构建反馈数据
-    feedback_data = {
-        "openid": openid,
-        "content": request.content,
-        "type": request.type,
-        "contact": request.contact,
-        "images": request.images or [],
-        "status": 0,  # 默认为待处理状态(0)
-    }
-    
-    # 处理设备信息
-    if request.device_info:
-        feedback_data["device_info"] = request.device_info.dict()
-    
-    # 创建反馈
-    feedback_id = await feedback_dao.create_feedback(feedback_data)
-    
-    if not feedback_id:
-        raise HTTPException(status_code=500, detail="反馈创建失败")
-    
-    # 获取创建的反馈
-    feedback = await feedback_dao.get_feedback_by_id(feedback_id)
-    
-    # 处理datetime类型字段
-    if feedback and "create_time" in feedback and feedback["create_time"]:
-        feedback["create_time"] = feedback["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if feedback and "update_time" in feedback and feedback["update_time"]:
-        feedback["update_time"] = feedback["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if feedback and "resolve_time" in feedback and feedback["resolve_time"]:
-        feedback["resolve_time"] = feedback["resolve_time"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 处理图片和设备信息的JSON解析
-    if feedback and "images" in feedback and isinstance(feedback["images"], str):
-        try:
-            feedback["images"] = json.loads(feedback["images"])
-        except:
-            feedback["images"] = []
-    
-    if feedback and "device_info" in feedback and isinstance(feedback["device_info"], str):
-        try:
-            feedback["device_info"] = json.loads(feedback["device_info"])
-        except:
-            feedback["device_info"] = {}
-    
-    return feedback
+router = APIRouter()
 
-@wxapp_router.get("/users/{openid}/feedback", response_model=FeedbackListResponse)
-@handle_api_errors("获取用户反馈列表")
-async def get_user_feedback(
-    openid: str = Path(..., description="用户openid"),
-    type: Optional[str] = Query(None, description="反馈类型：bug-问题反馈, suggestion-建议, other-其他"),
-    status: Optional[str] = Query(None, description="反馈状态：pending-待处理, processing-处理中, resolved-已解决, rejected-已拒绝"),
-    limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
-    offset: int = Query(0, description="分页偏移量", ge=0),
-    api_logger=Depends(get_api_logger_dep)
-):
-    """
-    获取用户的反馈列表
-    
-    支持按类型和状态筛选，分页获取
-    """
-    from api.database.wxapp import feedback_dao
-    
-    api_logger.debug(f"获取用户反馈列表 (用户: {openid[:8]}..., 类型: {type}, 状态: {status})")
-    
-    # 获取反馈列表
-    feedback_list, total = await feedback_dao.get_user_feedback(
-        openid=openid,
-        feedback_type=type,
-        status=status,
-        limit=limit,
-        offset=offset
-    )
-    
-    # 处理datetime类型字段和JSON字段
-    for feedback in feedback_list:
-        if "create_time" in feedback and feedback["create_time"]:
-            feedback["create_time"] = feedback["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-        if "update_time" in feedback and feedback["update_time"]:
-            feedback["update_time"] = feedback["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-        if "resolve_time" in feedback and feedback["resolve_time"]:
-            feedback["resolve_time"] = feedback["resolve_time"].strftime("%Y-%m-%d %H:%M:%S")
-        
-        # 处理图片和设备信息的JSON解析
-        if "images" in feedback and isinstance(feedback["images"], str):
-            try:
-                feedback["images"] = json.loads(feedback["images"])
-            except:
-                feedback["images"] = []
-        
-        if "device_info" in feedback and isinstance(feedback["device_info"], str):
-            try:
-                feedback["device_info"] = json.loads(feedback["device_info"])
-            except:
-                feedback["device_info"] = {}
-    
-    return {
-        "feedback_list": feedback_list,
-        "total": total,
-        "limit": limit,
-        "offset": offset
-    }
-
-@wxapp_router.get("/feedback/{feedback_id}", response_model=FeedbackModel)
-@handle_api_errors("获取反馈详情")
+@router.get("/feedback/detail")
 async def get_feedback_detail(
-    feedback_id: int = Path(..., description="反馈ID"),
-    api_logger=Depends(get_api_logger_dep)
+    feedback_id: str = Query(..., description="反馈ID")
 ):
-    """
-    获取反馈详情
-    
-    根据ID获取反馈的详细信息
-    """
-    from api.database.wxapp import feedback_dao
-    
-    api_logger.debug(f"获取反馈详情 (ID: {feedback_id})")
-    
-    # 获取反馈信息
-    feedback = await feedback_dao.get_feedback_by_id(feedback_id)
-    
-    if not feedback:
-        raise HTTPException(status_code=404, detail="反馈不存在")
-    
-    # 处理datetime类型字段
-    if "create_time" in feedback and feedback["create_time"]:
-        feedback["create_time"] = feedback["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if "update_time" in feedback and feedback["update_time"]:
-        feedback["update_time"] = feedback["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if "resolve_time" in feedback and feedback["resolve_time"]:
-        feedback["resolve_time"] = feedback["resolve_time"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    # 处理图片和设备信息的JSON解析
-    if "images" in feedback and isinstance(feedback["images"], str):
-        try:
-            feedback["images"] = json.loads(feedback["images"])
-        except:
-            feedback["images"] = []
-    
-    if "device_info" in feedback and isinstance(feedback["device_info"], str):
-        try:
-            feedback["device_info"] = json.loads(feedback["device_info"])
-        except:
-            feedback["device_info"] = {}
-    
-    return feedback
+    """获取用户反馈详情"""
+    if(not feedback_id):
+        return Response.bad_request(details={"message": "缺少feedback_id参数"})
+    try:
+        feedback = await async_get_by_id("wxapp_feedback", feedback_id)
+        if not feedback:
+            return Response.not_found(resource="反馈")
+        return Response.success(data=feedback)
+    except Exception as e:
+        return Response.error(details={"message": f"获取反馈详情失败: {str(e)}"})
 
-@wxapp_router.put("/feedback/{feedback_id}", response_model=FeedbackModel)
-@handle_api_errors("更新反馈")
-async def update_feedback(
-    request: FeedbackUpdateRequest,
-    feedback_id: int = Path(..., description="反馈ID"),
-    api_logger=Depends(get_api_logger_dep)
+@router.get("/feedback/list")
+async def get_feedback_list(
+    openid: str = Query(..., description="用户OpenID"),
+    type: Optional[str] = Query(None, description="反馈类型"),
+    status: Optional[str] = Query(None, description="反馈状态")
 ):
-    """
-    更新反馈
-    
-    更新反馈内容、状态和管理员回复
-    """
-    from api.database.wxapp import feedback_dao
-    import json
-    
-    api_logger.debug(f"更新反馈 (ID: {feedback_id})")
-    
-    # 检查反馈是否存在
-    feedback = await feedback_dao.get_feedback_by_id(feedback_id)
-    
-    if not feedback:
-        raise HTTPException(status_code=404, detail="反馈不存在")
-    
-    # 更新反馈
-    update_data = request.dict(exclude_unset=True)
-    
-    # 处理列表和字典类型
-    if "images" in update_data and update_data["images"] is not None:
-        update_data["images"] = json.dumps(update_data["images"])
-    if "device_info" in update_data and update_data["device_info"] is not None:
-        update_data["device_info"] = json.dumps(update_data["device_info"])
-    
-    if update_data:
-        await feedback_dao.update_feedback(feedback_id, update_data)
-        
-    # 获取更新后的反馈
-    updated_feedback = await feedback_dao.get_feedback_by_id(feedback_id)
-    
-    # 处理datetime类型字段
-    if "create_time" in updated_feedback and updated_feedback["create_time"]:
-        updated_feedback["create_time"] = updated_feedback["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if "update_time" in updated_feedback and updated_feedback["update_time"]:
-        updated_feedback["update_time"] = updated_feedback["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    return updated_feedback
+    """获取用户反馈列表"""
+    if(not openid):
+        return Response.bad_request(details={"message": "缺少openid参数"})
+    try:
+        conditions = {"openid": openid}
+        if type:
+            conditions["type"] = type
+        if status:
+            conditions["status"] = status
 
-@wxapp_router.delete("/feedback/{feedback_id}", response_model=SimpleOperationResponse)
-@handle_api_errors("删除反馈")
-async def delete_feedback(
-    feedback_id: int = Path(..., description="反馈ID"),
-    api_logger=Depends(get_api_logger_dep)
-):
-    """
-    删除反馈
-    
-    标记删除指定反馈
-    """
-    from api.database.wxapp import feedback_dao
-    
-    api_logger.debug(f"删除反馈 (ID: {feedback_id})")
-    
-    # 检查反馈是否存在
-    feedback = await feedback_dao.get_feedback_by_id(feedback_id)
-    
-    if not feedback:
-        raise HTTPException(status_code=404, detail="反馈不存在")
-    
-    # 标记删除
-    await feedback_dao.mark_feedback_deleted(feedback_id)
-    
-    return SimpleOperationResponse(
-        success=True,
-        message="反馈已删除",
-        affected_items=1
-    ) 
+        feedbacks = await async_query_records(
+            table_name="wxapp_feedback",
+            conditions=conditions,
+            order_by="create_time DESC"
+        )
+
+        feedback_list = feedbacks
+
+        return Response.success(data={"feedbacks": feedback_list})
+    except Exception as e:
+        return Response.error(details={"message": f"获取用户反馈列表失败: {str(e)}"})
+
+@router.post("/feedback")
+async def create_feedback(request: Request):
+    """创建用户反馈"""
+    try:
+        req_data = await request.json()
+        required_params = ["content"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
+
+        openid = req_data.get("openid")
+        content = req_data.get("content")
+        type = req_data.get("type","")
+        images = req_data.get("images", [])
+        contact = req_data.get("contact","")
+
+        feedback_data = {
+            "openid":openid,
+            "content":content,
+            "type":type,
+            "images":images,
+            "contact":contact
+        }
+
+        feedback_id = await async_insert("wxapp_feedback", feedback_data)
+
+        return Response.success(details={"feedback_id": feedback_id,"message":"反馈创建成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"创建反馈失败: {str(e)}"})
+
+@router.post("/feedback/update")
+async def update_feedback(request: Request):
+    """更新用户反馈"""
+    try:
+        req_data = await request.json()
+        required_params = ["feedback_id"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
+
+        openid = req_data.get("openid")
+        feedback_id = req_data.get("feedback_id")
+
+        feedback = await async_get_by_id("wxapp_feedback", feedback_id)
+        if not feedback:
+            return Response.not_found(resource="反馈")
+
+        update_data = req_data
+
+        await async_update(
+            table_name="wxapp_feedback",
+            record_id=feedback_id,
+            update_data=update_data
+        )
+
+        return Response.success(details={"message":"反馈更新成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"更新反馈失败: {str(e)}"})
+
+@router.post("/feedback/delete")
+async def delete_feedback(request: Request):
+    """删除反馈"""
+    try:
+        req_data = await request.json()
+        required_params = ["feedback_id"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
+
+        feedback_id = req_data.get("feedback_id")
+
+        feedback = await async_get_by_id("wxapp_feedback", feedback_id)
+        if not feedback:
+            return Response.not_found(resource="反馈")
+
+        await delete_record("wxapp_feedback", feedback_id)
+
+        return Response.success(details={"message":"反馈删除成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"删除反馈失败: {str(e)}"}) 

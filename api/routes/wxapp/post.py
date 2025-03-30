@@ -3,558 +3,439 @@
 处理帖子创建、查询、更新、删除、点赞、收藏等功能
 """
 import time
+import json
 from typing import Dict, Any, Optional, List
-from fastapi import Depends, HTTPException, Query, Path
-from loguru import logger
+from fastapi import Query, APIRouter
+import asyncio
 
-from api import wxapp_router
-from api.common import handle_api_errors, get_api_logger_dep
-from api.models.common import SimpleOperationResponse
-from api.models.wxapp.post import (
-    PostModel, 
-    PostCreateRequest, 
-    PostUpdateRequest, 
-    PostQueryParams,
-    PostListResponse,
-    PostActionResponse
+from api.models.common import Response, Request, validate_params
+from etl.load.db_core import (
+    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, execute_custom_query, async_execute_custom_query
 )
-from api.database.wxapp import notification_dao, post_dao, user_dao
 from config import Config
+from core.utils.logger import register_logger
 
 # 获取配置
 config = Config()
+router = APIRouter()
+logger = register_logger('api.routes.wxapp.post')
 
-@wxapp_router.post("/posts", response_model=PostModel)
-@handle_api_errors("创建帖子")
+@router.post("/post")
 async def create_post(
-    request: PostCreateRequest,
-    openid: str = Query(..., description="发布用户openid"),
-    nick_name: Optional[str] = Query(None, description="用户昵称"),
-    avatar: Optional[str] = Query(None, description="用户头像URL"),
-    api_logger=Depends(get_api_logger_dep)
+    request: Request,
 ):
-    """
-    创建帖子
-    
-    发布新帖子，内容包括标题、正文、图片等
-    """
-    from api.database.wxapp import post_dao, user_dao
-    
-    api_logger.debug(f"创建新帖子 (用户: {openid[:8]}...)")
-    
-    # 如果没有提供昵称和头像，从用户表获取
-    if not nick_name or not avatar:
-        user = await user_dao.get_user_by_openid(openid)
-        if user:
-            nick_name = nick_name or user.get("nick_name", "微信用户")
-            avatar = avatar or user.get("avatar")
-    
-    # 构建帖子数据
-    post_data = {
-        "openid": openid,
-        "nick_name": nick_name or "微信用户",
-        "avatar": avatar,
-        "title": request.title,
-        "content": request.content,
-        "images": request.images or [],
-        "tags": request.tags or [],
-        "category_id": request.category_id,
-        "location": request.location,
-    }
-    
-    # 创建帖子
-    post_id = await post_dao.create_post(post_data)
-    
-    # 增加用户发帖数量
-    await user_dao.increment_user_posts_count(openid)
-    
-    # 获取创建的帖子
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=500, detail="帖子创建失败，无法获取帖子信息")
-    
-    # 处理datetime对象
-    if "create_time" in post and post["create_time"]:
-        post["create_time"] = post["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if "update_time" in post and post["update_time"]:
-        post["update_time"] = post["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    api_logger.debug(f"帖子创建成功，ID: {post_id}")
-    return post
+    """创建新帖子"""
+    try:
+        req_data = await request.json()
+        required_params = ["title", "content"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
 
-@wxapp_router.get("/posts/{post_id}", response_model=PostModel)
-@handle_api_errors("获取帖子详情")
+        openid = req_data.get("openid")
+        
+        # 获取用户信息，用于昵称和头像
+        user_data = await async_query_records(
+            table_name="wxapp_user",
+            conditions={"openid": openid},
+            limit=1
+        )
+        
+        nickname = ""
+        avatar = ""
+        if user_data and "data" in user_data and len(user_data["data"]) > 0:
+            nickname = user_data["data"][0].get("nickname", "")
+            avatar = user_data["data"][0].get("avatar", "")
+        
+        # 构造帖子数据
+        db_post_data = {
+            "openid": openid,
+            "nickname": nickname,
+            "avatar": avatar,
+            "category_id": req_data.get("category_id", 1),
+            "title": req_data.get("title"),
+            "content": req_data.get("content"),
+            "is_deleted": 0
+        }
+        
+        # 可选字段
+        if "images" in req_data:
+            db_post_data["images"] = req_data.get("images")
+        if "tags" in req_data:
+            db_post_data["tags"] = req_data.get("tags")
+        
+        try:
+            post_id = await async_insert("wxapp_post", db_post_data)
+            logger.debug(f"创建帖子成功: {post_id}")
+            return Response.success(details={"post_id": post_id, "message":"创建帖子成功"})
+        except Exception as e:
+            logger.error(f"插入帖子数据失败: {str(e)}")
+            return Response.success(details={"post_id": -1, "message":"创建帖子失败"})
+    except Exception as e:
+        logger.error(f"创建帖子接口异常: {str(e)}")
+        return Response.error(details={"message": f"创建帖子失败: {str(e)}"})
+
+@router.get("/post/detail")
 async def get_post_detail(
-    post_id: int = Path(..., description="帖子ID"),
-    update_view: bool = Query(True, description="是否更新浏览量"),
-    api_logger=Depends(get_api_logger_dep)
+    post_id: str = Query(..., description="帖子ID")
 ):
-    """
-    获取帖子详情
-    
-    根据ID获取帖子的详细信息
-    """
-    from api.database.wxapp import post_dao
-    
-    api_logger.debug(f"获取帖子详情 (ID: {post_id})")
-    
-    # 获取帖子信息
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    
-    # 更新浏览量
-    if update_view:
-        await post_dao.increment_view_count(post_id)
-        post["view_count"] += 1
-    
-    # 处理datetime对象
-    if "create_time" in post and post["create_time"]:
-        post["create_time"] = post["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if "update_time" in post and post["update_time"]:
-        post["update_time"] = post["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    return post
+    """获取帖子详情"""
+    if(not post_id):
+        return Response.bad_request(details={"message": "缺少post_id参数"})
+    try:
+        # 确保post_id是整数
+        post_id_int = int(post_id)
+        
+        # 使用async_query_records代替async_get_by_id
+        post_result = await async_query_records(
+            "wxapp_post",
+            {"id": post_id_int},
+            limit=1
+        )
+        
+        if not post_result or not post_result['data']:
+            return Response.not_found(resource="帖子")
+            
+        post = post_result['data'][0]
 
-@wxapp_router.get("/posts", response_model=PostListResponse)
-@handle_api_errors("查询帖子列表")
+        # 更新浏览次数 - 使用异步版本
+        await async_execute_custom_query(
+            "UPDATE wxapp_post SET view_count = view_count + 1 WHERE id = %s",
+            [post_id_int],
+            fetch=False
+        )
+
+        # 获取用户信息
+        user_info = None
+        if post.get("openid"):
+            user_data = await async_query_records(
+                "wxapp_user",
+                {"openid": post["openid"]},
+                limit=1
+            )
+            if user_data and user_data['data']:
+                user_info = user_data['data'][0]
+
+        # 不再查询不存在的wxapp_post_stat表
+        detail_response = {
+            **post,
+            "user": user_info
+        }
+
+        return Response.success(data=detail_response)
+    except Exception as e:
+        return Response.error(details={"message": f"获取帖子详情失败: {str(e)}"})
+
+@router.get("/post/list")
 async def get_posts(
-    limit: int = Query(20, description="返回记录数量限制", ge=1, le=100),
-    offset: int = Query(0, description="分页偏移量", ge=0),
-    openid: Optional[str] = Query(None, description="按用户openid筛选"),
-    category_id: Optional[int] = Query(None, description="按分类ID筛选"),
-    tag: Optional[str] = Query(None, description="按标签筛选"),
-    status: int = Query(1, description="帖子状态：1-正常，0-禁用"),
-    order_by: str = Query("update_time DESC", description="排序方式"),
-    api_logger=Depends(get_api_logger_dep)
+    request: Request,
+    page: int = Query(1, description="页码"),
+    limit: int = Query(10, description="每页数量"),
+    category_id: Optional[int] = Query(None, description="分类ID"),
+    tag: Optional[str] = Query(None, description="标签"),
+    order_by: str = Query("update_time DESC", description="排序字段")
 ):
-    """
-    查询帖子列表
-    
-    根据条件筛选帖子列表，支持分页
-    """
-    from api.database.wxapp import post_dao
-    
-    api_logger.debug(f"查询帖子列表 (limit: {limit}, offset: {offset})")
-    
-    # 构建查询条件
-    conditions = {
-        "status": status,
-        "is_deleted": 0
-    }
-    
-    if openid:
-        conditions["openid"] = openid
-        
-    if category_id:
-        conditions["category_id"] = category_id
-    
-    # 获取帖子列表
-    posts, total = await post_dao.get_posts(
-        conditions=conditions, 
-        tag=tag,
-        limit=limit, 
-        offset=offset, 
-        order_by=order_by
-    )
-    
-    # 处理datetime对象
-    for post in posts:
-        if "create_time" in post and post["create_time"]:
-            post["create_time"] = post["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-        if "update_time" in post and post["update_time"]:
-            post["update_time"] = post["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    return {
-        "posts": posts,
-        "total": total,
-        "limit": limit,
-        "offset": offset
-    }
+    """查询帖子列表"""
+    try:
+        conditions = {"status": 1}
+        if category_id:
+            conditions["category_id"] = category_id
 
-@wxapp_router.put("/posts/{post_id}", response_model=PostModel)
-@handle_api_errors("更新帖子")
+        if tag:
+            conditions["tags"] = {"$contains": [tag]}
+
+        ALLOWED_ORDERS = {"update_time", "create_time", "view_count", "like_count"}
+
+        order_by_parts = order_by.split()
+        if len(order_by_parts) != 2 or order_by_parts[0] not in ALLOWED_ORDERS or order_by_parts[1].upper() not in {"ASC", "DESC"}:
+            order_by = "update_time DESC"
+
+        posts = await async_query_records(
+            "wxapp_post",
+            conditions,
+            order_by,
+            limit,
+            (page - 1) * limit
+        )
+
+        total = await async_count_records("wxapp_post", conditions)
+        
+        # 直接使用字典结构作为分页参数，避免使用model_dump
+        return Response.paged(
+            data=posts['data'],
+            pagination=posts['pagination'],
+            details={"message":"查询帖子列表成功"}
+        )
+    except Exception as e:
+        return Response.error(details={"message": f"查询帖子列表失败: {str(e)}"})
+
+@router.post("/post/update")
 async def update_post(
-    request: PostUpdateRequest,
-    post_id: int = Path(..., description="帖子ID"),
-    openid: str = Query(..., description="用户openid"),
-    api_logger=Depends(get_api_logger_dep)
+    request: Request,
 ):
-    """
-    更新帖子
-    
-    更新帖子的标题、内容、图片等信息
-    """
-    from api.database.wxapp import post_dao
-    
-    api_logger.debug(f"更新帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
-    
-    # 检查帖子是否存在
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    
-    # 检查是否是帖子作者
-    if post["openid"] != openid:
-        raise HTTPException(status_code=403, detail="无权更新该帖子")
-    
-    # 更新帖子
-    update_data = request.dict(exclude_unset=True)
-    
-    # 处理列表类型
-    import json
-    if "images" in update_data and update_data["images"] is not None:
-        update_data["images"] = json.dumps(update_data["images"])
-    
-    if "tags" in update_data and update_data["tags"] is not None:
-        update_data["tags"] = json.dumps(update_data["tags"])
-    
-    if "location" in update_data and update_data["location"] is not None:
-        update_data["location"] = json.dumps(update_data["location"])
-    
-    if update_data:
-        await post_dao.update_post(post_id, update_data)
-        
-    # 获取更新后的帖子
-    updated_post = await post_dao.get_post_by_id(post_id)
-    
-    # 处理datetime对象
-    if "create_time" in updated_post and updated_post["create_time"]:
-        updated_post["create_time"] = updated_post["create_time"].strftime("%Y-%m-%d %H:%M:%S")
-    if "update_time" in updated_post and updated_post["update_time"]:
-        updated_post["update_time"] = updated_post["update_time"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    return updated_post
+    """更新帖子"""
+    try:
+        req_data = await request.json()
+        required_params = ["post_id"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
 
-@wxapp_router.delete("/posts/{post_id}", response_model=SimpleOperationResponse)
-@handle_api_errors("删除帖子")
+        openid = req_data.get("openid")
+        post_id = req_data.get("post_id")
+        
+        # 使用async_get_by_id获取帖子
+        post = await async_get_by_id("wxapp_post", post_id)
+        if not post:
+            return Response.not_found(resource="帖子")
+
+        if post["openid"] != openid:
+            return Response.forbidden(details={"message": "无操作权限"})
+
+        # 获取更新数据
+        valid_data = req_data.get("data")
+        if not valid_data:
+            return Response.bad_request(details={"message": "无有效更新字段"})
+
+        try:
+            # 添加更新时间
+            valid_data["update_time"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            
+            # 直接使用async_update更新数据
+            success = await async_update(
+                "wxapp_post",
+                post_id,
+                valid_data
+            )
+            
+            if not success:
+                logger.error(f"更新帖子失败，帖子ID: {post_id}")
+                return Response.error(details={"message": "更新帖子失败"})
+
+            # 获取更新后的帖子
+            updated_post = await async_get_by_id("wxapp_post", post_id)
+            return Response.success(data=updated_post, details={"message": "更新帖子成功"})
+        except Exception as e:
+            logger.error(f"更新帖子操作异常，帖子ID: {post_id}, 错误: {str(e)}")
+            return Response.error(details={"message": f"更新帖子操作异常: {str(e)}"})
+    except Exception as e:
+        logger.error(f"更新帖子接口异常: {str(e)}")
+        return Response.error(details={"message": f"更新帖子失败: {str(e)}"})
+
+@router.post("/post/delete")
 async def delete_post(
-    post_id: int = Path(..., description="帖子ID"),
-    openid: str = Query(..., description="用户openid"),
-    api_logger=Depends(get_api_logger_dep)
+    request: Request,
 ):
-    """
-    删除帖子
-    
-    标记删除指定帖子
-    """
-    from api.database.wxapp import post_dao, user_dao
-    
-    api_logger.debug(f"删除帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
-    
-    # 检查帖子是否存在
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    
-    # 检查是否是帖子作者
-    if post["openid"] != openid:
-        raise HTTPException(status_code=403, detail="无权删除该帖子")
-    
-    # 标记删除帖子
-    await post_dao.mark_post_deleted(post_id)
-    
-    # 减少用户发帖数量
-    await user_dao.decrement_user_posts_count(openid)
-    
-    return SimpleOperationResponse(
-        success=True,
-        message="帖子已删除",
-        affected_items=1
-    )
-
-@wxapp_router.post("/posts/{post_id}/like", response_model=PostActionResponse)
-@handle_api_errors("点赞帖子")
-async def like_post(
-    post_id: int = Path(..., description="帖子ID"),
-    openid: str = Query(..., description="用户openid"),
-    api_logger=Depends(get_api_logger_dep)
-):
-    """
-    点赞帖子
-    
-    为指定帖子点赞，同一用户只能点赞一次
-    """
-    from api.database.wxapp import post_dao, notification_dao, user_dao
-    
-    api_logger.debug(f"点赞帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
-    
-    # 检查帖子是否存在
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    
-    # 帖子作者的openid
-    author_openid = post["openid"]
-    
-    # 检查用户是否已点赞
-    liked_users = post.get("liked_users", [])
-    if liked_users is None:
-        liked_users = []
-        
-    # 添加日志便于排查问题
-    api_logger.debug(f"当前点赞用户列表: {liked_users}")
-    api_logger.debug(f"当前点赞数: {post['like_count']}")
-    
-    if openid in liked_users:
-        # 已点赞，返回当前状态，不做任何更改
-        # 这是修复的关键部分 - 不应该在点赞接口中自动取消点赞
-        api_logger.debug(f"用户 {openid[:8]}... 已经点赞过帖子 {post_id}，不做更改")
-        
-        result = {
-            "success": True,
-            "message": "已经点赞过",
-            "liked": True,
-            "like_count": post["like_count"],
-            "post_id": post_id,
-            "action": "like"
-        }
-    else:
-        # 未点赞，添加点赞
-        api_logger.debug(f"用户 {openid[:8]}... 对帖子 {post_id} 进行点赞")
-        await post_dao.like_post(post_id, openid)
-        
-        # 增加作者的点赞数
-        if author_openid != openid:  # 不是自己点赞自己的帖子
-            await user_dao.increment_user_likes_count(author_openid)
-        
-        # 如果点赞的不是自己的帖子，创建通知
-        if author_openid != openid:
-            # 获取点赞用户信息
-            liker = await user_dao.get_user_by_openid(openid)
-            liker_name = liker.get("nick_name", "微信用户") if liker else "微信用户"
+    """删除帖子"""
+    try:
+        req_data = await request.json()
+        required_params = ["post_id"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
             
-            # 创建通知
-            notification_data = {
-                "openid": author_openid,  # 帖子作者
-                "title": "收到新点赞",
-                "content": f"{liker_name} 点赞了你的帖子「{post.get('title', '无标题')}」",
-                "type": "like",
-                "sender_openid": openid,
-                "related_id": str(post_id),
-                "related_type": "post"
+        openid = req_data.get("openid")
+        post_id = req_data.get("post_id")
+        
+        # 检查帖子是否存在
+        post = await async_get_by_id("wxapp_post", post_id)
+        if not post:
+            return Response.not_found(resource="帖子")
+
+        # 检查权限
+        if post["openid"] != openid:
+            return Response.forbidden(details={"message": "无删除权限"})
+
+        # 更新帖子状态为已删除
+        success = await async_update(
+            "wxapp_post",
+            post_id,
+            {"status": 0, "update_time": time.strftime("%Y-%m-%d %H:%M:%S")}
+        )
+        
+        if not success:
+            return Response.error(details={"message": "删除帖子失败"})
+
+        return Response.success(details={"deleted_id": post_id, "message": "删除帖子成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"删除帖子失败: {str(e)}"})
+
+@router.get("/post/search")
+async def search_posts(
+    request: Request,
+    keywords: Optional[str] = Query(None, description="搜索关键词"),
+    category_id: Optional[int] = Query(None, description="分类ID"),
+    min_likes: Optional[int] = Query(None, description="最小点赞数"),
+    max_likes: Optional[int] = Query(None, description="最大点赞数"),
+    page: int = Query(1, description="页码"),
+    limit: int = Query(10, description="每页数量")
+):
+    """搜索帖子"""
+    try:
+        # 构建查询条件
+        conditions = {"status": 1}
+        
+        if category_id:
+            conditions["category_id"] = category_id
+            
+        if keywords:
+            # 全文检索需要使用特殊查询
+            sql = """
+            SELECT * FROM wxapp_post
+            WHERE status = 1
+            AND (title LIKE %s OR content LIKE %s)
+            """
+            params = [f"%{keywords}%", f"%{keywords}%"]
+            
+            if category_id:
+                sql += " AND category_id = %s"
+                params.append(category_id)
+                
+            if min_likes is not None:
+                sql += " AND like_count >= %s"
+                params.append(min_likes)
+                
+            if max_likes is not None:
+                sql += " AND like_count <= %s"
+                params.append(max_likes)
+                
+            sql += " ORDER BY update_time DESC LIMIT %s OFFSET %s"
+            params.append(limit)
+            params.append((page - 1) * limit)
+            
+            # 执行自定义查询
+            results = await async_execute_custom_query(sql, params)
+            
+            # 计算总数
+            count_sql = """
+            SELECT COUNT(*) as total FROM wxapp_post
+            WHERE status = 1
+            AND (title LIKE %s OR content LIKE %s)
+            """
+            count_params = [f"%{keywords}%", f"%{keywords}%"]
+            
+            if category_id:
+                count_sql += " AND category_id = %s"
+                count_params.append(category_id)
+                
+            if min_likes is not None:
+                count_sql += " AND like_count >= %s"
+                count_params.append(min_likes)
+                
+            if max_likes is not None:
+                count_sql += " AND like_count <= %s"
+                count_params.append(max_likes)
+                
+            count_result = await async_execute_custom_query(count_sql, count_params)
+            total = count_result[0]['total'] if count_result else 0
+            
+            # 构建分页信息
+            pagination = {
+                "total": total,
+                "page": page,
+                "page_size": limit,
+                "total_pages": (total + limit - 1) // limit if limit > 0 else 1
             }
-            await notification_dao.create_notification(notification_data)
-        
-        result = {
-            "success": True,
-            "message": "点赞成功",
-            "liked": True,
-            "like_count": post["like_count"] + 1, 
-            "post_id": post_id,
-            "action": "like"
-        }
-    
-    # 添加日志记录最终返回的点赞状态
-    api_logger.debug(f"点赞操作结果: {result}")
-    
-    return PostActionResponse(**result)
-
-@wxapp_router.post("/posts/{post_id}/unlike", response_model=PostActionResponse)
-@handle_api_errors("取消点赞")
-async def unlike_post(
-    post_id: int = Path(..., description="帖子ID"),
-    openid: str = Query(..., description="用户openid"),
-    api_logger=Depends(get_api_logger_dep)
-):
-    """
-    取消点赞
-    
-    取消对指定帖子的点赞
-    """
-    from api.database.wxapp import post_dao, user_dao
-    
-    api_logger.debug(f"取消点赞帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
-    
-    # 检查帖子是否存在
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    
-    # 帖子作者的openid
-    author_openid = post["openid"]
-    
-    # 检查用户是否已点赞
-    liked_users = post.get("liked_users", [])
-    if liked_users is None:
-        liked_users = []
-    
-    # 添加日志便于排查问题
-    api_logger.debug(f"当前点赞用户列表: {liked_users}")
-    api_logger.debug(f"当前点赞数: {post['like_count']}")
-    
-    if openid in liked_users:
-        # 已点赞，取消点赞
-        api_logger.debug(f"用户 {openid[:8]}... 取消点赞帖子 {post_id}")
-        await post_dao.unlike_post(post_id, openid)
-        
-        # 减少作者的点赞数
-        if author_openid != openid:  # 不是自己点赞自己的帖子
-            await user_dao.decrement_user_likes_count(author_openid)
-        
-        result = {
-            "success": True,
-            "message": "取消点赞成功",
-            "liked": False,
-            "like_count": max(0, post["like_count"] - 1),  # 确保不会出现负数
-            "post_id": post_id,
-            "action": "unlike"
-        }
-    else:
-        # 未点赞，状态未变
-        api_logger.debug(f"用户 {openid[:8]}... 尝试取消点赞帖子 {post_id}，但未点赞过")
-        result = {
-            "success": True,
-            "message": "点赞状态未变",
-            "liked": False,
-            "like_count": post["like_count"],
-            "post_id": post_id,
-            "action": "unlike"
-        }
-    
-    # 添加日志记录最终返回的点赞状态
-    api_logger.debug(f"取消点赞操作结果: {result}")
-    
-    return PostActionResponse(**result)
-
-@wxapp_router.post("/posts/{post_id}/favorite", response_model=PostActionResponse)
-@handle_api_errors("收藏帖子")
-async def favorite_post(
-    post_id: int = Path(..., description="帖子ID"),
-    openid: str = Query(..., description="用户openid"),
-    api_logger=Depends(get_api_logger_dep)
-):
-    """
-    收藏帖子
-    
-    将指定帖子添加到收藏
-    """
-    from api.database.wxapp import post_dao, notification_dao, user_dao
-    
-    api_logger.debug(f"收藏帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
-    
-    # 检查帖子是否存在
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    
-    # 帖子作者的openid
-    author_openid = post["openid"]
-    
-    # 检查用户是否已收藏
-    favorite_users = post.get("favorite_users", [])
-    if favorite_users is None:
-        favorite_users = []
-    is_currently_favorite = openid in favorite_users
-    
-    if not is_currently_favorite:
-        # 添加收藏
-        await post_dao.favorite_post(post_id, openid)
-        
-        # 增加作者的收藏数
-        if author_openid != openid:  # 不是自己收藏自己的帖子
-            await user_dao.increment_user_favorites_count(author_openid)
-        
-        # 如果收藏的不是自己的帖子，创建通知
-        if author_openid != openid:
-            # 获取收藏用户信息
-            favoriter = await user_dao.get_user_by_openid(openid)
-            favoriter_name = favoriter.get("nick_name", "微信用户") if favoriter else "微信用户"
             
-            # 创建通知
-            notification_data = {
-                "openid": author_openid,  # 帖子作者
-                "title": "收到新收藏",
-                "content": f"{favoriter_name} 收藏了你的帖子「{post.get('title', '无标题')}」",
-                "type": "favorite",
-                "sender_openid": openid,
-                "related_id": str(post_id),
-                "related_type": "post"
+            return Response.paged(
+                data=results,
+                pagination=pagination,
+                details={"message": "搜索帖子成功"}
+            )
+        else:
+            # 使用标准查询方式
+            if min_likes is not None:
+                conditions["like_count"] = {"$gte": min_likes}
+                
+            if max_likes is not None:
+                conditions["like_count"] = {"$lte": max_likes}
+                
+            posts = await async_query_records(
+                "wxapp_post",
+                conditions,
+                "update_time DESC",
+                limit,
+                (page - 1) * limit
+            )
+            
+            return Response.paged(
+                data=posts['data'],
+                pagination=posts['pagination'],
+                details={"message": "搜索帖子成功"}
+            )
+    except Exception as e:
+        return Response.error(details={"message": f"搜索帖子失败: {str(e)}"})
+
+# 使用并行查询优化
+async def get_post_with_stats(post_id):
+    """获取帖子和统计信息"""
+    try:
+        # 获取帖子
+        post_result = await async_query_records(
+            "wxapp_post",
+            {"id": post_id},
+            limit=1
+        )
+        
+        if not post_result or not post_result['data']:
+            return None
+        
+        post = post_result['data'][0]
+        
+        # 不再查询不存在的wxapp_post_stat表
+        # 直接返回帖子信息
+        return post
+    except Exception as e:
+        logger.error(f"获取帖子信息失败: {str(e)}")
+        return None
+
+@router.get("/post/status")
+async def get_post_status(
+    post_id: str = Query(..., description="帖子ID"),
+    openid: str = Query(..., description="用户openid")
+):
+    """获取帖子交互状态"""
+    try:
+        if not post_id:
+            return Response.bad_request(details={"message": "缺少post_id参数"})
+            
+        post_id_int = int(post_id)
+        
+        # 获取帖子
+        post = await async_get_by_id("wxapp_post", post_id_int)
+        if not post:
+            return Response.not_found(resource="帖子")
+
+        # 获取用户交互
+        actions = await async_query_records(
+            "wxapp_action",
+            {
+                "openid": openid,
+                "target_id": post_id_int,
+                "target_type": "post"
             }
-            await notification_dao.create_notification(notification_data)
-            
-        result = {
-            "success": True,
-            "message": "收藏成功",
-            "favorite": True,
-            "favorite_count": post["favorite_count"] + 1,
-            "post_id": post_id,
-            "action": "favorite"
-        }
-    else:
-        # 状态未变
-        result = {
-            "success": True,
-            "message": "收藏状态未变",
-            "favorite": True,
-            "favorite_count": post["favorite_count"],
-            "post_id": post_id,
-            "action": "favorite"
-        }
-    
-    return PostActionResponse(**result)
+        )
 
-@wxapp_router.post("/posts/{post_id}/unfavorite", response_model=PostActionResponse)
-@handle_api_errors("取消收藏帖子")
-async def unfavorite_post(
-    post_id: int = Path(..., description="帖子ID"),
-    openid: str = Query(..., description="用户openid"),
-    api_logger=Depends(get_api_logger_dep)
-):
-    """
-    取消收藏帖子
-    
-    将指定帖子从收藏列表中移除
-    """
-    from api.database.wxapp import post_dao, user_dao
-    
-    api_logger.debug(f"取消收藏帖子 (ID: {post_id}, 用户: {openid[:8]}...)")
-    
-    # 检查帖子是否存在
-    post = await post_dao.get_post_by_id(post_id)
-    
-    if not post:
-        raise HTTPException(status_code=404, detail="帖子不存在")
-    
-    # 帖子作者的openid
-    author_openid = post["openid"]
-    
-    # 检查用户是否已收藏
-    favorite_users = post.get("favorite_users", [])
-    is_currently_favorite = openid in favorite_users if favorite_users else False
-    
-    if is_currently_favorite:
-        # 取消收藏
-        await post_dao.unfavorite_post(post_id, openid)
+        # 分析交互类型
+        is_liked = False
+        is_favorited = False
         
-        # 减少作者的收藏数
-        if author_openid != openid:  # 不是自己取消收藏自己的帖子
-            await user_dao.decrement_user_favorites_count(author_openid)
-        
-        result = {
-            "success": True,
-            "message": "取消收藏成功",
-            "favorite": False,
-            "favorite_count": post["favorite_count"] - 1,
-            "post_id": post_id,
-            "action": "unfavorite"
+        if actions and actions['data']:
+            for action in actions['data']:
+                if action["action_type"] == "like":
+                    is_liked = True
+                elif action["action_type"] == "favorite":
+                    is_favorited = True
+
+        # 构建状态
+        status = {
+            "is_liked": is_liked,
+            "is_favorited": is_favorited,
+            "like_count": post.get("like_count", 0),
+            "favorite_count": post.get("favorite_count", 0),
+            "comment_count": post.get("comment_count", 0)
         }
-    else:
-        # 状态未变
-        result = {
-            "success": True,
-            "message": "收藏状态未变",
-            "favorite": False,
-            "favorite_count": post["favorite_count"],
-            "post_id": post_id,
-            "action": "unfavorite"
-        }
-    
-    return PostActionResponse(**result) 
+
+        return Response.success(data=status)
+    except Exception as e:
+        return Response.error(details={"message": f"获取帖子状态失败: {str(e)}"})

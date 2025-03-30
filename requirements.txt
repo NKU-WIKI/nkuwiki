@@ -10,9 +10,9 @@ llama-index-core==0.12.22
 llama-index-vector-stores-qdrant==0.4.3
 pydantic==2.8.0
 --extra-index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
-# --extra-index-url https://download.pytorch.org/whl/cpu 
+--extra-index-url https://download.pytorch.org/whl/cpu 
 # torch==2.3.0+cpu  # cuda-free environment
-torch==2.3.0
+# torch==2.3.0
 transformers>=4.49.0
 sentence-transformers==3.4.1
 numpy==1.26.4
@@ -39,6 +39,7 @@ llama-index-embeddings-huggingface
 # ========================================
 # 关系型数据库
 mysql-connector-python  # 9.2+
+pymysql
 # 本地开发容器部署: docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 -v D:\Code\nkuwiki\etl\data\mysql:/var/lib/mysql mysql:latest
 
 # 向量数据库
@@ -62,19 +63,19 @@ playwright            # 浏览器自动化
 
 # 企业微信 (仅Windows)
 # ntwork; platform_system=="Windows"  # pip源不可用，本地安装: pip install ./servercies/wework/ntwork_backup_bin/ntwork<your_version>.whl
-wechatpy
+# wechatpy
 # ========================================
 # AI服务集成 (AI Service Integration)
 # ========================================
-openai                # OpenAI API
-anthropic             # Claude API
-google-generativeai   # Google Gemini
+# openai                # OpenAI API
+# anthropic             # Claude API
+# google-generativeai   # Google Gemini
 cozepy                # Coze平台
-zhipuai               # 智谱AI
-dashscope             # 阿里云通义千问
-websocket-client      # 讯飞星火依赖
-dingtalk_stream       # 钉钉
-broadscope_bailian    # 阿里云百炼
+# zhipuai               # 智谱AI
+# dashscope             # 阿里云通义千问
+# websocket-client      # 讯飞星火依赖
+# dingtalk_stream       # 钉钉
+# broadscope_bailian    # 阿里云百炼
 
 # ========================================
 # 多模态处理 (Multimodal Processing)
@@ -89,9 +90,9 @@ azure-cognitiveservices-speech  # Azure语音
 edge-tts              # Edge TTS
 elevenlabs            # ElevenLabs TTS
 langid                # 语言检测
-pysilk-mod            # SILK编码支持 (Windows)
-pilk                  # 语音文件处理库 (Windows)
-comtypes              # COM组件支持 (Windows语音接口)
+# pysilk-mod            # SILK编码支持 (Windows)
+# pilk                  # 语音文件处理库 (Windows)
+# comtypes              # COM组件支持 (Windows语音接口)
 
 # 图像与媒体
 PyQRCode              # 二维码生成

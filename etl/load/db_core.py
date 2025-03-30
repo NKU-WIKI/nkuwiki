@@ -209,13 +209,13 @@ def get_record_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]
         db_logger.error(f"查询记录失败: {str(e)}")
         return None
 
-def query_records(table_name: str, 
-                  conditions: Dict[str, Any] = None, 
+def query_records(table_name: str,
+                  conditions: Dict[str, Any] = None,
                   order_by: Union[str, Dict[str, str]] = None,
-                  limit: int = 1000, 
-                  offset: int = 0) -> List[Dict[str, Any]]:
+                  limit: int = 1000,
+                  offset: int = 0) -> Dict[str, Any]:
     """
-    条件查询记录
+    条件查询记录，并返回分页信息
     
     Args:
         table_name: 表名
@@ -225,16 +225,16 @@ def query_records(table_name: str,
         offset: 分页起始位置
         
     Returns:
-        List[Dict]: 查询结果列表
+        Dict[str, Any]: 查询结果字典，包含 'data' 和 'pagination' 键
     """
     if not validate_table_name(table_name):
         db_logger.error(f"非法表名: {table_name}")
-        return []
-        
+        return {"data": [], "pagination": None}
+
     try:
         where_clause = ""
         values = []
-        
+
         if conditions:
             # 处理特殊条件格式
             if 'where_condition' in conditions and 'params' in conditions:
@@ -248,7 +248,7 @@ def query_records(table_name: str,
                         where_parts.append(f"{key} = %s")
                         values.append(value)
                 where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
-        
+
         # 处理排序
         order_clause = ""
         if order_by:
@@ -267,15 +267,30 @@ def query_records(table_name: str,
                     order_clause = f"ORDER BY {field} {direction}"
                 else:
                     order_clause = f"ORDER BY {order_by}"
-        
+
         limit_clause = f"LIMIT {limit} OFFSET {offset}" if limit else ""
-        
-        # 构建并执行SQL
+
+        # 构建查询总数的SQL
+        count_sql = f"SELECT COUNT(*) as total FROM {table_name} {where_clause}"
+        total_count_result = execute_query(count_sql, values)
+        total_count = total_count_result[0]['total'] if total_count_result else 0
+
+        # 构建并执行数据查询SQL
         sql = f"SELECT * FROM {table_name} {where_clause} {order_clause} {limit_clause}"
-        return execute_query(sql, values)
+        query_results = execute_query(sql, values)
+
+        # 构建分页信息
+        pagination_info = {
+            "total": total_count,
+            "page": (offset // limit) + 1 if limit != 0 else 1,
+            "page_size": limit,
+            "total_pages": (total_count + limit - 1) // limit if limit != 0 else 1
+        }
+
+        return {"data": query_results, "pagination": pagination_info}
     except Exception as e:
         db_logger.error(f"查询记录失败: {str(e)}")
-        return []
+        return {"data": [], "pagination": None}
 
 def count_records(table_name: str, conditions: Dict[str, Any] = None) -> int:
     """
@@ -516,13 +531,31 @@ async def async_update(table_name: str, record_id: int, data: Dict[str, Any]) ->
     return await asyncio.to_thread(update_record, table_name, record_id, data)
 
 async def async_get_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
-    """异步获取记录"""
-    return await asyncio.to_thread(get_record_by_id, table_name, record_id)
+    """
+    异步获取记录
+    
+    Args:
+        table_name: 表名
+        record_id: 记录ID
+        
+    Returns:
+        记录数据字典，未找到则返回None
+    """
+    try:
+        result = await async_query_records(
+            table_name=table_name,
+            conditions={"id": record_id},
+            limit=1
+        )
+        return result['data'][0] if result and result['data'] else None
+    except Exception as e:
+        db_logger.error(f"通过ID查询记录失败: {str(e)}")
+        return None
 
-async def async_query_records(table_name: str, conditions: Dict[str, Any] = None, 
+async def async_query_records(table_name: str, conditions: Dict[str, Any] = None,
                              order_by: Union[str, Dict[str, str]] = None,
-                             limit: int = 1000, offset: int = 0) -> List[Dict[str, Any]]:
-    """异步条件查询记录"""
+                             limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
+    """异步条件查询记录，并返回分页信息"""
     return await asyncio.to_thread(
         query_records,
         table_name=table_name,
@@ -542,4 +575,22 @@ async def async_count_records(table_name: str, conditions: Dict[str, Any] = None
     Returns:
         记录数量
     """
-    return await asyncio.to_thread(count_records, table_name, conditions) 
+    return await asyncio.to_thread(count_records, table_name, conditions)
+
+async def async_execute_custom_query(query: str, params: Any = None, fetch: bool = True) -> Union[List[Dict[str, Any]], int, None]:
+    """
+    异步执行自定义SQL查询
+    
+    Args:
+        query: SQL查询语句
+        params: 查询参数
+        fetch: 是否获取结果
+        
+    Returns:
+        查询结果列表，每个结果是一个字典，或者影响的行数，或者None
+    """
+    try:
+        return await asyncio.to_thread(execute_query, query, params, fetch)
+    except Exception as e:
+        db_logger.error(f"异步自定义查询执行失败: {str(e)}")
+        return [] if fetch else 0 

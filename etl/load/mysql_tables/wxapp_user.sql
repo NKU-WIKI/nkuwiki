@@ -1,9 +1,9 @@
-CREATE TABLE IF NOT EXISTS `wxapp_users` (
+CREATE TABLE IF NOT EXISTS `wxapp_user` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `openid` VARCHAR(100) NOT NULL COMMENT '微信用户唯一标识',
+    `nickname` VARCHAR(100) DEFAULT '' COMMENT '用户昵称',
+    `avatar` VARCHAR(500) DEFAULT '' COMMENT '头像URL',
     `unionid` VARCHAR(100) DEFAULT NULL COMMENT '微信开放平台唯一标识',
-    `nick_name` VARCHAR(100) DEFAULT NULL COMMENT '用户昵称',
-    `avatar` VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
     `gender` TINYINT DEFAULT 0 COMMENT '性别：0-未知, 1-男, 2-女',
     `bio` VARCHAR(500) DEFAULT NULL COMMENT '用户个人简介',
     `country` VARCHAR(50) DEFAULT NULL COMMENT '国家',
@@ -19,17 +19,14 @@ CREATE TABLE IF NOT EXISTS `wxapp_users` (
     `posts_count` INT DEFAULT 0 COMMENT '发布的帖子数',
     `followers_count` INT DEFAULT 0 COMMENT '关注者数量',
     `following_count` INT DEFAULT 0 COMMENT '关注的用户数量',
-    `extra` JSON COMMENT '扩展字段，存储额外信息',
     `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `last_login` DATETIME DEFAULT NULL COMMENT '最后登录时间',
-    `platform` VARCHAR(20) DEFAULT 'wxapp' COMMENT '平台标识',
     `status` TINYINT DEFAULT 1 COMMENT '状态：1-正常, 0-禁用',
-    `is_deleted` TINYINT DEFAULT 0 COMMENT '是否删除：1-已删除, 0-未删除',
     PRIMARY KEY (`id`),
     UNIQUE KEY `unq_openid` (`openid`),
     KEY `idx_unionid` (`unionid`),
     KEY `idx_create_time` (`create_time`),
-    KEY `idx_status` (`status`, `is_deleted`),
-    KEY `idx_nick_name` (`nick_name`(20))
+    KEY `idx_status` (`status`),
+    KEY `idx_nickname` (`nickname`(20))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序用户数据表'; 

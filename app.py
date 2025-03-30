@@ -13,18 +13,18 @@ from pathlib import Path
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
 from datetime import datetime
-
-from fastapi import FastAPI, Request, APIRouter, Response
+from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
-from api.models.common import create_response, StandardResponseModel
-from config import Config
-from api import register_routers
+from fastapi.responses import JSONResponse
+
+from api import router
+from api.models.common import Response, Request
 from core.utils.logger import register_logger
-from api.common import handle_api_errors
+from config import Config
+import importlib.metadata
 
 # 过滤pydub的ffmpeg警告
 warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", category=RuntimeWarning)
@@ -35,11 +35,11 @@ warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", cate
 
 # 创建配置对象
 config = Config()
-
 # 初始化日志系统
-logger = register_logger("nkuwiki")
+logger = register_logger("app")
 # 创建应用上下文
 request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+
 
 # =============================================================================
 # 应用生命周期管理
@@ -50,20 +50,9 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动前执行
     logger.debug("应用正在启动...")
-    
     # 预热资源
     logger.debug("正在预热应用资源...")
     try:
-        # 初始化表结构
-        logger.debug("初始化数据库表结构...")
-        try:
-            # 初始化用户关注关系表
-            from api.database.wxapp.follow_dao import init_follow_table
-            await init_follow_table()
-            logger.debug("用户关注关系表初始化完成")
-        except Exception as e:
-            logger.error(f"初始化表结构失败: {str(e)}")
-        
         # 可以在这里预加载模型、建立连接池等
         pass
     except Exception as e:
@@ -73,7 +62,6 @@ async def lifespan(app: FastAPI):
     yield
     # 关闭时执行
     logger.debug("应用正在关闭...")
-    
     # 清理资源
     try:
         cleanup_resources()
@@ -120,17 +108,16 @@ def cleanup_resources():
 # 创建FastAPI应用
 # =============================================================================
 
+DEBUG = True
 # 创建FastAPI应用
 app = FastAPI(
-    title="nkuwiki API",
-    description="南开百科知识平台API服务",
-    version="1.0.0",
-    lifespan=lifespan,
-    docs_url="/api/docs",
-    redoc_url="/api/redoc",
-    openapi_url="/api/openapi.json",
-    default_response_class=JSONResponse,
-    openapi_cache_max_age=3600,  # OpenAPI文档缓存1小时
+    title="NKUWiki API",
+    version=config.get("version", "1.0.0"),
+    debug=DEBUG,
+    openapi_url="/api/openapi.json" if DEBUG else None,  # 仅在调试模式开启OpenAPI
+    docs_url="/api/docs" if DEBUG else None,             # 仅在调试模式开启Swagger
+    redoc_url="/api/redoc" if DEBUG else None,           # 仅在调试模式开启ReDoc
+    default_response_class=Response  
 )
 
 # 添加API路由器，所有路由统一添加/api前缀
@@ -143,88 +130,72 @@ api_router = APIRouter(prefix="/api")
 # 添加CORS中间件
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 允许所有来源的请求
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-    expose_headers=["*"]
+    allow_origins=config.get("cors.allow_origins", ["*"]),  # 允许的源列表
+    allow_credentials=config.get("cors.allow_credentials", True),  # 允许携带凭证
+    allow_methods=config.get("cors.allow_methods", ["*"]),  # 允许的HTTP方法
+    allow_headers=config.get("cors.allow_headers", ["*"]),  # 允许的HTTP头
 )
 
 # 添加GZip压缩中间件
-app.add_middleware(GZipMiddleware, minimum_size=1000)  # 大于1KB的响应将被压缩
+app.add_middleware(
+    GZipMiddleware,
+    minimum_size=1024  # 最小压缩大小（字节）
+)
 
 # 请求日志中间件
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    # 生成请求ID并存储在上下文变量中
+    """记录所有HTTP请求的中间件"""
+    # 生成请求ID
     request_id = str(uuid.uuid4())
-    request_id_var.set(request_id)
+    request.state.request_id = request_id
+    
+    # 获取请求信息
+    client_host = request.client.host if request.client else "unknown"
+    start_time = time.time()
     
     # 记录请求开始
-    start_time = time.time()
-    method = request.method
-    url = request.url.path
+    logger.debug(f"Request started: {request.method} {request.url.path} [ID: {request_id}]")
     
-    logger.info(f"Request started: {method} {url} [ID: {request_id}]")
-    
-    # 处理请求
-    response = await call_next(request)
-    
-    # 计算处理时间并记录
-    process_time = time.time() - start_time
-    logger.info(f"Request completed: {method} {url} [ID: {request_id}] - Status: {response.status_code} - Time: {process_time:.3f}s")
-    
-    return response
+    try:
+        # 调用下一个中间件或路由处理函数
+        response = await call_next(request)
+        
+        # 计算处理时间
+        process_time = (time.time() - start_time) * 1000
+        
+        # 记录请求结束
+        logger.debug(
+            f"Request completed: {request.method} {request.url.path} "
+            f"[ID: {request_id}] - Status: {response.status_code} "
+            f"- Duration: {process_time:.2f}ms - Client: {client_host}"
+        )
+        
+        # 添加处理时间到响应头
+        response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
+        response.headers["X-Request-ID"] = request_id
+        
+        return response
+    except Exception as e:
+        # 记录请求异常
+        logger.error(
+            f"Request failed: {request.method} {request.url.path} "
+            f"[ID: {request_id}] - Error: {str(e)}"
+        )
+        # 重新抛出异常，让全局异常处理器处理
+        raise
 
 # =============================================================================
 # 异常处理
 # =============================================================================
 
-@app.exception_handler(StarletteHTTPException)
-async def global_http_exception_handler(request: Request, exc: StarletteHTTPException):
-    """全局HTTP异常处理器，确保异常也返回标准格式"""
-    # 特别处理404错误
-    if exc.status_code == 404:
-        logger.warning(
-            f"404 未找到: {request.method} {request.url.path} | "
-            f"客户端: {request.client.host if request.client else 'unknown'} | "
-            f"UA: {request.headers.get('User-Agent', 'unknown')}"
-        )
-    
-    # 直接构建响应内容
-    response_data = StandardResponseModel(
-        data=None,
-        code=exc.status_code,
-        message=str(exc.detail)
-    ).model_dump()
-    
-    # 手动处理时间戳
-    if "timestamp" in response_data and isinstance(response_data["timestamp"], datetime):
-        response_data["timestamp"] = response_data["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
-        
-    return JSONResponse(
-        status_code=exc.status_code,
-        content=response_data
-    )
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     """全局通用异常处理器，确保所有异常都返回标准格式"""
-    logger.error(f"未捕获的异常: {str(exc)}")
-    # 修复: 不使用create_response函数创建JSONResponse对象，而是直接构建内容
-    response_data = StandardResponseModel(
-        data=None,
-        code=500,
-        message=f"服务器内部错误: {str(exc)}"
-    ).model_dump()
+    logger.error(f"未捕获的异常: {str(exc)}", exc_info=True)
     
-    # 手动处理时间戳
-    if "timestamp" in response_data and isinstance(response_data["timestamp"], datetime):
-        response_data["timestamp"] = response_data["timestamp"].strftime("%Y-%m-%d %H:%M:%S")
-    
-    return JSONResponse(
-        status_code=500,
-        content=response_data
+    return Response.internal_error(
+        details={"message": f"服务器内部错误: {str(exc)}"}
     )
 
 # =============================================================================
@@ -232,27 +203,28 @@ async def global_exception_handler(request: Request, exc: Exception):
 # =============================================================================
 
 # 添加健康检查端点
-@api_router.get("/health", response_class=JSONResponse)
-@handle_api_errors("健康检查")
+@api_router.get("/health")
 async def health_check():
     """健康检查端点，返回服务状态"""
-    return {
-        "status": "ok",
-        "server_time": time.time(),
-        "version": config.get("version", "1.0.0")
-    }
+    return Response.success(
+        data={
+            "status": "ok",
+            "server_time": time.time(),
+            "version": config.get("version", "1.0.0")
+        }
+    )
 
 # 注册所有API路由
-logger.info("开始注册API路由...")
-register_routers(api_router)  # 把路由注册到api_router上
-app.include_router(api_router)  # 将api_router添加到主应用
-logger.info("API路由注册完成")
+logger.debug("开始注册API路由...")
+api_router.include_router(router)
+app.include_router(api_router) 
+logger.debug("API路由注册完成")
 
 # 挂载静态文件目录，用于微信校验文件等
 app.mount("/static", StaticFiles(directory="static"), name="static_files")
 
 # 挂载Mihomo控制面板静态文件
-app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
+# app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
 
 # 网站路由 - 确保具体路径挂载在根路径之前
 website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))

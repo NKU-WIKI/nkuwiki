@@ -1,21 +1,23 @@
-CREATE TABLE IF NOT EXISTS `market_nku` (
+CREATE TABLE IF NOT EXISTS `wxapp_post` (
     `id` bigint(20) NOT NULL AUTO_INCREMENT,
-    `title` varchar(255) NOT NULL COMMENT '标题',
+    `openid` varchar(64) NOT NULL COMMENT '用户openid',
+    `nickname` varchar(64) NOT NULL DEFAULT '' COMMENT '用户昵称',
+    `avatar` varchar(255) NOT NULL DEFAULT '' COMMENT '用户头像',
+    `category_id` int(11) NOT NULL DEFAULT '1' COMMENT '分类ID',
+    `title` varchar(255) NOT NULL DEFAULT '' COMMENT '标题',
     `content` text NOT NULL COMMENT '内容',
-    `author` varchar(64) NOT NULL DEFAULT '' COMMENT '发布者',
-    `category` varchar(64) NOT NULL DEFAULT '' COMMENT '分类',
-    `price` decimal(10,2) DEFAULT NULL COMMENT '价格',
     `images` json DEFAULT NULL COMMENT '图片列表',
-    `status` tinyint(4) NOT NULL DEFAULT '1' COMMENT '状态：1-在售，2-已售，3-下架',
+    `tags` json DEFAULT NULL COMMENT '标签列表',
     `view_count` int(11) NOT NULL DEFAULT '0' COMMENT '浏览数',
     `like_count` int(11) NOT NULL DEFAULT '0' COMMENT '点赞数',
     `comment_count` int(11) NOT NULL DEFAULT '0' COMMENT '评论数',
+    `collect_count` int(11) NOT NULL DEFAULT '0' COMMENT '收藏数',
     `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否删除',
     `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    KEY `idx_category` (`category`),
-    KEY `idx_status` (`status`),
+    KEY `idx_openid` (`openid`),
+    KEY `idx_category_id` (`category_id`),
     KEY `idx_create_time` (`create_time`),
     FULLTEXT KEY `ft_content` (`content`, `title`) WITH PARSER ngram
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='南开大学校园集市表'; 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序帖子表'; 

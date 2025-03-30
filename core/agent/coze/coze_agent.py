@@ -8,10 +8,11 @@
 import json
 import os
 import sys
-from typing import List, Dict, Generator
 import re
+from typing import List, Dict, Generator
 import time
 from loguru import logger
+import uuid
 
 # 确保项目根目录在 sys.path 中
 current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -37,6 +38,7 @@ class CozeAgent(Agent):
     """CozeAgent类，使用官方 coze-py SDK 的精简实现"""
     
     def __init__(self, tag="default"):
+        """初始化Coze智能体"""
         super().__init__()
         self.config = Config()
         self.sessions = SessionManager(ChatGPTSession, model=self.config.get("model") or "coze")
@@ -46,27 +48,36 @@ class CozeAgent(Agent):
         if not self.api_key:
             raise ValueError("API 密钥未配置")
         
-        # 根据tag获取bot_id
-        if tag == "default":
-            # 处理默认bot_id
-            bot_id = self.config.get("core.agent.coze.default_bot_id")
+        # 检查tag是否是数字或数字字符串，如果是则直接用作bot_id
+        if isinstance(tag, (int, float)) or (isinstance(tag, str) and re.match(r'^\d+$', tag)):
+            logger.info(f"直接使用tag作为bot_id: {tag}")
+            self.bot_id = str(tag)
         else:
-            # 根据tag从配置中获取特定bot_id
-            bot_id = self.config.get(f"core.agent.coze.{tag}_bot_id")
-            # 如果找不到对应tag的bot_id，则使用默认bot_id
-            if not bot_id:
-                logger.warning(f"未找到tag={tag}对应的bot_id，使用默认bot_id")
-                bot_id = self.config.get("core.agent.coze.default_bot_id")
-        
-        # 处理bot_id格式
-        if isinstance(bot_id, str):
-            self.bot_id = bot_id
-        elif isinstance(bot_id, (list, tuple)) and len(bot_id) > 0:
-            self.bot_id = bot_id[0]  # 使用第一个bot_id
-            if len(bot_id) > 1:
-                logger.warning(f"配置了多个bot_id，当前使用第一个: {self.bot_id}")
-        else:
-            raise ValueError(f"bot_id(tag={tag})必须是字符串或非空字符串数组")
+            # 根据tag获取bot_id
+            if tag == "default":
+                # 处理默认bot_id
+                bot_id = self.config.get("core.agent.coze.bot_id")
+            else:
+                # 根据tag从配置中获取特定bot_id
+                bot_id = self.config.get(f"core.agent.coze.{tag}_bot_id")
+                # 如果找不到对应tag的bot_id，则使用默认bot_id
+                if not bot_id:
+                    logger.warning(f"未找到tag={tag}对应的bot_id，使用默认bot_id")
+                    bot_id = self.config.get("core.agent.coze.bot_id")
+            
+            # 处理bot_id格式
+            if isinstance(bot_id, str):
+                self.bot_id = bot_id
+            elif isinstance(bot_id, (list, tuple)) and len(bot_id) > 0:
+                self.bot_id = bot_id[0]  # 使用第一个bot_id
+                if len(bot_id) > 1:
+                    logger.warning(f"配置了多个bot_id，当前使用第一个: {self.bot_id}")
+            elif not bot_id:
+                # 提供一个默认值，避免抛出异常
+                self.bot_id = "default_bot_id" 
+                logger.warning(f"未找到有效的bot_id配置，使用默认值: {self.bot_id}")
+            else:
+                raise ValueError(f"bot_id(tag={tag})必须是字符串或非空字符串数组")
         
         # 初始化Coze客户端
         self.client = Coze(
