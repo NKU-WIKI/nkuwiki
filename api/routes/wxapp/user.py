@@ -218,6 +218,29 @@ async def update_user_info(
     except Exception as e:
         return Response.error(details={"message": f"更新用户信息失败: {str(e)}"})
 
+@router.get("/user/token")
+async def get_user_token(
+    openid: str = Query(..., description="用户OpenID")
+):
+    """获取用户代币"""
+    if not openid:
+        return Response.bad_request(details={"message": "缺少openid参数"})
+    try:
+        user_data = await async_query_records(
+            table_name="wxapp_user",
+            conditions={"openid": openid},
+            limit=1
+        )
+
+        if not user_data or not user_data['data']:
+            return Response.not_found(resource="用户")
+
+        user = user_data['data'][0]
+        return Response.success(data={"token": user.get("token_count", 0)}, details={"message":"获取用户代币成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"获取用户代币失败: {str(e)}"})
+
+
 @router.post("/user/sync")
 async def sync_user_info(
     request: Request
@@ -264,25 +287,3 @@ async def sync_user_info(
         return Response.success(details={"message":"用户信息同步成功", "user_id": user_id})
     except Exception as e:
         return Response.error(details={"message": f"同步用户信息失败: {str(e)}"})
-
-@router.get("/user/token")
-async def get_user_token(
-    openid: str = Query(..., description="用户OpenID")
-):
-    """获取用户代币"""
-    if not openid:
-        return Response.bad_request(details={"message": "缺少openid参数"})
-    try:
-        user_data = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
-        )
-
-        if not user_data or not user_data['data']:
-            return Response.not_found(resource="用户")
-
-        user = user_data['data'][0]
-        return Response.success(data={"token": user.get("token_count", 0)}, details={"message":"获取用户代币成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"获取用户代币失败: {str(e)}"})

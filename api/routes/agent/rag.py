@@ -11,7 +11,7 @@ from functools import lru_cache
 from typing import List, Dict, Any, Optional, Union
 
 from fastapi import HTTPException, APIRouter
-from api.models.agent import Source
+from api.models.search import Source
 from api.models.common import Response, Request, validate_params
 from core.agent.coze.coze_agent import CozeAgent
 from etl.load.db_core import async_query_records

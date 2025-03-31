@@ -12,6 +12,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_post` (
     `like_count` int(11) NOT NULL DEFAULT '0' COMMENT '点赞数',
     `comment_count` int(11) NOT NULL DEFAULT '0' COMMENT '评论数',
     `collect_count` int(11) NOT NULL DEFAULT '0' COMMENT '收藏数',
+    `status` tinyint(1) NOT NULL DEFAULT '1' COMMENT '帖子状态：1-正常，0-禁用',
     `is_deleted` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否删除',
     `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -19,5 +20,6 @@ CREATE TABLE IF NOT EXISTS `wxapp_post` (
     KEY `idx_openid` (`openid`),
     KEY `idx_category_id` (`category_id`),
     KEY `idx_create_time` (`create_time`),
+    KEY `idx_status` (`status`),
     FULLTEXT KEY `ft_content` (`content`, `title`) WITH PARSER ngram
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序帖子表'; 
