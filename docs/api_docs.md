@@ -1,6 +1,6 @@
-# 南开Wiki API文档
+# nkuwiki API文档
 
-本文档包含南开Wiki平台的所有API接口，主要分为两类：
+本文档包含nkuwiki平台的所有API接口，主要分为两类：
 1. 微信小程序API：提供给微信小程序客户端使用的API
 2. Agent智能体API：提供AI聊天和知识检索功能
 
@@ -153,6 +153,23 @@
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
+
+## 参数类型说明
+
+API接口的参数类型规范如下：
+
+1. **ID类型参数**：
+   - `post_id`、`comment_id`、`notification_id` 等ID参数必须是**整数类型**
+   - `openid`、`unionid` 等用户标识必须是**字符串类型**
+
+2. **布尔类型参数**：
+   - 使用 `true`/`false` 表示，如 `is_read`
+
+3. **日期时间类型参数**：
+   - 使用 ISO 8601 格式：`YYYY-MM-DD HH:MM:SS`
+   - 或简化的日期格式：`YYYY-MM-DD`
+
+请严格按照上述类型规范传递参数，否则可能导致请求失败。
 
 ## 一、用户接口
 
@@ -743,10 +760,9 @@
 ### 2.2 获取帖子详情
 
 **接口**：`GET /api/wxapp/post/detail`  
-**描述**：获取指定帖子的详情  
+**描述**：获取帖子详细信息  
 **参数**：
-- `post_id` - 查询参数，帖子ID（必填）
-- `update_view` - 查询参数，是否更新浏览量，默认true
+- `post_id` - 查询参数，帖子ID（必填，整数类型）
 
 **响应**：
 
@@ -837,28 +853,19 @@
 
 ### 2.4 更新帖子
 
-**接口**：`PUT /api/wxapp/post/update`  
+**接口**：`POST /api/wxapp/post/update`  
 **描述**：更新帖子信息  
-**参数**：
-- `post_id` - 查询参数，帖子ID（必填）
-- `openid` - 查询参数，用户openid（必填，用于验证操作权限）
-
 **请求体**：
 
 ```json
 {
-  "title": "新标题",
-  "content": "新内容",
-  "images": ["新图片URL1", "新图片URL2"],
-  "tags": ["新标签1", "新标签2"],
-  "category_id": 2,
-  "location": {
-    "latitude": 39.12345,
-    "longitude": 116.12345,
-    "name": "位置名称",
-    "address": "详细地址"
-  },
-  "status": 1
+  "post_id": 1, // 必填，整数类型
+  "openid": "发帖用户openid", // 必填
+  "content": "更新后的内容", // 可选，帖子内容
+  "title": "更新后的标题", // 可选，帖子标题
+  "category_id": 2, // 可选，整数类型，分类ID
+  "image": ["图片URL1","图片URL2"], // 可选，图片URL数组
+  "tag": ["标签1","标签2"] // 可选，标签数组
 }
 ```
 
@@ -902,214 +909,14 @@
 }
 ```
 
-## 三、评论接口
+### 2.5 删除帖子
 
-### 3.1 创建评论
-
-**接口**：`POST /api/wxapp/comment`  
-**描述**：创建新评论  
-**请求体**：
-
-```json
-{
-  "openid": "评论用户openid", // 必填
-  "post_id": 1, // 必填
-  "content": "评论内容", // 必填
-  "parent_id": null, // 可选，父评论ID
-  "nickname": "用户昵称", // 可选，如不提供则从用户表获取
-  "avatar": "用户头像URL", // 可选，如不提供则从用户表获取
-  "images": [] // 可选，评论图片
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "id": 1,
-    "openid": "评论用户openid",
-    "post_id": 1,
-    "content": "评论内容",
-    "parent_id": null,
-    "nickname": "用户昵称",
-    "avatar": "用户头像URL",
-    "image": [],
-    "like_count": 0,
-    "liked_users": [],
-    "reply_count": 0,
-    "reply_preview": [],
-    "create_time": "2023-01-01 12:00:00",
-    "update_time": "2023-01-01 12:00:00",
-    "platform": "wxapp",
-    "status": 1,
-    "is_deleted": 0
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 3.2 获取评论详情
-
-**接口**：`GET /api/wxapp/comment/detail`  
-**描述**：获取指定评论的详情  
+**接口**：`DELETE /api/wxapp/post/delete`  
+**描述**：删除帖子（标记删除）  
 **参数**：
-- `comment_id` - 查询参数，评论ID（必填）
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "id": 1,
-    "openid": "评论用户openid",
-    "post_id": 1,
-    "content": "评论内容",
-    "parent_id": null,
-    "nickname": "用户昵称",
-    "avatar": "用户头像URL",
-    "image": [],
-    "like_count": 0,
-    "liked_users": [],
-    "reply_count": 0,
-    "reply_preview": [],
-    "create_time": "2023-01-01 12:00:00",
-    "update_time": "2023-01-01 12:00:00",
-    "platform": "wxapp",
-    "status": 1,
-    "is_deleted": 0
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 3.3 获取帖子评论列表
-
-**接口**：`GET /api/wxapp/comment/list`  
-**描述**：获取指定帖子的评论列表  
-**参数**：
-- `post_id` - 查询参数，帖子ID（必填）
-- `parent_id` - 查询参数，父评论ID，可选（为null时获取一级评论）
-- `limit` - 查询参数，返回记录数量限制，默认20，最大100
-- `offset` - 查询参数，分页偏移量，默认0
-- `sort_by` - 查询参数，排序方式，默认"latest"(latest-最新, oldest-最早, likes-最多点赞)
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "data": [
-      {
-        "id": 1,
-        "openid": "评论用户openid",
-        "nickname": "用户昵称",
-        "avatar": "用户头像URL",
-        "post_id": 1,
-        "content": "评论内容",
-        "parent_id": null,
-        "image": [],
-        "like_count": 3,
-        "liked_users": ["用户openid1", "用户openid2", "用户openid3"],
-        "reply_count": 2,
-        "reply_preview": [
-          {
-            "id": 5,
-            "openid": "回复用户openid",
-            "nickname": "回复用户昵称",
-            "avatar": "回复用户头像URL",
-            "content": "回复内容",
-            "create_time": "2023-01-01 12:30:00"
-          }
-        ],
-        "create_time": "2023-01-01 12:00:00",
-        "update_time": "2023-01-01 12:00:00",
-        "platform": "wxapp",
-        "status": 1,
-        "is_deleted": 0
-      }
-    ],
-    "pagination": {
-      "total": 50,
-      "limit": 20,
-      "offset": 0,
-      "post_id": 1,
-      "parent_id": null
-    }
-  },
-  "details": {
-    "message": "获取评论列表成功"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 3.4 更新评论
-
-**接口**：`PUT /api/wxapp/comment/update`  
-**描述**：更新评论信息  
-**参数**：
-- `comment_id` - 查询参数，评论ID（必填）
+- `post_id` - 查询参数，帖子ID（必填，整数类型）
 - `openid` - 查询参数，用户openid（必填，用于验证操作权限）
 
-**请求体**：
-
-```json
-{
-  "content": "新评论内容",
-  "images": ["图片URL1", "图片URL2"],
-  "status": 1
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "id": 1,
-    "openid": "评论用户openid",
-    "nickname": "用户昵称",
-    "avatar": "用户头像URL",
-    "post_id": 1,
-    "content": "新评论内容",
-    "parent_id": null,
-    "image": ["图片URL1", "图片URL2"],
-    "like_count": 3,
-    "liked_users": ["用户openid1", "用户openid2", "用户openid3"],
-    "create_time": "2023-01-01 12:00:00",
-    "update_time": "2023-01-01 13:00:00",
-    "platform": "wxapp",
-    "status": 1,
-    "is_deleted": 0
-  },
-  "details": null,
-  "timestamp": "2023-01-01 13:00:00"
-}
-```
-
-### 3.5 删除评论
-
-**接口**：`POST /api/wxapp/comment/delete`  
-**描述**：删除评论（标记删除）  
-**请求体**：
-```json
-{
-  "comment_id": 1,
-  "openid": "用户openid"
-}
-```
-
 **响应**：
 
 ```json
@@ -1118,90 +925,23 @@
   "message": "success",
   "data": {
     "success": true,
-    "message": "评论已删除"
+    "message": "帖子已删除"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-### 3.6 点赞评论
-
-**接口**：`POST /api/wxapp/comment/like`  
-**描述**：点赞评论或取消点赞（如果已点赞）  
-**说明**：该操作会同时更新评论作者的like_count（当被其他用户点赞或取消点赞时）  
-**请求体**：
-```json
-{
-  "comment_id": 1,
-  "openid": "用户openid"
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "success": true,
-    "message": "点赞成功",
-    "liked": true,
-    "like_count": 4,
-    "comment_id": 1,
-    "action": "like"
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 3.7 取消点赞评论
-
-**接口**：`POST /api/wxapp/comment/unlike`  
-**描述**：取消点赞评论  
-**说明**：该操作会同时更新评论作者的like_count（当被其他用户取消点赞时）  
-**请求体**：
-```json
-{
-  "comment_id": 1,
-  "openid": "用户openid"
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "success": true,
-    "message": "取消点赞成功",
-    "liked": false,
-    "like_count": 3,
-    "comment_id": 1,
-    "action": "unlike"
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-## 四、互动接口
-
-南开Wiki平台中的互动接口负责处理用户对内容的交互操作，如点赞、收藏等。
-
-### 4.1 点赞帖子
+### 2.6 点赞帖子
 
 **接口**：`POST /api/wxapp/post/like`  
-**描述**：对帖子进行点赞  
+**描述**：点赞帖子或取消点赞（如果已点赞）  
 **请求体**：
+
 ```json
 {
-  "post_id": 1,
-  "openid": "用户openid"
+  "post_id": 1, // 必填，整数类型
+  "openid": "点赞用户的openid" // 必填
 }
 ```
 
@@ -1234,7 +974,7 @@
 }
 ```
 
-### 4.2 取消点赞帖子
+### 2.7 取消点赞帖子
 
 **接口**：`POST /api/wxapp/post/unlike`  
 **描述**：取消对帖子的点赞  
@@ -1278,15 +1018,16 @@
 }
 ```
 
-### 4.3 收藏帖子
+### 2.8 收藏帖子
 
 **接口**：`POST /api/wxapp/post/favorite`  
-**描述**：收藏帖子  
+**描述**：收藏帖子或取消收藏（如果已收藏）  
 **请求体**：
+
 ```json
 {
-  "post_id": 1,
-  "openid": "用户openid"
+  "post_id": 1, // 必填，整数类型
+  "openid": "收藏用户的openid" // 必填
 }
 ```
 
@@ -1305,7 +1046,7 @@
 }
 ```
 
-### 4.4 取消收藏帖子
+### 2.9 取消收藏帖子
 
 **接口**：`POST /api/wxapp/post/unfavorite`  
 **描述**：取消收藏帖子  
@@ -1324,6 +1065,7 @@
   "code": 200,
   "message": "success",
   "data": {
+    "success": true,
     "favorite_count": 2,
     "is_favorited": false
   },
@@ -1360,11 +1102,185 @@
 }
 ```
 
-## 五、通知接口
+## 三、评论接口
 
-南开Wiki平台中的通知系统负责处理用户交互（点赞、评论、关注等）触发的通知。
+### 3.1 创建评论
 
-### 5.1 获取通知列表
+**接口**：`POST /api/wxapp/comment`  
+**描述**：创建新评论  
+**请求体**：
+
+```json
+{
+  "openid": "评论用户openid", // 必填
+  "post_id": 1, // 必填，整数类型
+  "content": "评论内容", // 必填
+  "parent_id": null, // 可选，父评论ID，整数类型
+  "nickname": "用户昵称", // 可选，如不提供则从用户表获取
+  "avatar": "用户头像URL", // 可选，如不提供则从用户表获取
+  "image": [] // 可选，评论图片
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null,
+  "details": {
+    "comment_id": 1,
+    "message": "评论创建成功"
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 3.2 获取评论详情
+
+**接口**：`GET /api/wxapp/comment/detail`  
+**描述**：获取指定评论的详情  
+**参数**：
+- `comment_id` - 查询参数，评论ID（必填，整数类型）
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "openid": "评论用户openid",
+    "post_id": 1,
+    "content": "评论内容",
+    "parent_id": null,
+    "nickname": "用户昵称",
+    "avatar": "用户头像URL",
+    "image": [],
+    "like_count": 0,
+    "liked_users": [],
+    "reply_count": 0,
+    "reply_preview": [],
+    "create_time": "2023-01-01 12:00:00",
+    "update_time": "2023-01-01 12:00:00",
+    "status": 1,
+    "is_deleted": 0
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 3.3 获取帖子评论列表
+
+**接口**：`GET /api/wxapp/comment/list`  
+**描述**：获取指定帖子的评论列表  
+**参数**：
+- `post_id` - 查询参数，帖子ID（必填，整数类型）
+- `parent_id` - 查询参数，父评论ID，可选（整数类型，为null时获取一级评论）
+- `limit` - 查询参数，返回记录数量限制，默认20，最大100
+- `offset` - 查询参数，分页偏移量，默认0
+- `openid` - 查询参数，用户openid，可选（用于查询点赞状态）
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "id": 2,
+      "post_id": 3,
+      "parent_id": null,
+      "openid": "用户openid",
+      "nickname": "用户昵称",
+      "avatar": "头像URL",
+      "content": "评论内容",
+      "image": null,
+      "like_count": 0,
+      "reply_count": 0,
+      "status": 1,
+      "is_deleted": 0,
+      "create_time": "2025-03-31T22:40:21",
+      "update_time": "2025-03-31T22:40:21",
+      "liked": false,
+      "reply_preview": []
+    }
+  ],
+  "details": null,
+  "timestamp": "2025-03-31T23:02:27.686667",
+  "pagination": {
+    "total": 2,
+    "limit": 20,
+    "offset": 0,
+    "has_more": false
+  }
+}
+```
+
+### 3.4 删除评论
+
+**接口**：`POST /api/wxapp/comment/delete`  
+**描述**：删除评论（标记删除）  
+**请求体**：
+
+```json
+{
+  "comment_id": 1, // 必填，评论ID，整数类型
+  "openid": "评论用户openid" // 必填，用于验证操作权限
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null,
+  "details": {
+    "message": "评论删除成功"
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 3.5 点赞评论
+
+**接口**：`POST /api/wxapp/comment/like`  
+**描述**：点赞评论或取消点赞（如果已点赞）  
+**请求体**：
+
+```json
+{
+  "comment_id": 1, // 必填，评论ID，整数类型
+  "openid": "点赞用户的openid" // 必填
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null,
+  "details": {
+    "like_count": 4,
+    "message": "点赞成功"
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+## 四、通知接口
+
+nkuwiki平台中的通知系统负责处理用户交互（点赞、评论、关注等）触发的通知。
+
+### 4.1 获取通知列表
 
 **接口**：`GET /api/wxapp/notification/list`  
 **描述**：获取用户的通知列表  
@@ -1411,7 +1327,7 @@
 }
 ```
 
-### 5.2 获取通知详情
+### 4.2 获取通知详情
 
 **接口**：`GET /api/wxapp/notification/detail`  
 **描述**：获取通知详情  
@@ -1445,7 +1361,7 @@
 }
 ```
 
-### 5.3 获取未读通知数量
+### 4.3 获取未读通知数量
 
 **接口**：`GET /api/wxapp/notification/count`  
 **描述**：获取用户未读通知数量  
@@ -1469,7 +1385,7 @@
 }
 ```
 
-### 5.4 标记通知已读
+### 4.4 标记通知已读
 
 **接口**：`POST /api/wxapp/notification/mark-read`  
 **描述**：标记单个通知为已读  
@@ -1496,7 +1412,7 @@
 }
 ```
 
-### 5.5 批量标记通知已读
+### 4.5 批量标记通知已读
 
 **接口**：`POST /api/wxapp/notification/mark-read-batch`  
 **描述**：批量标记通知为已读  
@@ -1542,7 +1458,7 @@
 }
 ```
 
-### 5.6 删除通知
+### 4.6 删除通知
 
 **接口**：`POST /api/wxapp/notification/delete`  
 **描述**：删除通知  
@@ -1569,7 +1485,7 @@
 }
 ```
 
-### 5.7 通知触发机制
+### 4.7 通知触发机制
 
 系统会在以下情况自动触发通知：
 
@@ -1587,7 +1503,7 @@
 4. **收藏通知**：
    - 当用户A收藏用户B的帖子时，用户B会收到收藏通知
 
-### 5.8 通知数据结构
+### 4.8 通知数据结构
 
 通知记录包含以下字段：
 
@@ -1606,11 +1522,11 @@
 | update_time | datetime | 更新时间 |
 | status | int | 状态：1-正常, 0-禁用 |
 
-## 六、反馈接口
+## 五、反馈接口
 
 反馈系统用于收集用户反馈、建议和问题报告。
 
-### 6.1 提交反馈
+### 5.1 提交反馈
 
 **接口**：`POST /api/wxapp/feedback`  
 **描述**：提交意见反馈  
@@ -1667,7 +1583,7 @@
 }
 ```
 
-### 6.2 获取反馈列表
+### 5.2 获取反馈列表
 
 **接口**：`GET /api/wxapp/feedback/list`  
 **描述**：获取用户的反馈列表  
@@ -1715,9 +1631,9 @@
 }
 ```
 
-## 七、搜索接口
+## 六、搜索接口
 
-### 7.1 综合搜索
+### 6.1 综合搜索
 
 **接口**：`GET /api/wxapp/search`  
 **描述**：根据关键词搜索帖子和用户  
@@ -1767,7 +1683,7 @@
 }
 ```
 
-### 7.2 获取搜索建议
+### 6.2 获取搜索建议
 
 **接口**：`GET /api/wxapp/suggestion`  
 **描述**：根据输入的关键词获取搜索建议  
@@ -1792,7 +1708,7 @@
 }
 ```
 
-### 7.3 获取搜索历史
+### 6.3 获取搜索历史
 
 **接口**：`GET /api/wxapp/history`  
 **描述**：获取指定用户的搜索历史记录  
@@ -1823,7 +1739,7 @@
 }
 ```
 
-### 7.4 清空搜索历史
+### 6.4 清空搜索历史
 
 **接口**：`POST /api/wxapp/history/clear`  
 **描述**：清空指定用户的所有搜索历史记录  
@@ -1849,7 +1765,7 @@
 }
 ```
 
-### 7.5 获取热门搜索
+### 6.5 获取热门搜索
 
 **接口**：`GET /api/wxapp/hot`  
 **描述**：获取平台热门搜索关键词  
@@ -1881,11 +1797,11 @@
 }
 ```
 
-## 八、智能体接口
+## 七、智能体接口
 
-本章描述了南开Wiki平台的智能体相关接口，包括状态查询、聊天和RAG（检索增强生成）功能。
+本章描述了nkuwiki平台的智能体相关接口，包括状态查询、聊天和RAG（检索增强生成）功能。
 
-### 8.1 获取智能体状态
+### 7.1 获取智能体状态
 
 **接口**：`GET /api/agent/status`  
 **描述**：获取智能体服务运行状态，用于检查智能体服务是否正常运行  
@@ -1907,7 +1823,7 @@
 }
 ```
 
-### 8.2 智能体聊天
+### 7.2 智能体聊天
 
 **接口**：`POST /api/agent/chat`  
 **描述**：与智能体进行自由对话，获取回答  
@@ -1951,10 +1867,10 @@
 }
 ```
 
-### 8.3 检索增强生成
+### 7.3 检索增强生成
 
 **接口**：`POST /api/agent`  
-**描述**：基于南开Wiki平台的数据进行信息检索并生成回答  
+**描述**：基于nkuwiki平台的数据进行信息检索并生成回答  
 **请求体**：
 
 ```json

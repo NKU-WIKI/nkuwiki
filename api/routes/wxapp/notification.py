@@ -57,6 +57,28 @@ async def get_notification_detail(
     except Exception as e:
         return Response.error(details={"message": f"获取通知详情失败: {str(e)}"})
 
+@router.get("/notification/status")
+async def get_notification_status(
+    openid: str = Query(..., description="用户openid")
+):
+    """获取用户通知状态（是否有未读通知）"""
+    try:
+        if not openid:
+            return Response.bad_request(details={"message": "缺少openid参数"})
+        
+        conditions = {"openid": openid, "is_read": False, "status": 1}
+        count = await async_count_records(
+            table_name="wxapp_notification",
+            conditions=conditions
+        )
+        
+        return Response.success(
+            data={"has_unread": count > 0, "unread_count": count},
+            details={"message": "获取通知状态成功"}
+        )
+    except Exception as e:
+        return Response.error(details={"message": f"获取通知状态失败: {str(e)}"})
+
 @router.get("/notification/count")
 async def get_unread_notifications_count(
     openid: str = Query(..., description="用户openid"),
