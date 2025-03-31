@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_feedback` (
     `content` TEXT NOT NULL COMMENT '反馈内容',
     `type` VARCHAR(20) NOT NULL COMMENT '反馈类型: bug-问题反馈, suggestion-建议, other-其他',
     `contact` VARCHAR(100) DEFAULT NULL COMMENT '联系方式',
-    `images` JSON COMMENT '图片URL列表',
+    `image` JSON COMMENT '图片URL列表',
     `device_info` JSON DEFAULT NULL COMMENT '设备信息',
     `status` VARCHAR(20) DEFAULT 'pending' COMMENT '反馈状态：pending-待处理, processing-处理中, resolved-已解决, rejected-已拒绝',
     `admin_reply` TEXT DEFAULT NULL COMMENT '管理员回复',

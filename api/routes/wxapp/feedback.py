@@ -67,14 +67,14 @@ async def create_feedback(request: Request):
         openid = req_data.get("openid")
         content = req_data.get("content")
         type = req_data.get("type","")
-        images = req_data.get("images", [])
+        image = req_data.get("image", [])
         contact = req_data.get("contact","")
 
         feedback_data = {
             "openid":openid,
             "content":content,
             "type":type,
-            "images":images,
+            "image":image,
             "contact":contact
         }
 

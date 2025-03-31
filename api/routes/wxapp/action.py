@@ -2,7 +2,7 @@
 微信小程序互动动作API接口
 包括点赞、收藏、关注等功能
 """
-from fastapi import Query, APIRouter, Request
+from fastapi import APIRouter, Request, Query
 from api.models.common import Response, Request, validate_params, PaginationInfo
 from etl.load.db_core import (
     query_records, get_record_by_id, insert_record, update_record, count_records, delete_record,
@@ -30,7 +30,7 @@ async def create_comment(request: Request):
         post_id = req_data.get("post_id")
         content = req_data.get("content")
         parent_id = req_data.get("parent_id")
-        images = req_data.get("images", [])
+        image = req_data.get("image", [])
         
         print(f"参数校验通过: openid={openid}, post_id={post_id}, content={content}")
 
@@ -72,7 +72,7 @@ async def create_comment(request: Request):
             "content": content,
             "parent_id": parent_id,
             "root_id": req_data.get("root_id", parent_id),
-            "images": images,
+            "image": image,
             "like_count": 0,
             "status": 1
         }
@@ -333,11 +333,14 @@ async def like_post(
             conditions={
                 "openid": openid,
                 "action_type": 'like',
-                "target_id": post_id
+                "target_id": post_id,
+                "target_type": "post"
             },
             limit=1,
         )
-        if exists:
+        print(f"点赞查询结果: {exists}")
+        has_liked = exists and exists.get('data') and len(exists.get('data')) > 0
+        if has_liked:
             return Response.bad_request(details={"message": "已经点赞，请勿重复点赞"})
 
         await async_insert(
@@ -345,7 +348,8 @@ async def like_post(
             data={
                 "openid": openid,
                 "action_type": 'like',
-                "target_id": post_id
+                "target_id": post_id,
+                "target_type": "post"
             },
         )
 
@@ -456,11 +460,13 @@ async def favorite_post(
 
         exists = await async_query_records(
             "wxapp_action",
-            {"openid": openid, "action_type": "favorite", "target_id": post_id},
+            {"openid": openid, "action_type": "favorite", "target_id": post_id, "target_type": "post"},
             limit=1
         )
-
-        if exists:
+        
+        print(f"收藏查询结果: {exists}")
+        has_favorited = exists and exists.get('data') and len(exists.get('data')) > 0
+        if has_favorited:
             return Response.success(details={"status": "already_favorited"})
 
         await async_insert("wxapp_action", {
@@ -518,10 +524,12 @@ async def unlike_favorite(
 
         favorite_record = await async_query_records(
             "wxapp_action",
-            {"openid": openid, "action_type": "favorite", "target_id": post_id},
+            {"openid": openid, "action_type": "favorite", "target_id": post_id, "target_type": "post"},
             limit=1
         )
-        if not favorite_record:
+        print(f"取消收藏查询结果: {favorite_record}")
+        has_favorited = favorite_record and favorite_record.get('data') and len(favorite_record.get('data')) > 0
+        if not has_favorited:
             return Response.bad_request(details={"message": "未收藏，无法取消收藏"})
 
         post = await async_get_by_id("wxapp_post", post_id)
@@ -529,8 +537,8 @@ async def unlike_favorite(
 
         # 删除收藏记录
         execute_custom_query(
-            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'favorite' AND target_id = %s",
-            [openid, post_id],
+            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'favorite' AND target_id = %s AND target_type = %s",
+            [openid, post_id, "post"],
             fetch=False
         )
         

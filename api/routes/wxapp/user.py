@@ -237,8 +237,6 @@ async def sync_user_info(
         nickname = None
         if "nickname" in req_data:
             nickname = req_data["nickname"]
-        elif "nick_name" in req_data:
-            nickname = req_data["nick_name"]
             
         if not nickname:
             nickname = f'用户_{openid[-6:]}'
@@ -332,9 +330,6 @@ async def update_user_info(
         # 基本信息
         if "nickname" in req_data:
             update_data["nickname"] = req_data["nickname"]
-        # 兼容前端传递nick_name的情况
-        elif "nick_name" in req_data:
-            update_data["nickname"] = req_data["nick_name"]
         if "avatar" in req_data:
             update_data["avatar"] = req_data["avatar"] if req_data["avatar"] else default_avatar
         if "gender" in req_data:

@@ -59,10 +59,10 @@ async def create_post(
         }
         
         # 可选字段
-        if "images" in req_data:
-            db_post_data["images"] = req_data.get("images")
-        if "tags" in req_data:
-            db_post_data["tags"] = req_data.get("tags")
+        if "image" in req_data:
+            db_post_data["image"] = req_data.get("image")
+        if "tag" in req_data:
+            db_post_data["tag"] = req_data.get("tag")
         
         try:
             post_id = await async_insert("wxapp_post", db_post_data)
@@ -142,7 +142,7 @@ async def get_posts(
             conditions["category_id"] = category_id
 
         if tag:
-            conditions["tags"] = {"$contains": [tag]}
+            conditions["tag"] = {"$contains": [tag]}
 
         ALLOWED_ORDERS = {"update_time", "create_time", "view_count", "like_count"}
 

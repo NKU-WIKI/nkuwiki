@@ -272,12 +272,16 @@ def query_records(table_name: str,
 
         # 构建查询总数的SQL
         count_sql = f"SELECT COUNT(*) as total FROM {table_name} {where_clause}"
+        db_logger.debug(f"查询总数SQL: {count_sql}, 参数: {values}")
         total_count_result = execute_query(count_sql, values)
         total_count = total_count_result[0]['total'] if total_count_result else 0
+        db_logger.debug(f"查询总数结果: {total_count}")
 
         # 构建并执行数据查询SQL
         sql = f"SELECT * FROM {table_name} {where_clause} {order_clause} {limit_clause}"
+        db_logger.debug(f"查询数据SQL: {sql}, 参数: {values}")
         query_results = execute_query(sql, values)
+        db_logger.debug(f"查询结果条数: {len(query_results)}")
 
         # 构建分页信息
         pagination_info = {

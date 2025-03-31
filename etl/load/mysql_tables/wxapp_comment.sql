@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_comment` (
     `nickname` varchar(64) NOT NULL DEFAULT '' COMMENT '用户昵称',
     `avatar` varchar(255) NOT NULL DEFAULT '' COMMENT '用户头像',
     `content` text NOT NULL COMMENT '评论内容',
-    `images` json DEFAULT NULL COMMENT '图片列表',
+    `image` json DEFAULT NULL COMMENT '图片列表',
     `like_count` int(11) NOT NULL DEFAULT '0' COMMENT '点赞数',
     `reply_count` int(11) NOT NULL DEFAULT '0' COMMENT '回复数',
     `status` tinyint(4) NOT NULL DEFAULT '1' COMMENT '状态：1-正常, 0-禁用',
