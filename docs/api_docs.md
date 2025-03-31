@@ -1485,11 +1485,177 @@
 }
 ```
 
-## 六、智能体接口
+## 六、搜索接口
+
+### 6.1 综合搜索
+
+**接口**：`GET /api/wxapp/search`  
+**描述**：根据关键词搜索帖子和用户  
+**参数**：
+- `keyword` - 查询参数，搜索关键词（必填）
+- `search_type` - 查询参数，搜索类型，可选值：all(默认)、post、user
+- `page` - 查询参数，页码，默认值：1
+- `limit` - 查询参数，每页结果数量，默认值：10
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "id": 1,
+      "title": "测试帖子",
+      "content": "这是测试内容",
+      "type": "post",
+      "like_count": 10,
+      "comment_count": 5,
+      "view_count": 100,
+      "update_time": "2023-01-01 12:00:00"
+    },
+    {
+      "id": 2,
+      "openid": "用户openid",
+      "nickname": "测试用户",
+      "avatar": "头像URL",
+      "bio": "用户简介",
+      "type": "user"
+    }
+  ],
+  "details": {
+    "keyword": "测试",
+    "search_type": "all"
+  },
+  "pagination": {
+    "total": 50,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 5
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 6.2 获取搜索建议
+
+**接口**：`GET /api/wxapp/suggestion`  
+**描述**：根据输入的关键词获取搜索建议  
+**参数**：
+- `keyword` - 查询参数，搜索关键词（必填）
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    "测试帖子",
+    "测试用户",
+    "测试内容",
+    "测试数据",
+    "测试信息"
+  ],
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 6.3 获取搜索历史
+
+**接口**：`GET /api/wxapp/history`  
+**描述**：获取指定用户的搜索历史记录  
+**参数**：
+- `openid` - 查询参数，用户的OpenID（必填）
+- `limit` - 查询参数，返回结果数量，默认值：10
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "keyword": "测试帖子",
+      "search_time": "2023-01-01 12:00:00",
+      "openid": "用户openid"
+    },
+    {
+      "keyword": "测试用户",
+      "search_time": "2023-01-01 11:00:00",
+      "openid": "用户openid"
+    }
+  ],
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 6.4 清空搜索历史
+
+**接口**：`POST /api/wxapp/history/clear`  
+**描述**：清空指定用户的所有搜索历史记录  
+**请求体**：
+
+```json
+{
+  "openid": "用户openid"
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null,
+  "details": {
+    "message": "清空搜索历史成功"
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 6.5 获取热门搜索
+
+**接口**：`GET /api/wxapp/hot`  
+**描述**：获取平台热门搜索关键词  
+**参数**：
+- `limit` - 查询参数，返回结果数量，默认值：10
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [
+    {
+      "keyword": "测试帖子",
+      "count": 100
+    },
+    {
+      "keyword": "测试用户",
+      "count": 80
+    },
+    {
+      "keyword": "测试内容",
+      "count": 50
+    }
+  ],
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+## 七、智能体接口
 
 本章描述了南开Wiki平台的智能体相关接口，包括状态查询、聊天和RAG（检索增强生成）功能。
 
-### 6.1 获取智能体状态
+### 7.1 获取智能体状态
 
 **接口**：`GET /api/agent/status`  
 **描述**：获取智能体服务运行状态，用于检查智能体服务是否正常运行  
@@ -1511,7 +1677,7 @@
 }
 ```
 
-### 6.2 智能体聊天
+### 7.2 智能体聊天
 
 **接口**：`POST /api/agent/chat`  
 **描述**：与智能体进行自由对话，获取回答  
@@ -1555,7 +1721,7 @@
 }
 ```
 
-### 6.3 检索增强生成
+### 7.3 检索增强生成
 
 **接口**：`POST /api/agent`  
 **描述**：基于南开Wiki平台的数据进行信息检索并生成回答  
