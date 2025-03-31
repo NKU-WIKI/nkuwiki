@@ -145,7 +145,7 @@
 {
   "openid": "微信用户唯一标识", // 必填
   "unionid": "微信开放平台唯一标识（可选）", // 不会被保存
-  "nick_name": "用户昵称（可选）", // 不会被保存
+  "nickname": "用户昵称（可选）", // 不会被保存
   "avatar": "头像URL（可选）", // 不会被保存
   "gender": 0, // 不会被保存
   "bio": "个人简介（可选）", // 不会被保存
@@ -174,7 +174,7 @@
     "id": 10001,
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
-    "nick_name": "已保存的用户昵称",
+    "nickname": "已保存的用户昵称",
     "avatar": "已保存的头像URL",
     "gender": 1,
     "bio": "个人简介",
@@ -213,7 +213,7 @@
     "id": 10002,
     "openid": "微信用户唯一标识",
     "unionid": null,
-    "nick_name": null,
+    "nickname": null,
     "avatar": null,
     "gender": 0,
     "bio": null,
@@ -260,7 +260,7 @@
     "id": 1,
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
     "bio": "个人简介",
@@ -310,7 +310,7 @@
         "id": 1,
         "openid": "微信用户唯一标识",
         "unionid": "微信开放平台唯一标识",
-        "nick_name": "用户昵称",
+        "nickname": "用户昵称",
         "avatar": "头像URL",
         "gender": 0,
         "bio": "个人简介",
@@ -351,7 +351,7 @@
 
 ### 1.4 更新用户信息
 
-**接口**：`PUT /api/wxapp/user/update`  
+**接口**：`Post /api/wxapp/user/update`  
 **描述**：更新用户信息  
 **参数**：
 - `openid` - 查询参数，用户openid（必填）
@@ -360,7 +360,7 @@
 
 ```json
 {
-  "nick_name": "新昵称",              // 可选，用户昵称
+  "nickname": "新昵称",              // 可选，用户昵称
   "avatar": "新头像URL",              // 可选，头像URL
   "gender": 1,                        // 可选，性别：0-未知, 1-男, 2-女
   "bio": "新个人简介",                // 可选，个人简介
@@ -389,7 +389,7 @@
     "id": 1,
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
-    "nick_name": "新昵称",
+    "nickname": "新昵称",
     "avatar": "新头像URL",
     "gender": 1,
     "bio": "新个人简介",
@@ -537,7 +537,7 @@
         "id": 2,
         "openid": "被关注用户的openid",
         "unionid": "微信开放平台唯一标识",
-        "nick_name": "用户昵称",
+        "nickname": "用户昵称",
         "avatar": "头像URL",
         "gender": 1,
         "bio": "个人简介",
@@ -595,7 +595,7 @@
         "id": 3,
         "openid": "粉丝用户的openid",
         "unionid": "微信开放平台唯一标识",
-        "nick_name": "粉丝昵称",
+        "nickname": "粉丝昵称",
         "avatar": "头像URL",
         "gender": 2,
         "bio": "个人简介",
@@ -676,7 +676,7 @@
     "name": "位置名称",
     "address": "详细地址"
   },
-  "nick_name": "用户昵称", // 可选，如不提供则从用户表获取
+  "nickname": "用户昵称", // 可选，如不提供则从用户表获取
   "avatar": "用户头像URL" // 可选，如不提供则从用户表获取
 }
 ```
@@ -701,7 +701,7 @@
       "name": "位置名称",
       "address": "详细地址"
     },
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "view_count": 0,
     "like_count": 0,
@@ -744,7 +744,7 @@
     "tags": ["标签1", "标签2"],
     "category_id": 1,
     "location": "位置信息",
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "view_count": 1,
     "like_count": 0,
@@ -862,7 +862,7 @@
       "name": "位置名称",
       "address": "详细地址"
     },
-    "nick_name": "用户昵称", 
+    "nickname": "用户昵称", 
     "avatar": "用户头像URL",
     "view_count": 10,
     "like_count": 5,
@@ -896,7 +896,7 @@
   "post_id": 1, // 必填
   "content": "评论内容", // 必填
   "parent_id": null, // 可选，父评论ID
-  "nick_name": "用户昵称", // 可选，如不提供则从用户表获取
+  "nickname": "用户昵称", // 可选，如不提供则从用户表获取
   "avatar": "用户头像URL" // 可选，如不提供则从用户表获取
 }
 ```
@@ -913,7 +913,7 @@
     "post_id": 1,
     "content": "评论内容",
     "parent_id": null,
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "like_count": 0,
     "liked_users": [],
@@ -949,7 +949,7 @@
     "post_id": 1,
     "content": "评论内容",
     "parent_id": null,
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "like_count": 0,
     "liked_users": [],
@@ -988,7 +988,7 @@
       {
         "id": 1,
         "openid": "评论用户openid",
-        "nick_name": "用户昵称",
+        "nickname": "用户昵称",
         "avatar": "用户头像URL",
         "post_id": 1,
         "content": "评论内容",
@@ -1000,7 +1000,7 @@
           {
             "id": 5,
             "openid": "回复用户openid",
-            "nick_name": "回复用户昵称",
+            "nickname": "回复用户昵称",
             "avatar": "回复用户头像URL",
             "content": "回复内容",
             "create_time": "2023-01-01 12:30:00"
@@ -1055,7 +1055,7 @@
   "data": {
     "id": 1,
     "openid": "评论用户openid",
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "post_id": 1,
     "content": "新评论内容",
