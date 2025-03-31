@@ -1,7 +1,8 @@
 """
-微信小程序用户行为API，只保留产生通知的接口
+微信小程序互动动作API接口
+包括点赞、收藏、关注等功能
 """
-from fastapi import APIRouter, Request, Query
+from fastapi import Query, APIRouter, Request
 from api.models.common import Response, Request, validate_params, PaginationInfo
 from etl.load.db_core import (
     query_records, get_record_by_id, insert_record, update_record, count_records, delete_record,
@@ -9,7 +10,9 @@ from etl.load.db_core import (
     async_query, execute_query
 )
 from datetime import datetime
+import time
 
+# 初始化路由器
 router = APIRouter()
 
 @router.post("/comment")
@@ -372,6 +375,65 @@ async def like_post(
         return Response.success(details={"like_count": post["like_count"] + 1})
     except Exception as e:
         return Response.error(details={"message": f"点赞失败: {str(e)}"})
+
+
+@router.post("/post/unlike")
+async def unlike_post(
+    request: Request,
+):
+    """取消点赞帖子"""
+    try:
+        req_data = await request.json()
+        required_params = ["post_id", "openid"]
+        error_response = validate_params(req_data, required_params)
+        if (error_response):
+            return error_response
+
+        openid = req_data.get("openid")
+        post_id = req_data.get("post_id")
+        post = await async_get_by_id("wxapp_post", post_id)
+        if not post:
+            return Response.not_found(resource="帖子")
+
+        # 查询是否已点赞
+        like_record = await async_query_records(
+            "wxapp_action",
+            conditions={
+                "openid": openid,
+                "action_type": "like",
+                "target_id": post_id,
+                "target_type": "post"
+            },
+            limit=1
+        )
+        
+        if not like_record or not like_record.get('data'):
+            return Response.bad_request(details={"message": "未点赞，无法取消点赞"})
+        
+        # 更新点赞数，确保不小于0
+        new_like_count = max(0, post["like_count"] - 1)
+        
+        # 删除点赞记录
+        execute_custom_query(
+            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'post'",
+            [openid, post_id],
+            fetch=False
+        )
+        
+        # 更新帖子点赞数
+        await async_update(
+            "wxapp_post",
+            post_id,
+            {"like_count": new_like_count}
+        )
+
+        return Response.success(data={
+            "success": True,
+            "like_count": new_like_count,
+            "is_liked": False
+        }, details={"message": "取消点赞成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"取消点赞失败: {str(e)}"})
 
 
 @router.post("/post/favorite")

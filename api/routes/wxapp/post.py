@@ -160,6 +160,11 @@ async def get_posts(
 
         total = await async_count_records("wxapp_post", conditions)
         
+        # 确保每个帖子对象都有id字段
+        for post in posts['data']:
+            if 'id' not in post:
+                post['id'] = post.get('_id')
+        
         # 直接使用字典结构作为分页参数，避免使用model_dump
         return Response.paged(
             data=posts['data'],
