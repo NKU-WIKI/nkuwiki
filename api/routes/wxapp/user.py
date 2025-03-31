@@ -7,6 +7,7 @@ from api.models.common import Response, Request, validate_params
 from etl.load.db_core import (
     async_query_records, async_get_by_id, async_insert, async_update, async_count_records
 )
+from config import Config
 
 router = APIRouter()
 
@@ -183,40 +184,6 @@ async def get_user_follow_stats(
     except Exception as e:
         return Response.error(details={"message": f"获取用户关注统计失败: {str(e)}"})
 
-@router.post("/user/update")
-async def update_user_info(
-    request: Request,
-):
-    """更新用户信息"""
-    try:
-        req_data = await request.json()
-        required_params = ["openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
-
-        openid = req_data.get("openid")
-        user = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
-        )
-        if not user:
-            return Response.not_found(resource="用户")
-
-        update_data = {}
-        if not update_data:
-            return Response.bad_request(details={"message": "未提供任何更新数据"})
-
-        await async_update(
-            table_name="wxapp_user",
-            record_id=openid,
-            update_data=update_data
-        )
-
-        return Response.success(details={"message":"用户信息更新成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"更新用户信息失败: {str(e)}"})
 
 @router.get("/user/token")
 async def get_user_token(
@@ -258,6 +225,24 @@ async def sync_user_info(
         if not openid:
             return Response.bad_request(details={"message": "缺少openid参数"})
 
+        # 获取默认头像配置
+        default_avatar = "cloud://nkuwiki-0g6bkdy9e8455d93.6e6b-nkuwiki-0g6bkdy9e8455d93-1346872102/default/default-avatar.png"
+        
+        # 处理传入的avatar参数，如果为空则使用默认头像
+        avatar = req_data.get("avatar", "")
+        if not avatar:
+            avatar = default_avatar
+            
+        # 处理昵称参数
+        nickname = None
+        if "nickname" in req_data:
+            nickname = req_data["nickname"]
+        elif "nick_name" in req_data:
+            nickname = req_data["nick_name"]
+            
+        if not nickname:
+            nickname = f'用户_{openid[-6:]}'
+
         existing_user = await async_query_records(
             table_name="wxapp_user",
             conditions={"openid": openid},
@@ -265,15 +250,32 @@ async def sync_user_info(
         )
         
         if existing_user and existing_user['data']:
-            # 用户存在，返回用户信息
-            return Response.success(data=existing_user['data'][0], details={"message":"用户已存在"})
-
+            # 用户存在，检查是否需要更新头像
+            user_data = existing_user['data'][0]
+            update_needed = False
+            update_data = {}
+            
+            if not user_data.get("avatar"):
+                # 如果用户头像为空，更新为默认头像
+                update_data["avatar"] = default_avatar
+                update_needed = True
+                
+            if update_needed:
+                await async_update(
+                    table_name="wxapp_user",
+                    record_id=user_data.get("id"),
+                    data=update_data
+                )
+                user_data.update(update_data)
+                
+            return Response.success(data=user_data, details={"message":"用户已存在"})
+        
         # 构造基本用户数据
         user_data = {
             'openid': openid,
-            'nickname': f'用户_{openid[-6:]}',  # 使用openid后六位作为默认昵称
-            'avatar': '',  # 默认头像
-            'gender': 0,   # 默认性别
+            'nickname': nickname,
+            'avatar': avatar,  # 使用处理后的头像URL
+            'gender': req_data.get('gender', 0),   # 默认性别
             'status': 1,   # 默认状态：正常
             'token_count': 0  # 默认代币数
         }
@@ -284,6 +286,103 @@ async def sync_user_info(
         if not user_id:
             return Response.error(details={"message": "用户创建失败"})
             
-        return Response.success(details={"message":"用户信息同步成功", "user_id": user_id})
+        # 查询完整用户数据返回
+        new_user = await async_query_records(
+            table_name="wxapp_user",
+            conditions={"id": user_id},
+            limit=1
+        )
+        
+        if new_user and new_user['data']:
+            return Response.success(data=new_user['data'][0], details={"message":"新用户创建成功"})
+        else:
+            return Response.success(details={"message":"新用户创建成功", "user_id": user_id})
     except Exception as e:
         return Response.error(details={"message": f"同步用户信息失败: {str(e)}"})
+
+@router.post("/user/update")
+async def update_user_info(
+    request: Request,
+):
+    """更新用户信息"""
+    try:
+        req_data = await request.json()
+        required_params = ["openid"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
+
+        openid = req_data.get("openid")
+        user_result = await async_query_records(
+            table_name="wxapp_user",
+            conditions={"openid": openid},
+            limit=1
+        )
+        if not user_result or not user_result['data']:
+            return Response.not_found(resource="用户")
+        
+        user = user_result['data'][0]
+        user_id = user['id']
+        
+        # 获取默认头像配置
+        default_avatar = "cloud://nkuwiki-0g6bkdy9e8455d93.6e6b-nkuwiki-0g6bkdy9e8455d93-1346872102/default/default-avatar.png"
+        
+        # 提取请求中的更新字段
+        update_data = {}
+        # 基本信息
+        if "nickname" in req_data:
+            update_data["nickname"] = req_data["nickname"]
+        # 兼容前端传递nick_name的情况
+        elif "nick_name" in req_data:
+            update_data["nickname"] = req_data["nick_name"]
+        if "avatar" in req_data:
+            update_data["avatar"] = req_data["avatar"] if req_data["avatar"] else default_avatar
+        if "gender" in req_data:
+            update_data["gender"] = req_data["gender"]
+        if "bio" in req_data:
+            update_data["bio"] = req_data["bio"]
+        if "country" in req_data:
+            update_data["country"] = req_data["country"]
+        if "province" in req_data:
+            update_data["province"] = req_data["province"]
+        if "city" in req_data:
+            update_data["city"] = req_data["city"]
+        if "language" in req_data:
+            update_data["language"] = req_data["language"]
+        if "birthday" in req_data:
+            update_data["birthday"] = req_data["birthday"]
+        if "wechatId" in req_data:
+            update_data["wechatId"] = req_data["wechatId"]
+        if "qqId" in req_data:
+            update_data["qqId"] = req_data["qqId"]
+        if "status" in req_data:
+            update_data["status"] = req_data["status"]
+        if "extra" in req_data:
+            update_data["extra"] = req_data["extra"]
+            
+        if not update_data:
+            return Response.bad_request(details={"message": "未提供任何更新数据"})
+
+        # 执行更新操作
+        update_success = await async_update(
+            table_name="wxapp_user",
+            record_id=user_id,  # 使用用户ID而不是openid
+            data=update_data
+        )
+        
+        if not update_success:
+            return Response.error(details={"message": "用户信息更新失败"})
+            
+        # 获取更新后的用户数据
+        updated_user = await async_query_records(
+            table_name="wxapp_user",
+            conditions={"id": user_id},
+            limit=1
+        )
+        
+        if updated_user and updated_user['data']:
+            return Response.success(data=updated_user['data'][0], details={"message":"用户信息更新成功"})
+        else:
+            return Response.success(details={"message":"用户信息更新成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"更新用户信息失败: {str(e)}"})

@@ -135,62 +135,61 @@
 
 ## 一、用户接口
 
-### 1.1 同步微信云用户
+### 1.1 同步用户信息
 
 **接口**：`POST /api/wxapp/user/sync`  
-**描述**：同步微信用户openid到服务器数据库。如果用户已存在，将返回数据库中存储的完整用户信息；如果用户不存在，则创建新用户并只返回openid和系统默认字段。  
+**描述**：同步用户信息，如果用户不存在则创建新用户，存在则返回用户信息  
 **请求体**：
 
 ```json
 {
-  "openid": "微信用户唯一标识", // 必填
-  "unionid": "微信开放平台唯一标识（可选）", // 不会被保存
-  "nick_name": "用户昵称（可选）", // 不会被保存
-  "avatar": "头像URL（可选）", // 不会被保存
-  "gender": 0, // 不会被保存
-  "bio": "个人简介（可选）", // 不会被保存
-  "country": "国家（可选）", // 不会被保存
-  "province": "省份（可选）", // 不会被保存
-  "city": "城市（可选）", // 不会被保存
-  "language": "语言（可选）", // 不会被保存
-  "birthday": "2004-06-28（可选）", // 不会被保存
-  "wechatId": "微信号（可选）", // 不会被保存
-  "qqId": "QQ号（可选）", // 不会被保存
-  "platform": "wxapp", // 不会被保存
-  "extra": {} // 不会被保存
+  "openid": "微信用户唯一标识",         // 必填，微信小程序用户唯一标识
+  "unionid": "微信开放平台唯一标识",    // 可选，微信开放平台唯一标识
+  "nickname": "用户昵称",             // 可选，用户昵称（优先使用，如不提供则使用默认昵称）
+  "nickname": "用户昵称",              // 可选，用户昵称（与nickname二选一，建议使用nickname）
+  "avatar": "头像URL",                // 可选，头像URL（若为空则使用默认头像）
+  "gender": 1,                        // 可选，性别：0-未知, 1-男, 2-女
+  "bio": "个人简介",                   // 可选，个人简介
+  "country": "国家",                   // 可选，国家
+  "province": "省份",                  // 可选，省份
+  "city": "城市",                      // 可选，城市
+  "language": "语言",                  // 可选，语言
+  "birthday": "2004-06-28",           // 可选，生日
+  "wechatId": "微信号",                // 可选，微信号
+  "qqId": "QQ号",                      // 可选，QQ号
+  "extra": {                          // 可选，扩展字段
+    "school": "南开大学"
+  }
 }
 ```
 
 **响应**：
-
-两种情况的响应有明显区别：
-
-1. **已存在用户返回**：包含数据库中该用户的所有字段和数据，`details`字段包含`"message": "用户已存在"`
+1. **已有用户返回**：包含完整用户信息，`details`字段包含`"message": "用户已存在"`
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
-    "id": 10001,
+    "id": 1,
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
-    "nick_name": "已保存的用户昵称",
-    "avatar": "已保存的头像URL",
+    "nickname": "用户昵称",
+    "avatar": "头像URL（如果为空，会自动设置为默认头像）",
     "gender": 1,
     "bio": "个人简介",
-    "country": "中国",
-    "province": "天津",
-    "city": "天津",
-    "language": "zh_CN",
+    "country": "国家",
+    "province": "省份",
+    "city": "城市",
+    "language": "语言",
     "birthday": "2004-06-28",
     "wechatId": "微信号",
     "qqId": "QQ号",
     "token_count": 100,
-    "likes_count": 20,
-    "favorites_count": 15,
-    "posts_count": 5,
-    "followers_count": 10,
-    "following_count": 8,
+    "likes_count": 10,
+    "favorites_count": 5,
+    "posts_count": 8,
+    "followers_count": 20,
+    "following_count": 15,
     "create_time": "2023-01-01 12:00:00",
     "update_time": "2023-01-01 12:00:00",
     "last_login": "2023-01-01 12:00:00",
@@ -204,7 +203,7 @@
 }
 ```
 
-2. **新用户返回**：仅包含openid和系统默认值，`details`字段包含`"message": "新用户创建成功"`
+2. **新用户返回**：包含新创建的用户信息，`details`字段包含`"message": "新用户创建成功"`
 ```json
 {
   "code": 200,
@@ -213,8 +212,8 @@
     "id": 10002,
     "openid": "微信用户唯一标识",
     "unionid": null,
-    "nick_name": null,
-    "avatar": null,
+    "nickname": "用户_ABCDEF（自动生成的默认昵称）",
+    "avatar": "cloud://nkuwiki-xxxx/default/default-avatar.png（默认头像URL）",
     "gender": 0,
     "bio": null,
     "country": null,
@@ -260,7 +259,7 @@
     "id": 1,
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "头像URL",
     "gender": 0,
     "bio": "个人简介",
@@ -310,7 +309,7 @@
         "id": 1,
         "openid": "微信用户唯一标识",
         "unionid": "微信开放平台唯一标识",
-        "nick_name": "用户昵称",
+        "nickname": "用户昵称",
         "avatar": "头像URL",
         "gender": 0,
         "bio": "个人简介",
@@ -351,17 +350,16 @@
 
 ### 1.4 更新用户信息
 
-**接口**：`PUT /api/wxapp/user/update`  
+**接口**：`POST /api/wxapp/user/update`  
 **描述**：更新用户信息  
-**参数**：
-- `openid` - 查询参数，用户openid（必填）
-
 **请求体**：
 
 ```json
 {
-  "nick_name": "新昵称",              // 可选，用户昵称
-  "avatar": "新头像URL",              // 可选，头像URL
+  "openid": "微信用户唯一标识",         // 必填，用户openid
+  "nickname": "新昵称",              // 可选，用户昵称
+  "nickname": "新昵称",               // 可选，与nickname二选一，建议使用nickname
+  "avatar": "新头像URL",              // 可选，头像URL（若为空则使用默认头像）
   "gender": 1,                        // 可选，性别：0-未知, 1-男, 2-女
   "bio": "新个人简介",                // 可选，个人简介
   "country": "新国家",                // 可选，国家
@@ -389,7 +387,7 @@
     "id": 1,
     "openid": "微信用户唯一标识",
     "unionid": "微信开放平台唯一标识",
-    "nick_name": "新昵称",
+    "nickname": "新昵称",
     "avatar": "新头像URL",
     "gender": 1,
     "bio": "新个人简介",
@@ -400,14 +398,14 @@
     "birthday": "2004-06-28",
     "wechatId": "微信号",
     "qqId": "QQ号",
-    "token_count": 0,
-    "likes_count": 0,
-    "favorites_count": 0,
-    "posts_count": 0,
-    "followers_count": 0,
-    "following_count": 0,
+    "token_count": 100,
+    "likes_count": 10,
+    "favorites_count": 5,
+    "posts_count": 8,
+    "followers_count": 20,
+    "following_count": 15,
     "create_time": "2023-01-01 12:00:00",
-    "update_time": "2023-01-01 13:00:00",
+    "update_time": "2023-01-02 14:30:00",
     "last_login": "2023-01-01 12:00:00",
     "platform": "wxapp",
     "status": 1,
@@ -417,8 +415,10 @@
       "major": "计算机科学与技术"
     }
   },
-  "details": null,
-  "timestamp": "2023-01-01 13:00:00"
+  "details": {
+    "message": "用户信息更新成功"
+  },
+  "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
@@ -537,7 +537,7 @@
         "id": 2,
         "openid": "被关注用户的openid",
         "unionid": "微信开放平台唯一标识",
-        "nick_name": "用户昵称",
+        "nickname": "用户昵称",
         "avatar": "头像URL",
         "gender": 1,
         "bio": "个人简介",
@@ -595,7 +595,7 @@
         "id": 3,
         "openid": "粉丝用户的openid",
         "unionid": "微信开放平台唯一标识",
-        "nick_name": "粉丝昵称",
+        "nickname": "粉丝昵称",
         "avatar": "头像URL",
         "gender": 2,
         "bio": "个人简介",
@@ -676,7 +676,7 @@
     "name": "位置名称",
     "address": "详细地址"
   },
-  "nick_name": "用户昵称", // 可选，如不提供则从用户表获取
+  "nickname": "用户昵称", // 可选，如不提供则从用户表获取
   "avatar": "用户头像URL" // 可选，如不提供则从用户表获取
 }
 ```
@@ -701,7 +701,7 @@
       "name": "位置名称",
       "address": "详细地址"
     },
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "view_count": 0,
     "like_count": 0,
@@ -744,7 +744,7 @@
     "tags": ["标签1", "标签2"],
     "category_id": 1,
     "location": "位置信息",
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "view_count": 1,
     "like_count": 0,
@@ -862,7 +862,7 @@
       "name": "位置名称",
       "address": "详细地址"
     },
-    "nick_name": "用户昵称", 
+    "nickname": "用户昵称", 
     "avatar": "用户头像URL",
     "view_count": 10,
     "like_count": 5,
@@ -896,7 +896,7 @@
   "post_id": 1, // 必填
   "content": "评论内容", // 必填
   "parent_id": null, // 可选，父评论ID
-  "nick_name": "用户昵称", // 可选，如不提供则从用户表获取
+  "nickname": "用户昵称", // 可选，如不提供则从用户表获取
   "avatar": "用户头像URL" // 可选，如不提供则从用户表获取
 }
 ```
@@ -913,7 +913,7 @@
     "post_id": 1,
     "content": "评论内容",
     "parent_id": null,
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "like_count": 0,
     "liked_users": [],
@@ -949,7 +949,7 @@
     "post_id": 1,
     "content": "评论内容",
     "parent_id": null,
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "like_count": 0,
     "liked_users": [],
@@ -988,7 +988,7 @@
       {
         "id": 1,
         "openid": "评论用户openid",
-        "nick_name": "用户昵称",
+        "nickname": "用户昵称",
         "avatar": "用户头像URL",
         "post_id": 1,
         "content": "评论内容",
@@ -1000,7 +1000,7 @@
           {
             "id": 5,
             "openid": "回复用户openid",
-            "nick_name": "回复用户昵称",
+            "nickname": "回复用户昵称",
             "avatar": "回复用户头像URL",
             "content": "回复内容",
             "create_time": "2023-01-01 12:30:00"
@@ -1055,7 +1055,7 @@
   "data": {
     "id": 1,
     "openid": "评论用户openid",
-    "nick_name": "用户昵称",
+    "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "post_id": 1,
     "content": "新评论内容",
