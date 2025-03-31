@@ -379,3 +379,122 @@ async def create_comment(
     except Exception as e:
         logger.error(f"评论接口异常: {str(e)}")
         return Response.error(details={"message": f"创建评论失败: {str(e)}"})
+
+@router.get("/comment/list")
+async def get_comment_list(
+    post_id: str = Query(..., description="帖子ID"),
+    limit: int = Query(20, description="每页数量"),
+    offset: int = Query(0, description="偏移量"),
+    openid: str = Query(None, description="用户OpenID"),
+    parent_id: str = Query(None, description="父评论ID")
+):
+    """获取帖子评论列表"""
+    if not post_id:
+        return Response.bad_request(details={"message": "缺少post_id参数"})
+    
+    try:
+        # 获取帖子信息
+        post = await async_get_by_id(
+            table_name="wxapp_post",
+            record_id=post_id
+        )
+        
+        if not post:
+            return Response.not_found(resource="帖子")
+        
+        # 构建查询条件
+        conditions = {
+            "post_id": post_id,
+            "status": 1
+        }
+        
+        # 如果指定了父评论ID，则获取该评论的回复
+        if parent_id:
+            conditions["parent_id"] = parent_id
+        else:
+            # 否则只获取一级评论（没有父评论的评论）
+            conditions["parent_id"] = None
+        
+        # 查询总数
+        total = await async_count_records(
+            table_name="wxapp_comment",
+            conditions=conditions
+        )
+        
+        # 使用直接SQL查询获取评论列表，关联用户信息
+        comments_sql = """
+        SELECT c.*, u.nick_name, u.avatar 
+        FROM wxapp_comment c
+        LEFT JOIN wxapp_user u ON c.openid = u.openid
+        WHERE c.post_id = %s AND c.status = 1
+        """
+        
+        params = [post_id]
+        
+        # 添加父评论条件
+        if parent_id:
+            comments_sql += " AND c.parent_id = %s"
+            params.append(parent_id)
+        else:
+            comments_sql += " AND c.parent_id IS NULL"
+        
+        # 添加排序和分页
+        comments_sql += " ORDER BY c.create_time DESC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        
+        comments = execute_query(comments_sql, params)
+        
+        # 处理每个评论的点赞状态和回复预览
+        for comment in comments:
+            # 如果用户没有昵称或头像，设置默认值
+            if not comment.get("nick_name"):
+                comment["nick_name"] = "用户"
+            if not comment.get("avatar"):
+                comment["avatar"] = "/assets/icons/default-avatar.png"
+                
+            # 如果提供了openid，检查用户是否点赞
+            if openid:
+                # 使用直接SQL查询检查是否已点赞
+                sql = "SELECT * FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s LIMIT 1"
+                like_record = execute_query(sql, [openid, "like", str(comment.get("id")), "comment"])
+                comment["liked"] = bool(like_record)
+            
+            # 获取回复预览（最新的3条回复）
+            if not parent_id:  # 只为一级评论获取回复预览
+                replies_sql = """
+                SELECT c.*, u.nick_name, u.avatar
+                FROM wxapp_comment c
+                LEFT JOIN wxapp_user u ON c.openid = u.openid
+                WHERE c.parent_id = %s AND c.status = 1
+                ORDER BY c.create_time DESC
+                LIMIT 3
+                """
+                reply_preview = execute_query(replies_sql, [comment.get("id")])
+                
+                # 为回复设置默认头像和昵称
+                for reply in reply_preview:
+                    if not reply.get("nick_name"):
+                        reply["nick_name"] = "用户"
+                    if not reply.get("avatar"):
+                        reply["avatar"] = "/assets/icons/default-avatar.png"
+                
+                # 获取回复总数
+                reply_count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE parent_id = %s AND status = 1"
+                reply_count_result = execute_query(reply_count_sql, [comment.get("id")])
+                reply_count = reply_count_result[0]['total'] if reply_count_result else 0
+                
+                comment["reply_preview"] = reply_preview
+                comment["reply_count"] = reply_count
+        
+        # 构建分页信息
+        pagination = {
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "has_more": offset + len(comments) < total
+        }
+        
+        return Response.paged(data=comments, pagination=pagination)
+    except Exception as e:
+        logger.error(f"获取评论列表失败: {str(e)}")
+        return Response.error(details={"message": f"获取评论列表失败: {str(e)}"})

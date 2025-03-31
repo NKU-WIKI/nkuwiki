@@ -138,7 +138,7 @@
 ### 1.1 同步微信云用户
 
 **接口**：`POST /api/wxapp/user/sync`  
-**描述**：同步微信用户openid到服务器数据库，只会在用户不存在时添加新用户，不会更新已存在用户的信息  
+**描述**：同步微信用户openid到服务器数据库。如果用户已存在，将返回数据库中存储的完整用户信息；如果用户不存在，则创建新用户并只返回openid和系统默认字段。  
 **请求体**：
 
 ```json
@@ -161,14 +161,56 @@
 }
 ```
 
-**响应**：返回用户信息，仅包含数据库中的实际值。新用户只会有openid和系统默认字段。
+**响应**：
 
+两种情况的响应有明显区别：
+
+1. **已存在用户返回**：包含数据库中该用户的所有字段和数据，`details`字段包含`"message": "用户已存在"`
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
     "id": 10001,
+    "openid": "微信用户唯一标识",
+    "unionid": "微信开放平台唯一标识",
+    "nick_name": "已保存的用户昵称",
+    "avatar": "已保存的头像URL",
+    "gender": 1,
+    "bio": "个人简介",
+    "country": "中国",
+    "province": "天津",
+    "city": "天津",
+    "language": "zh_CN",
+    "birthday": "2004-06-28",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
+    "token_count": 100,
+    "likes_count": 20,
+    "favorites_count": 15,
+    "posts_count": 5,
+    "followers_count": 10,
+    "following_count": 8,
+    "create_time": "2023-01-01 12:00:00",
+    "update_time": "2023-01-01 12:00:00",
+    "last_login": "2023-01-01 12:00:00",
+    "platform": "wxapp",
+    "status": 1,
+    "is_deleted": 0,
+    "extra": {"school": "南开大学"}
+  },
+  "details": {"message": "用户已存在"},
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+2. **新用户返回**：仅包含openid和系统默认值，`details`字段包含`"message": "新用户创建成功"`
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 10002,
     "openid": "微信用户唯一标识",
     "unionid": null,
     "nick_name": null,
@@ -196,7 +238,7 @@
     "is_deleted": 0,
     "extra": null
   },
-  "details": null,
+  "details": {"message": "新用户创建成功"},
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
@@ -365,7 +407,7 @@
     "followers_count": 0,
     "following_count": 0,
     "create_time": "2023-01-01 12:00:00",
-    "update_time": "2023-01-01 12:30:00",
+    "update_time": "2023-01-01 13:00:00",
     "last_login": "2023-01-01 12:00:00",
     "platform": "wxapp",
     "status": 1,
@@ -376,7 +418,7 @@
     }
   },
   "details": null,
-  "timestamp": "2023-01-01 12:30:00"
+  "timestamp": "2023-01-01 13:00:00"
 }
 ```
 
@@ -727,12 +769,10 @@
 **接口**：`GET /api/wxapp/post/list`  
 **描述**：获取帖子列表  
 **参数**：
-- `limit` - 查询参数，返回记录数量限制，默认20，最大100
-- `offset` - 查询参数，分页偏移量，默认0
-- `openid` - 查询参数，按用户openid筛选，可选
+- `page` - 查询参数，页码，默认1
+- `limit` - 查询参数，每页数量，默认10，最大100
 - `category_id` - 查询参数，按分类ID筛选，可选
 - `tag` - 查询参数，按标签筛选，可选
-- `status` - 查询参数，帖子状态：1-正常，0-禁用，默认1
 - `order_by` - 查询参数，排序方式，默认"update_time DESC"
 
 **响应**：
@@ -741,43 +781,37 @@
 {
   "code": 200,
   "message": "success",
-  "data": {
-    "data": [
-      {
-        "id": 1,
-        "openid": "发布用户openid",
-        "title": "帖子标题",
-        "content": "帖子内容",
-        "images": ["图片URL1", "图片URL2"],
-        "tags": ["标签1", "标签2"],
-        "category_id": 1,
-        "location": "位置信息",
-        "nick_name": "用户昵称",
-        "avatar": "用户头像URL",
-        "view_count": 10,
-        "like_count": 5,
-        "comment_count": 3,
-        "favorite_count": 0,
-        "liked_users": ["用户openid1", "用户openid2", "用户openid3", "用户openid4", "用户openid5"],
-        "favorite_users": [],
-        "create_time": "2023-01-01 12:00:00",
-        "update_time": "2023-01-01 12:00:00",
-        "status": 1,
-        "platform": "wxapp",
-        "is_deleted": 0,
-        "posts_count": 1
-      }
-    ],
-    "pagination": {
-      "total": 100,
-      "limit": 20,
-      "offset": 0
+  "data": [
+    {
+      "id": 1,              // 帖子ID，主键
+      "openid": "发布用户openid",
+      "nickname": "用户昵称",
+      "avatar": "用户头像URL",
+      "category_id": 1,
+      "title": "帖子标题",
+      "content": "帖子内容",
+      "images": ["图片URL1", "图片URL2"],
+      "tags": ["标签1", "标签2"],
+      "view_count": 10,
+      "like_count": 5,
+      "comment_count": 3,
+      "collect_count": 0,
+      "status": 1,          // 帖子状态：1-正常，0-禁用
+      "is_deleted": 0,      // 是否删除：0-未删除，1-已删除
+      "create_time": "2023-01-01T12:00:00",
+      "update_time": "2023-01-01T12:00:00"
     }
-  },
+  ],
   "details": {
-    "message": "获取帖子列表成功"
+    "message": "查询帖子列表成功"
   },
-  "timestamp": "2023-01-01 12:00:00"
+  "timestamp": "2023-01-01T12:00:00",
+  "pagination": {
+    "total": 100,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 10
+  }
 }
 ```
 
