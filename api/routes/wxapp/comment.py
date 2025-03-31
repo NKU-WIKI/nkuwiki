@@ -421,37 +421,19 @@ async def get_comment_list(
             conditions=conditions
         )
         
-        # 使用直接SQL查询获取评论列表，关联用户信息
-        comments_sql = """
-        SELECT c.*, u.nick_name, u.avatar 
-        FROM wxapp_comment c
-        LEFT JOIN wxapp_user u ON c.openid = u.openid
-        WHERE c.post_id = %s AND c.status = 1
-        """
+        # 查询评论列表
+        result = await async_query_records(
+            table_name="wxapp_comment",
+            conditions=conditions,
+            limit=limit,
+            offset=offset,
+            order_by="create_time DESC"
+        )
         
-        params = [post_id]
-        
-        # 添加父评论条件
-        if parent_id:
-            comments_sql += " AND c.parent_id = %s"
-            params.append(parent_id)
-        else:
-            comments_sql += " AND c.parent_id IS NULL"
-        
-        # 添加排序和分页
-        comments_sql += " ORDER BY c.create_time DESC LIMIT %s OFFSET %s"
-        params.extend([limit, offset])
-        
-        comments = execute_query(comments_sql, params)
+        comments = result.get('data', [])
         
         # 处理每个评论的点赞状态和回复预览
         for comment in comments:
-            # 如果用户没有昵称或头像，设置默认值
-            if not comment.get("nick_name"):
-                comment["nick_name"] = "用户"
-            if not comment.get("avatar"):
-                comment["avatar"] = "/assets/icons/default-avatar.png"
-                
             # 如果提供了openid，检查用户是否点赞
             if openid:
                 # 使用直接SQL查询检查是否已点赞
@@ -462,21 +444,12 @@ async def get_comment_list(
             # 获取回复预览（最新的3条回复）
             if not parent_id:  # 只为一级评论获取回复预览
                 replies_sql = """
-                SELECT c.*, u.nick_name, u.avatar
-                FROM wxapp_comment c
-                LEFT JOIN wxapp_user u ON c.openid = u.openid
-                WHERE c.parent_id = %s AND c.status = 1
-                ORDER BY c.create_time DESC
+                SELECT * FROM wxapp_comment 
+                WHERE parent_id = %s AND status = 1
+                ORDER BY create_time DESC
                 LIMIT 3
                 """
                 reply_preview = execute_query(replies_sql, [comment.get("id")])
-                
-                # 为回复设置默认头像和昵称
-                for reply in reply_preview:
-                    if not reply.get("nick_name"):
-                        reply["nick_name"] = "用户"
-                    if not reply.get("avatar"):
-                        reply["avatar"] = "/assets/icons/default-avatar.png"
                 
                 # 获取回复总数
                 reply_count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE parent_id = %s AND status = 1"
