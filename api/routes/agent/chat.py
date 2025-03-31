@@ -3,16 +3,16 @@
 处理与智能体的对话、RAG查询等功能
 """
 import json
-import logging
 import traceback
 import asyncio
 from fastapi import APIRouter
 from api.models.common import Response, Request, validate_params
 from fastapi.responses import StreamingResponse
 from api.common.utils import format_response_content
+from core.utils.logger import register_logger
 
 router = APIRouter()
-logger = logging.getLogger("agent.chat")
+logger = register_logger('api.routes.agent.chat')
 
 @router.post("/chat")
 async def chat(

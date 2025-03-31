@@ -6,7 +6,6 @@ import time
 import json
 import random
 import hashlib
-import logging
 from functools import lru_cache
 from typing import List, Dict, Any, Optional, Union
 
@@ -17,7 +16,7 @@ from core.agent.coze.coze_agent import CozeAgent
 from etl.load.db_core import async_query_records
 from config import Config
 from fastapi.responses import StreamingResponse
-
+from core.utils.logger import register_logger
 config = Config()
 TABLE_MAPPING = {
     "wxapp_post": {"name": "小程序帖子", "content_field": "content", "title_field": "title", "author_field": "nickname"},
@@ -34,7 +33,7 @@ _results_cache = {}
 
 _coze_agent_instances = {}
 router = APIRouter()
-logger = logging.getLogger("agent.rag")
+logger = register_logger('api.routes.agent.rag')
 
 def get_coze_agent(tag: str) -> CozeAgent:
     """获取或创建CozeAgent实例（单例模式）"""
@@ -265,9 +264,9 @@ def get_stream_generator(result: Dict[str, Any]):
 
     return stream_generator
 
-@router.post("")
+@router.post("rag")
 async def rag_endpoint(request: Request):
-    """coze rag 搜索接口"""
+    """rag 搜索接口"""
     try:
         start_time = time.time()
         req_data = await request.json()
