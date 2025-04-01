@@ -359,6 +359,15 @@ async def like_post(
             {"like_count": post["like_count"] + 1},
         )
 
+        # 更新被点赞用户的获赞数
+        await async_update(
+            "wxapp_user",
+            {"openid": post["openid"]},
+            {"like_count": execute_custom_query(
+                "SELECT like_count FROM wxapp_user WHERE openid = %s",
+                [post["openid"]], fetch=True)[0]["like_count"] + 1}
+        )
+
         if post["openid"] != openid:
             notification_data = {
                 "openid": post["openid"],
@@ -431,6 +440,15 @@ async def unlike_post(
             {"like_count": new_like_count}
         )
 
+        # 更新被点赞用户的获赞数
+        await async_update(
+            "wxapp_user",
+            {"openid": post["openid"]},
+            {"like_count": execute_custom_query(
+                "SELECT like_count FROM wxapp_user WHERE openid = %s",
+                [post["openid"]], fetch=True)[0]["like_count"] - 1}
+        )
+
         return Response.success(data={
             "success": True,
             "like_count": new_like_count,
@@ -479,6 +497,15 @@ async def favorite_post(
         post = await async_get_by_id("wxapp_post", post_id)
         new_count = post["favorite_count"] + 1
         await async_update("wxapp_post", post_id, {"favorite_count": new_count})
+
+        # 更新被收藏用户的获赞数
+        await async_update(
+            "wxapp_user",
+            {"openid": post["openid"]},
+            {"favorite_count": execute_custom_query(
+                "SELECT favorite_count FROM wxapp_user WHERE openid = %s",
+                [post["openid"]], fetch=True)[0]["favorite_count"] + 1}
+        )
 
         if post["openid"] != openid:
             notification_data = {
@@ -545,6 +572,15 @@ async def unlike_favorite(
         # 更新帖子收藏数
         await async_update("wxapp_post", post_id, {"favorite_count": new_count})
         
+        # 更新被收藏用户的收藏数
+        await async_update(
+            "wxapp_user",
+            {"openid": post["openid"]},
+            {"favorite_count": execute_custom_query(
+                "SELECT favorite_count FROM wxapp_user WHERE openid = %s",
+                [post["openid"]], fetch=True)[0]["favorite_count"] - 1}
+        )
+
         return Response.success(data={
             "favorite_count": new_count,
             "is_favorited": False
@@ -602,6 +638,22 @@ async def follow_user(
         }
         await async_insert("wxapp_action", action_data)
 
+        # 更新关注者和被关注者的计数
+        await async_update(
+            "wxapp_user",
+            {"openid": openid},
+            {"following_count": execute_custom_query(
+                "SELECT following_count FROM wxapp_user WHERE openid = %s",
+                [openid], fetch=True)[0]["following_count"] + 1}
+        )
+        await async_update(
+            "wxapp_user",
+            {"openid": followed_id},
+            {"follower_count": execute_custom_query(
+                "SELECT follower_count FROM wxapp_user WHERE openid = %s",
+                [followed_id], fetch=True)[0]["follower_count"] + 1}
+        )
+
         if followed_id != openid:
             notification_data = {
                 "openid": followed_id,
@@ -636,6 +688,20 @@ async def unfollow_user(
         openid = req_data.get("openid")
         followed_id = req_data.get("followed_id")
 
+        if openid == followed_id:
+            return Response.bad_request(details={"message": "不能取消关注自己"})
+
+        # 检查被关注用户是否存在
+        followed_user = await async_query_records(
+            table_name="wxapp_user",
+            conditions={"openid": followed_id},
+            limit=1
+        )
+        
+        if not followed_user or not followed_user.get('data'):
+            return Response.not_found(resource="被关注用户")
+
+        # 检查是否已关注
         existing_follow = await async_query_records(
             table_name="wxapp_action",
             conditions={
@@ -646,15 +712,32 @@ async def unfollow_user(
             },
             limit=1
         )
-        if not existing_follow:
-            return Response.bad_request(details={"message": "未关注，无法取消关注"})
+        if not existing_follow or not existing_follow.get('data'):
+            return Response.bad_request(details={"message": "未关注该用户"})
 
-        # 使用直接的原始SQL查询，确保类型匹配
+        # 删除关注记录
         execute_custom_query(
-            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_type = %s AND target_id = %s",
-            [openid, "follow", "user", followed_id],
+            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'follow' AND target_type = 'user' AND target_id = %s",
+            [openid, followed_id],
             fetch=False
         )
+
+        # 更新关注者和被关注者的计数
+        await async_update(
+            "wxapp_user",
+            {"openid": openid},
+            {"following_count": execute_custom_query(
+                "SELECT following_count FROM wxapp_user WHERE openid = %s",
+                [openid], fetch=True)[0]["following_count"] - 1}
+        )
+        await async_update(
+            "wxapp_user",
+            {"openid": followed_id},
+            {"follower_count": execute_custom_query(
+                "SELECT follower_count FROM wxapp_user WHERE openid = %s",
+                [followed_id], fetch=True)[0]["follower_count"] - 1}
+        )
+
         return Response.success(details={"message": "取消关注成功"})
     except Exception as e:
-        return Response.error(details={"message": f"取消关注用户失败: {str(e)}"})
+        return Response.error(details={"message": f"取消关注失败: {str(e)}"})

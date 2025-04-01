@@ -65,9 +65,20 @@ async def create_post(
             db_post_data["tag"] = req_data.get("tag")
         
         try:
-            post_id = await async_insert("wxapp_post", db_post_data)
-            logger.debug(f"创建帖子成功: {post_id}")
-            return Response.success(details={"post_id": post_id, "message":"创建帖子成功"})
+            # 创建帖子
+            result = await async_insert("wxapp_post", db_post_data)
+            
+            # 更新用户发帖数
+            await async_update(
+                "wxapp_user",
+                {"openid": openid},
+                {"post_count": execute_custom_query(
+                    "SELECT post_count FROM wxapp_user WHERE openid = %s",
+                    [openid], fetch=True)[0]["post_count"] + 1}
+            )
+
+            logger.debug(f"创建帖子成功: {result}")
+            return Response.success(details={"post_id": result, "message":"创建帖子成功"})
         except Exception as e:
             logger.error(f"插入帖子数据失败: {str(e)}")
             return Response.success(details={"post_id": -1, "message":"创建帖子失败"})

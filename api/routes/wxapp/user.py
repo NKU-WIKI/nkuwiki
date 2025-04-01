@@ -75,139 +75,6 @@ async def get_user_follow_status(
     except Exception as e:
         return Response.error(details={"message": f"检查关注状态失败: {str(e)}"})
 
-@router.get("/user/followings")
-async def get_user_followings(
-    openid: str = Query(..., description="用户OpenID"),
-    limit: int = Query(20, description="每页数量"),
-    offset: int = Query(0, description="偏移量")
-):
-    """获取用户关注列表"""
-    if not openid:
-        return Response.bad_request(details={"message": "缺少参数openid"})
-    try:
-        follow_relations = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "follow",
-                "target_type": "user"
-            },
-            limit=limit,
-            offset=offset
-        )
-
-        if not follow_relations or not follow_relations.get('data'):
-            return Response.success(data={"followings": []})
-
-        followed_user_ids = [relation.get("target_id") for relation in follow_relations.get('data', [])]
-
-        following_users = []
-        if followed_user_ids:
-            following_users_result = await async_query_records(
-                table_name="wxapp_user",
-                conditions={"openid": followed_user_ids}
-            )
-            following_users = following_users_result.get('data', [])
-
-        return Response.success(data={"followings": following_users})
-    except Exception as e:
-        return Response.error(details={"message": f"获取用户关注列表失败: {str(e)}"})
-
-@router.get("/user/followers")
-async def get_user_followers(
-    openid: str = Query(..., description="用户OpenID"),
-    limit: int = Query(20, description="每页数量"),
-    offset: int = Query(0, description="偏移量")
-):
-    """获取用户粉丝列表"""
-    if not openid:
-        return Response.bad_request(details={"message": "缺少参数openid"})
-    try:
-        follower_relations = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "target_id": openid,
-                "action_type": "follow",
-                "target_type": "user"
-            },
-            limit=limit,
-            offset=offset
-        )
-
-        if not follower_relations or not follower_relations.get('data'):
-            return Response.success(data={"followers": []})
-
-        follower_user_ids = [relation.get("openid") for relation in follower_relations.get('data', [])]
-
-        follower_users = []
-        if follower_user_ids:
-            follower_users_result = await async_query_records(
-                table_name="wxapp_user",
-                conditions={"openid": follower_user_ids}
-            )
-            follower_users = follower_users_result.get('data', [])
-
-        return Response.success(data={"followers": follower_users})
-    except Exception as e:
-        return Response.error(details={"message": f"获取用户粉丝列表失败: {str(e)}"})
-
-@router.get("/user/follow-stats")
-async def get_user_follow_stats(
-    openid: str = Query(..., description="用户OpenID")
-):
-    """获取用户关注统计"""
-    if not openid:
-        return Response.bad_request(details={"message": "缺少参数openid"})
-    try:
-        user = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
-        )
-        if not user:
-            return Response.not_found(resource="用户")
-
-        following_count = await async_count_records(
-            table_name="wxapp_action",
-            conditions={"openid": openid, "action_type": "follow", "target_type": "user"}
-        )
-
-        follower_count = await async_count_records(
-            table_name="wxapp_action",
-            conditions={"target_id": openid, "action_type": "follow", "target_type": "user"}
-        )
-
-        return Response.success(data={
-            "following_count": following_count,
-            "follower_count": follower_count
-        })
-    except Exception as e:
-        return Response.error(details={"message": f"获取用户关注统计失败: {str(e)}"})
-
-
-@router.get("/user/token")
-async def get_user_token(
-    openid: str = Query(..., description="用户OpenID")
-):
-    """获取用户代币"""
-    if not openid:
-        return Response.bad_request(details={"message": "缺少openid参数"})
-    try:
-        user_data = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
-        )
-
-        if not user_data or not user_data['data']:
-            return Response.not_found(resource="用户")
-
-        user = user_data['data'][0]
-        return Response.success(data={"token": user.get("token_count", 0)}, details={"message":"获取用户代币成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"获取用户代币失败: {str(e)}"})
-
-
 @router.post("/user/sync")
 async def sync_user_info(
     request: Request
@@ -381,3 +248,217 @@ async def update_user_info(
             return Response.success(details={"message":"用户信息更新成功"})
     except Exception as e:
         return Response.error(details={"message": f"更新用户信息失败: {str(e)}"})
+
+@router.get("/user/favorite")
+async def get_user_favorites(
+    openid: str = Query(..., description="用户openid"),
+    offset: int = Query(0, description="分页偏移量"),
+    limit: int = Query(10, description="每页数量")
+):
+    """获取用户收藏的帖子列表"""
+    try:
+        # 获取用户收藏的帖子ID列表
+        favorites = await async_query_records(
+            "wxapp_action",
+            conditions={
+                "openid": openid,
+                "action_type": "favorite",
+                "target_type": "post"
+            },
+            limit=limit,
+            offset=offset,
+            order_by="create_time DESC"
+        )
+        
+        if not favorites or not favorites.get('data'):
+            return Response.success(data={"total": 0, "list": []})
+            
+        # 获取帖子详情
+        post_ids = [item["target_id"] for item in favorites["data"]]
+        posts = await async_query_records(
+            "wxapp_post",
+            conditions={"id": ["IN", post_ids]},
+            order_by="create_time DESC"
+        )
+        
+        return Response.paged(
+            data=posts.get("data", []),
+            pagination={
+                "total": favorites.get("total", 0),
+                "offset": offset,
+                "limit": limit
+            }
+        )
+    except Exception as e:
+        return Response.error(details={"message": f"获取收藏列表失败: {str(e)}"})
+
+@router.get("/user/like")
+async def get_user_likes(
+    openid: str = Query(..., description="用户openid"),
+    offset: int = Query(0, description="分页偏移量"),
+    limit: int = Query(10, description="每页数量")
+):
+    """获取用户点赞的帖子列表"""
+    try:
+        # 获取用户点赞的帖子ID列表
+        likes = await async_query_records(
+            "wxapp_action",
+            conditions={
+                "openid": openid,
+                "action_type": "like",
+                "target_type": "post"
+            },
+            limit=limit,
+            offset=offset,
+            order_by="create_time DESC"
+        )
+        
+        if not likes or not likes.get('data'):
+            return Response.success(data={"total": 0, "list": []})
+            
+        # 获取帖子详情
+        post_ids = [item["target_id"] for item in likes["data"]]
+        posts = await async_query_records(
+            "wxapp_post",
+            conditions={"id": ["IN", post_ids]},
+            order_by="create_time DESC"
+        )
+        
+        return Response.paged(
+            data=posts.get("data", []),
+            pagination={
+                "total": likes.get("total", 0),
+                "offset": offset,
+                "limit": limit
+            }
+        )
+    except Exception as e:
+        return Response.error(details={"message": f"获取点赞列表失败: {str(e)}"})
+
+@router.get("/user/comment")
+async def get_user_comments(
+    openid: str = Query(..., description="用户openid"),
+    offset: int = Query(0, description="分页偏移量"),
+    limit: int = Query(10, description="每页数量")
+):
+    """获取用户的评论列表"""
+    try:
+        comments = await async_query_records(
+            "wxapp_comment",
+            conditions={"openid": openid},
+            limit=limit,
+            offset=offset,
+            order_by="create_time DESC"
+        )
+        
+        if not comments or not comments.get('data'):
+            return Response.success(data={"total": 0, "list": []})
+            
+        # 获取评论对应的帖子信息
+        post_ids = list(set([item["post_id"] for item in comments["data"]]))
+        posts = await async_query_records(
+            "wxapp_post",
+            conditions={"id": ["IN", post_ids]}
+        )
+        
+        # 将帖子信息添加到评论中
+        post_map = {post["id"]: post for post in posts.get("data", [])}
+        for comment in comments["data"]:
+            comment["post"] = post_map.get(comment["post_id"])
+            
+        return Response.paged(
+            data=comments.get("data", []),
+            pagination={
+                "total": comments.get("total", 0),
+                "offset": offset,
+                "limit": limit
+            }
+        )
+    except Exception as e:
+        return Response.error(details={"message": f"获取评论列表失败: {str(e)}"})
+
+@router.get("/user/follower")
+async def get_user_followers(
+    openid: str = Query(..., description="用户openid"),
+    offset: int = Query(0, description="分页偏移量"),
+    limit: int = Query(10, description="每页数量")
+):
+    """获取用户的粉丝列表"""
+    try:
+        # 获取关注该用户的用户openid列表
+        followers = await async_query_records(
+            "wxapp_action",
+            conditions={
+                "action_type": "follow",
+                "target_type": "user",
+                "target_id": openid
+            },
+            limit=limit,
+            offset=offset,
+            order_by="create_time DESC"
+        )
+        
+        if not followers or not followers.get('data'):
+            return Response.success(data={"total": 0, "list": []})
+            
+        # 获取粉丝用户信息
+        follower_ids = [item["openid"] for item in followers["data"]]
+        users = await async_query_records(
+            "wxapp_user",
+            conditions={"openid": ["IN", follower_ids]},
+            fields=["openid", "nickname", "avatar", "bio"]
+        )
+        
+        return Response.paged(
+            data=users.get("data", []),
+            pagination={
+                "total": followers.get("total", 0),
+                "offset": offset,
+                "limit": limit
+            }
+        )
+    except Exception as e:
+        return Response.error(details={"message": f"获取粉丝列表失败: {str(e)}"})
+
+@router.get("/user/following")
+async def get_user_followings(
+    openid: str = Query(..., description="用户openid"),
+    offset: int = Query(0, description="分页偏移量"),
+    limit: int = Query(10, description="每页数量")
+):
+    """获取用户关注的用户列表"""
+    try:
+        # 获取用户关注的用户openid列表
+        followings = await async_query_records(
+            "wxapp_action",
+            conditions={
+                "openid": openid,
+                "action_type": "follow",
+                "target_type": "user"
+            },
+            limit=limit,
+            offset=offset,
+            order_by="create_time DESC"
+        )
+        
+        if not followings or not followings.get('data'):
+            return Response.success(data={"total": 0, "list": []})
+            
+        # 获取关注的用户信息
+        following_ids = [item["target_id"] for item in followings["data"]]
+        users = await async_query_records(
+            "wxapp_user",
+            conditions={"openid": ["IN", following_ids]},
+            fields=["openid", "nickname", "avatar", "bio"]
+        )
+        
+        return Response.paged(
+            data=users.get("data", []),
+            pagination={
+                "total": followings.get("total", 0),
+                "offset": offset,
+                "limit": limit
+            }
+        )
+    except Exception as e:
+        return Response.error(details={"message": f"获取关注列表失败: {str(e)}"})
