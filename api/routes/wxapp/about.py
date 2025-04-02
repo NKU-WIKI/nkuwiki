@@ -9,7 +9,7 @@ config = Config()
 router = APIRouter()
 
 @router.get("/about")
-async def get_about_info(request: Request):
+async def get_about_info():
     """获取小程序关于页信息"""
     try:
         about_info = config.get("services.app.aboutinfo")

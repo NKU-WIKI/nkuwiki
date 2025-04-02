@@ -1083,12 +1083,12 @@ API接口的参数类型规范如下：
 ### 2.8 获取帖子状态
 
 **接口**：`GET /api/wxapp/post/status`  
-**描述**：获取帖子的交互状态，包括点赞、收藏、评论数等信息  
+**描述**：获取帖子的交互状态，包括点赞、收藏、评论数等信息，支持批量查询  
 **请求参数**：
 
 | 参数 | 类型 | 必填 | 描述 |
 |------|------|------|------|
-| post_id | string | 是 | 帖子ID |
+| post_id | string | 是 | 帖子ID，多个ID用逗号分隔，如"1,2,3" |
 | openid | string | 是 | 用户openid |
 
 **响应**：
@@ -1099,13 +1099,26 @@ API接口的参数类型规范如下：
   "code": 200,
   "message": "success",
   "data": {
-    "is_liked": true,
-    "is_favorited": false,
-    "is_author": false,
-    "like_count": 10,
-    "favorite_count": 5,
-    "comment_count": 3,
-    "view_count": 100
+    "1": {
+      "exist": true,
+      "is_liked": true,
+      "is_favorited": false,
+      "is_author": false,
+      "like_count": 10,
+      "favorite_count": 5,
+      "comment_count": 3,
+      "view_count": 100
+    },
+    "2": {
+      "exist": false,
+      "is_liked": false,
+      "is_favorited": false,
+      "is_author": false,
+      "like_count": 0,
+      "favorite_count": 0,
+      "comment_count": 0,
+      "view_count": 0
+    }
   },
   "timestamp": "2023-01-01 12:00:00"
 }
@@ -1115,6 +1128,8 @@ API接口的参数类型规范如下：
 
 | 字段 | 类型 | 描述 |
 |------|------|------|
+| [post_id] | object | 以帖子ID为key的状态对象 |
+| exist | boolean | 帖子是否存在 |
 | is_liked | boolean | 当前用户是否点赞 |
 | is_favorited | boolean | 当前用户是否收藏 |
 | is_author | boolean | 当前用户是否是作者 |
@@ -1336,12 +1351,12 @@ API接口的参数类型规范如下：
 ### 3.6 获取评论状态
 
 **接口**：`GET /api/wxapp/comment/status`  
-**描述**：获取评论的交互状态，包括点赞数等信息  
+**描述**：获取评论的交互状态，包括点赞数等信息，支持批量查询  
 **请求参数**：
 
 | 参数 | 类型 | 必填 | 描述 |
 |------|------|------|------|
-| comment_id | string | 是 | 评论ID |
+| comment_id | string | 是 | 评论ID，多个ID用逗号分隔，如"1,2,3" |
 | openid | string | 是 | 用户openid |
 
 **响应**：
@@ -1352,10 +1367,20 @@ API接口的参数类型规范如下：
   "code": 200,
   "message": "success",
   "data": {
-    "is_liked": true,
-    "is_author": false,
-    "like_count": 10,
-    "reply_count": 3
+    "1": {
+      "exist": true,
+      "is_liked": true,
+      "is_author": false,
+      "like_count": 10,
+      "reply_count": 3
+    },
+    "2": {
+      "exist": false,
+      "is_liked": false,
+      "is_author": false,
+      "like_count": 0,
+      "reply_count": 0
+    }
   },
   "timestamp": "2023-01-01 12:00:00"
 }
@@ -1365,6 +1390,8 @@ API接口的参数类型规范如下：
 
 | 字段 | 类型 | 描述 |
 |------|------|------|
+| [comment_id] | object | 以评论ID为key的状态对象 |
+| exist | boolean | 评论是否存在 |
 | is_liked | boolean | 当前用户是否点赞 |
 | is_author | boolean | 当前用户是否是作者 |
 | like_count | integer | 评论点赞总数 |

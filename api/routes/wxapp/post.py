@@ -407,7 +407,7 @@ async def get_post_with_stats(post_id):
 
 @router.get("/post/status")
 async def get_post_status(
-    post_id: str = Query(..., description="帖子ID"),
+    post_id: str = Query(..., description="帖子ID，多个ID用逗号分隔"),
     openid: str = Query(..., description="用户openid")
 ):
     """获取帖子交互状态"""
@@ -415,45 +415,66 @@ async def get_post_status(
         if not post_id:
             return Response.bad_request(details={"message": "缺少post_id参数"})
             
-        post_id_int = int(post_id)
+        # 处理多个post_id
+        post_ids = [int(pid.strip()) for pid in post_id.split(",")]
         
-        # 获取帖子
-        post = await async_get_by_id("wxapp_post", post_id_int)
-        if not post:
-            return Response.not_found(resource="帖子")
+        # 获取所有帖子
+        sql = """
+        SELECT * FROM wxapp_post 
+        WHERE id IN %s AND status = 1
+        """
+        posts = await async_execute_custom_query(sql, [tuple(post_ids)])
 
-        # 获取用户交互
-        actions = await async_query_records(
-            "wxapp_action",
-            {
-                "openid": openid,
-                "target_id": post_id_int,
-                "target_type": "post"
-            }
-        )
+        # 获取用户对这些帖子的所有交互
+        action_sql = """
+        SELECT * FROM wxapp_action 
+        WHERE openid = %s AND target_id IN %s AND target_type = 'post'
+        """
+        actions = await async_execute_custom_query(action_sql, [openid, tuple(post_ids)])
 
-        # 分析交互类型
-        is_liked = False
-        is_favorited = False
+        # 构建交互映射
+        action_map = {}
+        if actions:
+            for action in actions:
+                target_id = action["target_id"]
+                if target_id not in action_map:
+                    action_map[target_id] = {"like": False, "favorite": False}
+                action_map[target_id][action["action_type"]] = True
+
+        # 构建状态响应
+        status_map = {}
+        existing_post_ids = set()
+        if posts:
+            for post in posts:
+                post_id = post.get("id")
+                if post_id:
+                    existing_post_ids.add(post_id)
+                    interactions = action_map.get(post_id, {"like": False, "favorite": False})
+                    status_map[str(post_id)] = {
+                        "exist": True,
+                        "is_liked": interactions["like"],
+                        "is_favorited": interactions["favorite"],
+                        "is_author": post.get("openid") == openid,
+                        "like_count": post.get("like_count", 0),
+                        "favorite_count": post.get("favorite_count", 0),
+                        "comment_count": post.get("comment_count", 0),
+                        "view_count": post.get("view_count", 0)
+                    }
         
-        if actions and actions['data']:
-            for action in actions['data']:
-                if action["action_type"] == "like":
-                    is_liked = True
-                elif action["action_type"] == "favorite":
-                    is_favorited = True
+        # 为不存在的帖子添加状态
+        for pid in post_ids:
+            if pid not in existing_post_ids:
+                status_map[str(pid)] = {
+                    "exist": False,
+                    "is_liked": False,
+                    "is_favorited": False,
+                    "is_author": False,
+                    "like_count": 0,
+                    "favorite_count": 0,
+                    "comment_count": 0,
+                    "view_count": 0
+                }
 
-        # 构建状态
-        status = {
-            "is_liked": is_liked,
-            "is_favorited": is_favorited,
-            "like_count": post.get("like_count", 0),
-            "favorite_count": post.get("favorite_count", 0),
-            "comment_count": post.get("comment_count", 0),
-            "view_count": post.get("view_count", 0),
-            "is_author": post.get("openid") == openid
-        }
-
-        return Response.success(data=status)
+        return Response.success(data=status_map)
     except Exception as e:
         return Response.error(details={"message": f"获取帖子状态失败: {str(e)}"})
