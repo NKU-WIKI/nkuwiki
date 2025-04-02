@@ -449,7 +449,9 @@ async def get_post_status(
             "is_favorited": is_favorited,
             "like_count": post.get("like_count", 0),
             "favorite_count": post.get("favorite_count", 0),
-            "comment_count": post.get("comment_count", 0)
+            "comment_count": post.get("comment_count", 0),
+            "view_count": post.get("view_count", 0),
+            "is_author": post.get("openid") == openid
         }
 
         return Response.success(data=status)

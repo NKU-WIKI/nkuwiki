@@ -115,34 +115,53 @@ async def get_post_comments(
 @router.get("/comment/status")
 async def get_comment_status(
     comment_id: str = Query(..., description="评论ID"),
-    openid: str = Query(..., description="用户OpenID")
+    openid: str = Query(..., description="用户openid")
 ):
-    """获取评论状态"""
-    if(not comment_id):
-        return Response.bad_request(details={"message": "缺少comment_id参数"})
-    if(not openid):
-        return Response.bad_request(details={"message": "缺少openid参数"})
+    """获取评论的交互状态"""
     try:
+        if not comment_id:
+            return Response.bad_request(details={"message": "缺少comment_id参数"})
+            
+        comment_id_int = int(comment_id)
+        
+        # 获取评论
         comment = await async_get_by_id(
             table_name="wxapp_comment",
-            record_id=comment_id
+            record_id=comment_id_int
         )
-
         if not comment:
             return Response.not_found(resource="评论")
 
-        # 使用直接SQL查询检查是否已点赞
-        sql = "SELECT * FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s LIMIT 1"
-        like_record = execute_query(sql, [openid, "like", comment_id, "comment"])
-        
-        # 判断是否已点赞
-        liked = bool(like_record)
+        # 检查是否已点赞
+        like_record = await async_query_records(
+            table_name="wxapp_action",
+            conditions={
+                "openid": openid,
+                "action_type": "like",
+                "target_id": comment_id_int,
+                "target_type": "comment"
+            },
+            limit=1
+        )
+        is_liked = bool(like_record and like_record.get('data'))
 
-        return Response.success(data={
-            "comment_id": comment_id,
-            "is_liked": liked,
-            "like_count": comment.get("like_count", 0)
-        })
+        # 获取回复数
+        reply_count = await async_count_records(
+            table_name="wxapp_comment",
+            conditions={
+                "parent_id": comment_id_int
+            }
+        )
+        
+        # 构建状态
+        status = {
+            "is_liked": is_liked,
+            "is_author": comment.get("openid") == openid,
+            "like_count": comment.get("like_count", 0),
+            "reply_count": reply_count
+        }
+
+        return Response.success(data=status)
     except Exception as e:
         return Response.error(details={"message": f"获取评论状态失败: {str(e)}"})
 

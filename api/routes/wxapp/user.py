@@ -48,33 +48,6 @@ async def get_user_list(
     except Exception as e:
         return Response.error(details={"message": f"获取用户列表失败: {str(e)}"})
 
-@router.get("/user/check-follow")
-async def get_user_follow_status(
-    follower_id: str = Query(..., description="关注者OpenID"),
-    followed_id: str = Query(..., description="被关注者OpenID")
-):
-    """检查关注状态"""
-    if not follower_id:
-        return Response.bad_request(details={"message": "缺少参数follower_id"})
-    if not followed_id:
-        return Response.bad_request(details={"message": "缺少参数followed_id"})
-    try:
-        existing_follow = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": follower_id,
-                "action_type": "follow",
-                "target_type": "user",
-                "target_id": followed_id
-            },
-            limit=1
-        )
-        is_following = bool(existing_follow and existing_follow.get('data'))
-
-        return Response.success(data={"is_following": is_following})
-    except Exception as e:
-        return Response.error(details={"message": f"检查关注状态失败: {str(e)}"})
-
 @router.post("/user/sync")
 async def sync_user_info(
     request: Request
@@ -462,3 +435,49 @@ async def get_user_followings(
         )
     except Exception as e:
         return Response.error(details={"message": f"获取关注列表失败: {str(e)}"})
+
+@router.get("/user/status")
+async def get_user_status(
+    openid: str = Query(..., description="当前用户openid"),
+    target_id: str = Query(..., description="目标用户openid")
+):
+    """获取用户的交互状态"""
+    try:
+        # 获取目标用户信息
+        target_user = await async_query_records(
+            table_name="wxapp_user",
+            conditions={"openid": target_id},
+            limit=1
+        )
+        if not target_user or not target_user['data']:
+            return Response.not_found(resource="用户")
+
+        # 检查是否已关注
+        follow_record = await async_query_records(
+            table_name="wxapp_action",
+            conditions={
+                "openid": openid,
+                "action_type": "follow",
+                "target_type": "user",
+                "target_id": target_id
+            },
+            limit=1
+        )
+        is_following = bool(follow_record and follow_record.get('data'))
+
+        # 获取目标用户的统计数据
+        user_data = target_user['data'][0]
+        
+        # 构建状态
+        status = {
+            "is_following": is_following,
+            "is_self": openid == target_id,
+            "post_count": user_data.get("post_count", 0),
+            "follower_count": user_data.get("follower_count", 0),
+            "following_count": user_data.get("following_count", 0),
+            "like_count": user_data.get("like_count", 0)
+        }
+
+        return Response.success(data=status)
+    except Exception as e:
+        return Response.error(details={"message": f"获取用户状态失败: {str(e)}"})

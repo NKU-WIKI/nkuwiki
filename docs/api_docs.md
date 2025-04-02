@@ -457,30 +457,7 @@ API接口的参数类型规范如下：
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
-
-### 1.5 检查关注状态
-
-**接口**：`GET /api/wxapp/user/check-follow`  
-**描述**：检查用户是否已关注某用户  
-**参数**：
-- `follower_id` - 查询参数，关注者的openid（必填）
-- `followed_id` - 查询参数，被关注者的openid（必填）
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "is_following": true
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 1.6 获取用户收藏列表
+### 1.5 获取用户收藏列表
 
 **接口**：`GET /api/wxapp/user/favorite`  
 **描述**：获取用户收藏的帖子列表  
@@ -513,7 +490,7 @@ API接口的参数类型规范如下：
 }
 ```
 
-### 1.7 获取用户点赞列表
+### 1.6 获取用户点赞列表
 
 **接口**：`GET /api/wxapp/user/like`  
 **描述**：获取用户点赞的帖子列表  
@@ -546,7 +523,7 @@ API接口的参数类型规范如下：
 }
 ```
 
-### 1.8 获取用户评论列表
+### 1.7 获取用户评论列表
 
 **接口**：`GET /api/wxapp/user/comment`  
 **描述**：获取用户的评论列表  
@@ -583,7 +560,7 @@ API接口的参数类型规范如下：
 }
 ```
 
-### 1.9 获取用户粉丝列表
+### 1.8 获取用户粉丝列表
 
 **接口**：`GET /api/wxapp/user/follower`  
 **描述**：获取用户的粉丝列表  
@@ -613,7 +590,7 @@ API接口的参数类型规范如下：
 }
 ```
 
-### 1.10 获取用户关注列表
+### 1.9 获取用户关注列表
 
 **接口**：`GET /api/wxapp/user/following`  
 **描述**：获取用户关注的用户列表  
@@ -643,26 +620,31 @@ API接口的参数类型规范如下：
 }
 ```
 
-### 1.11 关注用户
+### 1.10 关注用户
 
 **接口**：`POST /api/wxapp/user/follow`  
-**描述**：关注指定用户  
+**描述**：关注/取消关注用户，根据当前状态自动判断是关注还是取消关注  
 **请求体**：
 
 ```json
 {
-  "followed_id": "被关注用户的openid",
-  "openid": "关注者的openid"
+  "followed_id": "被关注用户的openid", // 必填
+  "openid": "关注用户的openid" // 必填
 }
 ```
 
 **响应**：
 
+1. 关注成功：
 ```json
 {
   "code": 200,
   "message": "success",
-  "data": null,
+  "data": {
+    "success": true,
+    "status": "followed",
+    "is_following": true
+  },
   "details": {
     "message": "关注成功"
   },
@@ -670,54 +652,16 @@ API接口的参数类型规范如下：
 }
 ```
 
-**错误响应**：
-
-1. 不能关注自己：
-```json
-{
-  "code": 400,
-  "message": "Bad request",
-  "data": null,
-  "details": {
-    "message": "不能关注自己"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-2. 已关注：
-```json
-{
-  "code": 400,
-  "message": "Bad request",
-  "data": null,
-  "details": {
-    "message": "已关注，请勿重复关注"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 1.12 取消关注用户
-
-**接口**：`POST /api/wxapp/user/unfollow`  
-**描述**：取消关注指定用户  
-**请求体**：
-
-```json
-{
-  "followed_id": "被取消关注用户的openid",
-  "openid": "取消关注者的openid"
-}
-```
-
-**响应**：
-
+2. 取消关注成功：
 ```json
 {
   "code": 200,
   "message": "success",
-  "data": null,
+  "data": {
+    "success": true,
+    "status": "unfollowed",
+    "is_following": false
+  },
   "details": {
     "message": "取消关注成功"
   },
@@ -727,27 +671,66 @@ API接口的参数类型规范如下：
 
 **错误响应**：
 
-1. 不能取消关注自己：
 ```json
 {
   "code": 400,
-  "message": "Bad request",
+  "message": "error",
   "data": null,
   "details": {
-    "message": "不能取消关注自己"
+    "message": "不能关注自己"
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+### 1.11 获取用户状态
+
+**接口**：`GET /api/wxapp/user/status`  
+**描述**：获取用户的交互状态，包括关注状态和统计数据  
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| openid | string | 是 | 当前用户openid |
+| target_id | string | 是 | 目标用户openid |
+
+**响应**：
+
+1. 成功响应：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "is_following": true,
+    "is_self": false,
+    "post_count": 10,
+    "follower_count": 20,
+    "following_count": 15,
+    "like_count": 30
   },
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
 
-2. 未关注：
+**响应字段说明**：
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| is_following | boolean | 当前用户是否关注目标用户 |
+| is_self | boolean | 是否是当前用户自己 |
+| post_count | integer | 目标用户的帖子总数 |
+| follower_count | integer | 目标用户的粉丝总数 |
+| following_count | integer | 目标用户的关注总数 |
+| like_count | integer | 目标用户获得的点赞总数 |
+
+2. 错误响应：
 ```json
 {
-  "code": 400,
-  "message": "Bad request",
+  "code": 404,
+  "message": "error",
   "data": null,
   "details": {
-    "message": "未关注该用户"
+    "message": "用户不存在"
   },
   "timestamp": "2023-01-01 12:00:00"
 }
@@ -998,7 +981,7 @@ API接口的参数类型规范如下：
 ### 2.6 点赞帖子
 
 **接口**：`POST /api/wxapp/post/like`  
-**描述**：点赞帖子
+**描述**：点赞/取消点赞帖子，根据当前状态自动判断是点赞还是取消点赞  
 **请求体**：
 
 ```json
@@ -1010,53 +993,32 @@ API接口的参数类型规范如下：
 
 **响应**：
 
-```json
-{
-  "code": 200,
-  "message": "success",
-  "details": {
-    "like_count": 6,
-    "message": "点赞成功"
-  },
-  "data": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-**错误响应**：当已经点赞过该帖子时
-
-```json
-{
-  "code": 400,
-  "message": "Bad request",
-  "data": null,
-  "details": {
-    "message": "已经点赞，请勿重复点赞"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 2.7 取消点赞帖子
-
-**接口**：`POST /api/wxapp/post/unlike`  
-**描述**：取消对帖子的点赞  
-**请求体**：
-```json
-{
-  "post_id": 1,
-  "openid": "用户openid"
-}
-```
-
-**响应**：
-
+1. 点赞成功：
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
     "success": true,
+    "status": "liked",
+    "like_count": 6,
+    "is_liked": true
+  },
+  "details": {
+    "message": "点赞成功"
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+2. 取消点赞成功：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "status": "unliked",
     "like_count": 5,
     "is_liked": false
   },
@@ -1067,24 +1029,10 @@ API接口的参数类型规范如下：
 }
 ```
 
-**错误响应**：当未点赞该帖子时
-
-```json
-{
-  "code": 400,
-  "message": "Bad request",
-  "data": null,
-  "details": {
-    "message": "未点赞，无法取消点赞"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 2.8 收藏帖子
+### 2.7 收藏帖子
 
 **接口**：`POST /api/wxapp/post/favorite`  
-**描述**：收藏帖子
+**描述**：收藏/取消收藏帖子，根据当前状态自动判断是收藏还是取消收藏  
 **请求体**：
 
 ```json
@@ -1096,40 +1044,33 @@ API接口的参数类型规范如下：
 
 **响应**：
 
-```json
-{
-  "code": 200,
-  "message": "success",
-  "details": {
-    "favorite_count": 3,
-    "is_favorited": true
-  },
-  "data": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 2.9 取消收藏帖子
-
-**接口**：`POST /api/wxapp/post/unfavorite`  
-**描述**：取消收藏帖子  
-**请求体**：
-```json
-{
-  "post_id": 1,
-  "openid": "用户openid"
-}
-```
-
-**响应**：
-
+1. 收藏成功：
 ```json
 {
   "code": 200,
   "message": "success",
   "data": {
     "success": true,
-    "favorite_count": 2,
+    "status": "favorited",
+    "favorite_count": 6,
+    "is_favorited": true
+  },
+  "details": {
+    "message": "收藏成功"
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+2. 取消收藏成功：
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "status": "unfavorited",
+    "favorite_count": 5,
     "is_favorited": false
   },
   "details": {
@@ -1139,16 +1080,20 @@ API接口的参数类型规范如下：
 }
 ```
 
-### 2.10 获取帖子互动状态
+### 2.8 获取帖子状态
 
 **接口**：`GET /api/wxapp/post/status`  
-**描述**：获取用户与帖子的交互状态（是否点赞、收藏等）  
-**参数**：
-- `post_id` - 查询参数，帖子ID（必填）
-- `openid` - 查询参数，用户openid（必填）
+**描述**：获取帖子的交互状态，包括点赞、收藏、评论数等信息  
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| post_id | string | 是 | 帖子ID |
+| openid | string | 是 | 用户openid |
 
 **响应**：
 
+1. 成功响应：
 ```json
 {
   "code": 200,
@@ -1156,11 +1101,37 @@ API接口的参数类型规范如下：
   "data": {
     "is_liked": true,
     "is_favorited": false,
-    "like_count": 5,
-    "favorite_count": 2,
-    "comment_count": 10
+    "is_author": false,
+    "like_count": 10,
+    "favorite_count": 5,
+    "comment_count": 3,
+    "view_count": 100
   },
-  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+**响应字段说明**：
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| is_liked | boolean | 当前用户是否点赞 |
+| is_favorited | boolean | 当前用户是否收藏 |
+| is_author | boolean | 当前用户是否是作者 |
+| like_count | integer | 帖子点赞总数 |
+| favorite_count | integer | 帖子收藏总数 |
+| comment_count | integer | 帖子评论总数 |
+| view_count | integer | 帖子浏览总数 |
+
+2. 错误响应：
+```json
+{
+  "code": 404,
+  "message": "error",
+  "data": null,
+  "details": {
+    "message": "帖子不存在"
+  },
   "timestamp": "2023-01-01 12:00:00"
 }
 ```
@@ -1314,18 +1285,19 @@ API接口的参数类型规范如下：
 ### 3.5 点赞评论
 
 **接口**：`POST /api/wxapp/comment/like`  
-**描述**：点赞评论
+**描述**：点赞/取消点赞评论，根据当前状态自动判断是点赞还是取消点赞  
 **请求体**：
 
 ```json
 {
-  "comment_id": 1, // 必填，评论ID，整数类型
+  "comment_id": 1, // 必填，整数类型
   "openid": "点赞用户的openid" // 必填
 }
 ```
 
 **响应**：
 
+1. 点赞成功：
 ```json
 {
   "code": 200,
@@ -1333,8 +1305,7 @@ API接口的参数类型规范如下：
   "data": {
     "success": true,
     "status": "liked",
-    "message": "点赞成功",
-    "like_count": 4,
+    "like_count": 6,
     "is_liked": true
   },
   "details": {
@@ -1344,49 +1315,7 @@ API接口的参数类型规范如下：
 }
 ```
 
-**错误响应**：
-
-1. 评论不存在：
-```json
-{
-  "code": 404,
-  "message": "Not found",
-  "data": null,
-  "details": {
-    "message": "评论不存在"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-2. 已经点赞：
-```json
-{
-  "code": 400,
-  "message": "Bad request",
-  "data": null,
-  "details": {
-    "message": "已经点赞，请勿重复点赞"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 3.6 取消点赞评论
-
-**接口**：`POST /api/wxapp/comment/unlike`  
-**描述**：取消点赞评论  
-**请求体**：
-
-```json
-{
-  "comment_id": 1, // 必填，评论ID，整数类型
-  "openid": "点赞用户的openid" // 必填
-}
-```
-
-**响应**：
-
+2. 取消点赞成功：
 ```json
 {
   "code": 200,
@@ -1394,7 +1323,7 @@ API接口的参数类型规范如下：
   "data": {
     "success": true,
     "status": "unliked",
-    "like_count": 3,
+    "like_count": 5,
     "is_liked": false
   },
   "details": {
@@ -1404,15 +1333,51 @@ API接口的参数类型规范如下：
 }
 ```
 
-**错误响应**：
+### 3.6 获取评论状态
 
+**接口**：`GET /api/wxapp/comment/status`  
+**描述**：获取评论的交互状态，包括点赞数等信息  
+**请求参数**：
+
+| 参数 | 类型 | 必填 | 描述 |
+|------|------|------|------|
+| comment_id | string | 是 | 评论ID |
+| openid | string | 是 | 用户openid |
+
+**响应**：
+
+1. 成功响应：
 ```json
 {
-  "code": 400,
-  "message": "Bad request",
+  "code": 200,
+  "message": "success",
+  "data": {
+    "is_liked": true,
+    "is_author": false,
+    "like_count": 10,
+    "reply_count": 3
+  },
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+**响应字段说明**：
+
+| 字段 | 类型 | 描述 |
+|------|------|------|
+| is_liked | boolean | 当前用户是否点赞 |
+| is_author | boolean | 当前用户是否是作者 |
+| like_count | integer | 评论点赞总数 |
+| reply_count | integer | 评论回复总数 |
+
+2. 错误响应：
+```json
+{
+  "code": 404,
+  "message": "error",
   "data": null,
   "details": {
-    "message": "未点赞，无法取消点赞"
+    "message": "评论不存在"
   },
   "timestamp": "2023-01-01 12:00:00"
 }
