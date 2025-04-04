@@ -211,6 +211,7 @@ def get_record_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]
 
 def query_records(table_name: str,
                   conditions: Dict[str, Any] = None,
+                  fields: List[str] = None,
                   order_by: Union[str, Dict[str, str]] = None,
                   limit: int = 1000,
                   offset: int = 0) -> Dict[str, Any]:
@@ -220,6 +221,7 @@ def query_records(table_name: str,
     Args:
         table_name: 表名
         conditions: 条件字典，格式为 {字段名: 值} 或特殊格式
+        fields: 要返回的字段列表，默认为所有字段(*)
         order_by: 排序字段，格式为 "字段名 ASC/DESC" 或 {"字段名": "ASC/DESC"}
         limit: 返回结果最大条数
         offset: 分页起始位置
@@ -245,9 +247,24 @@ def query_records(table_name: str,
                 where_parts = []
                 for key, value in conditions.items():
                     if key not in ['where_condition', 'params']:
-                        where_parts.append(f"{key} = %s")
-                        values.append(value)
+                        if isinstance(value, list) and len(value) > 0 and value[0] == "IN":
+                            # 处理IN条件
+                            if isinstance(value[1], (list, tuple)):
+                                placeholders = ', '.join(['%s'] * len(value[1]))
+                                where_parts.append(f"{key} IN ({placeholders})")
+                                values.extend(value[1])
+                            else:
+                                where_parts.append(f"{key} IN (%s)")
+                                values.append(value[1])
+                        else:
+                            where_parts.append(f"{key} = %s")
+                            values.append(value)
                 where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
+
+        # 处理选择的字段
+        select_fields = "*"
+        if fields and isinstance(fields, list) and len(fields) > 0:
+            select_fields = ", ".join(fields)
 
         # 处理排序
         order_clause = ""
@@ -278,7 +295,7 @@ def query_records(table_name: str,
         db_logger.debug(f"查询总数结果: {total_count}")
 
         # 构建并执行数据查询SQL
-        sql = f"SELECT * FROM {table_name} {where_clause} {order_clause} {limit_clause}"
+        sql = f"SELECT {select_fields} FROM {table_name} {where_clause} {order_clause} {limit_clause}"
         db_logger.debug(f"查询数据SQL: {sql}, 参数: {values}")
         query_results = execute_query(sql, values)
         db_logger.debug(f"查询结果条数: {len(query_results)}")
@@ -325,8 +342,18 @@ def count_records(table_name: str, conditions: Dict[str, Any] = None) -> int:
                 where_parts = []
                 for key, value in conditions.items():
                     if key not in ['where_condition', 'params']:
-                        where_parts.append(f"{key} = %s")
-                        values.append(value)
+                        if isinstance(value, list) and len(value) > 0 and value[0] == "IN":
+                            # 处理IN条件
+                            if isinstance(value[1], (list, tuple)):
+                                placeholders = ', '.join(['%s'] * len(value[1]))
+                                where_parts.append(f"{key} IN ({placeholders})")
+                                values.extend(value[1])
+                            else:
+                                where_parts.append(f"{key} IN (%s)")
+                                values.append(value[1])
+                        else:
+                            where_parts.append(f"{key} = %s")
+                            values.append(value)
                 where_clause = f"WHERE {' AND '.join(where_parts)}" if where_parts else ""
         
         sql = f"SELECT COUNT(*) as total FROM {table_name} {where_clause}"
@@ -411,84 +438,7 @@ def execute_custom_query(query: str, params: Any = None, fetch: bool = True) -> 
         return execute_query(query, params, fetch)
     except Exception as e:
         db_logger.error(f"自定义查询执行失败: {str(e)}")
-        raise
-
-def upsert_record(table_name: str, data: Dict[str, Any], unique_fields: List[str]) -> bool:
-    """
-    插入或更新记录（存在则更新，不存在则插入）
-    
-    Args:
-        table_name: 表名
-        data: 数据字典
-        unique_fields: 用于判断记录存在与否的字段列表
-        
-    Returns:
-        bool: 操作是否成功
-    """
-    if not validate_table_name(table_name):
-        db_logger.error(f"非法表名: {table_name}")
-        return False
-        
-    if not data or not unique_fields:
-        db_logger.error("数据或唯一字段列表为空")
-        return False
-    
-    try:
-        # 构建查询条件
-        where_parts = []
-        where_values = []
-        for field in unique_fields:
-            if field in data:
-                where_parts.append(f"{field} = %s")
-                where_values.append(data[field])
-            else:
-                db_logger.error(f"唯一字段 {field} 不在数据中")
-                return False
-        
-        # 检查记录是否已存在
-        sql = f"SELECT id FROM {table_name} WHERE {' AND '.join(where_parts)}"
-        existing = execute_query(sql, where_values)
-        
-        if existing:
-            # 记录存在，执行更新
-            return update_record(table_name, existing[0]['id'], data)
-        else:
-            # 记录不存在，执行插入
-            return insert_record(table_name, data) > 0
-    except Exception as e:
-        db_logger.error(f"Upsert操作失败: {str(e)}")
-        return False
-
-def init_database(sql_scripts: List[str] = None):
-    """
-    初始化数据库：创建表、添加初始数据等
-    
-    Args:
-        sql_scripts: 可选的SQL脚本列表
-    
-    Returns:
-        bool: 是否成功完成初始化
-    """
-    if not sql_scripts:
-        db_logger.warning("未提供SQL脚本，初始化操作将被跳过")
-        return True
-    
-    try:
-        with get_connection() as conn:
-            with conn.cursor() as cursor:
-                for script in sql_scripts:
-                    # 按分号分割SQL语句
-                    statements = [s.strip() for s in script.split(';') if s.strip()]
-                    for statement in statements:
-                        try:
-                            cursor.execute(statement)
-                        except Exception as e:
-                            db_logger.error(f"执行SQL语句失败: {str(e)}\n{statement}")
-                            # 继续执行下一条语句
-        return True
-    except Exception as e:
-        db_logger.error(f"初始化数据库失败: {str(e)}")
-        return False
+        return [] if fetch else 0
 
 def get_all_tables() -> List[str]:
     """获取所有表名"""
@@ -500,19 +450,7 @@ def get_all_tables() -> List[str]:
         db_logger.error(f"获取表名失败: {str(e)}")
         return []
 
-def get_table_structure(table_name: str) -> List[Dict[str, Any]]:
-    """获取表结构"""
-    if not validate_table_name(table_name):
-        db_logger.error(f"非法表名: {table_name}")
-        return []
-        
-    try:
-        sql = f"DESCRIBE {table_name}"
-        return execute_query(sql)
-    except Exception as e:
-        db_logger.error(f"获取表结构失败: {str(e)}")
-        return []
-
+# 异步数据库操作方法
 async def async_query(sql: str, params: Any = None) -> List[Dict[str, Any]]:
     """
     异步执行SQL查询
@@ -556,14 +494,18 @@ async def async_get_by_id(table_name: str, record_id: int) -> Optional[Dict[str,
         db_logger.error(f"通过ID查询记录失败: {str(e)}")
         return None
 
-async def async_query_records(table_name: str, conditions: Dict[str, Any] = None,
-                             order_by: Union[str, Dict[str, str]] = None,
-                             limit: int = 1000, offset: int = 0) -> Dict[str, Any]:
+async def async_query_records(table_name: str, 
+                              conditions: Dict[str, Any] = None,
+                              fields: List[str] = None,
+                              order_by: Union[str, Dict[str, str]] = None,
+                              limit: int = 1000, 
+                              offset: int = 0) -> Dict[str, Any]:
     """异步条件查询记录，并返回分页信息"""
     return await asyncio.to_thread(
         query_records,
         table_name=table_name,
         conditions=conditions,
+        fields=fields,
         order_by=order_by,
         limit=limit,
         offset=offset

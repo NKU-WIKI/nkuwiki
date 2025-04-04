@@ -5,11 +5,12 @@ from typing import List, Dict, Any, Optional
 from fastapi import Query, APIRouter
 from api.models.common import Response, Request, validate_params
 from etl.load.db_core import (
-    async_query_records, async_get_by_id, async_insert, async_update, async_count_records
+    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, async_execute_custom_query
 )
 from config import Config
-
+config = Config()
 router = APIRouter()
+default_avatar = config.get("services.app.default.default_avatar")
 
 @router.get("/user/profile")
 async def get_user_info(
@@ -19,16 +20,16 @@ async def get_user_info(
     if not openid:
         return Response.bad_request(details={"message": "缺少openid参数"})
     try:
-        user_data = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
+        # 使用自定义SQL直接查询指定openid的用户
+        user_data = await async_execute_custom_query(
+            "SELECT * FROM wxapp_user WHERE openid = %s LIMIT 1",
+            [openid]
         )
 
-        if not user_data or not user_data['data']:
+        if not user_data:
             return Response.not_found(resource="用户")
 
-        return Response.success(data=user_data['data'][0])
+        return Response.success(data=user_data[0])
     except Exception as e:
         return Response.error(details={"message": f"获取用户信息失败: {str(e)}"})
 
@@ -38,8 +39,11 @@ async def get_user_list(
 ):
     """获取用户列表"""
     try:
+        # 只返回需要的字段
+        fields = ["id", "openid", "nickname", "avatar", "bio", "create_time", "update_time"]
         users = await async_query_records(
             table_name="wxapp_user",
+            fields=fields,
             limit=limit,
             order_by="create_time DESC"
         )
@@ -65,76 +69,43 @@ async def sync_user_info(
         if not openid:
             return Response.bad_request(details={"message": "缺少openid参数"})
 
-        # 获取默认头像配置
-        default_avatar = "cloud://nkuwiki-0g6bkdy9e8455d93.6e6b-nkuwiki-0g6bkdy9e8455d93-1346872102/default/default-avatar.png"
-        
-        # 处理传入的avatar参数，如果为空则使用默认头像
-        avatar = req_data.get("avatar", "")
-        if not avatar:
-            avatar = default_avatar
-            
-        # 处理昵称参数
-        nickname = None
-        if "nickname" in req_data:
-            nickname = req_data["nickname"]
-            
-        if not nickname:
-            nickname = f'用户_{openid[-6:]}'
+        avatar = req_data.get("avatar", default_avatar)
+        nickname = req_data.get("nickname", f'用户_{openid[-6:]}')
+        bio = req_data.get("bio", None)
 
-        existing_user = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
+        # 使用单一SQL直接查询用户，只查询必要字段
+        existing_user = await async_execute_custom_query(
+            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1",
+            [openid]
         )
         
-        if existing_user and existing_user['data']:
-            # 用户存在，检查是否需要更新头像
-            user_data = existing_user['data'][0]
-            update_needed = False
-            update_data = {}
-            
-            if not user_data.get("avatar"):
-                # 如果用户头像为空，更新为默认头像
-                update_data["avatar"] = default_avatar
-                update_needed = True
-                
-            if update_needed:
-                await async_update(
-                    table_name="wxapp_user",
-                    record_id=user_data.get("id"),
-                    data=update_data
-                )
-                user_data.update(update_data)
-                
-            return Response.success(data=user_data, details={"message":"用户已存在"})
+        if existing_user:
+            return Response.success(data=existing_user[0], details={"message":"用户已存在", "user_id": existing_user[0]['id']})
         
-        # 构造基本用户数据
         user_data = {
             'openid': openid,
             'nickname': nickname,
-            'avatar': avatar,  # 使用处理后的头像URL
-            'gender': req_data.get('gender', 0),   # 默认性别
-            'status': 1,   # 默认状态：正常
-            'token_count': 0  # 默认代币数
+            'avatar': avatar,
         }
         
-        # 插入用户数据
+        # 如果提供了bio，添加到user_data
+        if bio is not None:
+            user_data['bio'] = bio
+        
         user_id = await async_insert("wxapp_user", user_data)
         
         if not user_id:
-            return Response.error(details={"message": "用户创建失败"})
+            return Response.db_error(details={"message": "用户创建失败"})
             
-        # 查询完整用户数据返回
-        new_user = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"id": user_id},
-            limit=1
+        # 直接使用单一查询获取新创建的用户
+        new_user = await async_execute_custom_query(
+            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE id = %s LIMIT 1",
+            [user_id]
         )
         
-        if new_user and new_user['data']:
-            return Response.success(data=new_user['data'][0], details={"message":"新用户创建成功"})
-        else:
-            return Response.success(details={"message":"新用户创建成功", "user_id": user_id})
+        if not new_user:
+            return Response.success(details={"message": "新用户创建成功", "user_id": user_id})
+        return Response.success(data=new_user[0], details={"message":"新用户创建成功", "user_id": user_id})
     except Exception as e:
         return Response.error(details={"message": f"同步用户信息失败: {str(e)}"})
 
@@ -151,19 +122,17 @@ async def update_user_info(
             return error_response
 
         openid = req_data.get("openid")
-        user_result = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
+        
+        # 使用单一SQL获取用户ID
+        user_result = await async_execute_custom_query(
+            "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1",
+            [openid]
         )
-        if not user_result or not user_result['data']:
+        
+        if not user_result:
             return Response.not_found(resource="用户")
         
-        user = user_result['data'][0]
-        user_id = user['id']
-        
-        # 获取默认头像配置
-        default_avatar = "cloud://nkuwiki-0g6bkdy9e8455d93.6e6b-nkuwiki-0g6bkdy9e8455d93-1346872102/default/default-avatar.png"
+        user_id = user_result[0]['id']
         
         # 提取请求中的更新字段
         update_data = {}
@@ -198,31 +167,30 @@ async def update_user_info(
         if not update_data:
             return Response.bad_request(details={"message": "未提供任何更新数据"})
 
-        # 执行更新操作
         update_success = await async_update(
             table_name="wxapp_user",
-            record_id=user_id,  # 使用用户ID而不是openid
+            record_id=user_id,
             data=update_data
         )
         
         if not update_success:
-            return Response.error(details={"message": "用户信息更新失败"})
+            return Response.db_error(details={"message": "用户信息更新失败"})
             
-        # 获取更新后的用户数据
-        updated_user = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"id": user_id},
-            limit=1
+        # 获取更新后的用户信息，直接使用SQL查询
+        query_fields = "id, openid, nickname, avatar, bio, gender, country, province, city"
+        updated_user = await async_execute_custom_query(
+            f"SELECT {query_fields} FROM wxapp_user WHERE id = %s LIMIT 1",
+            [user_id]
         )
         
-        if updated_user and updated_user['data']:
-            return Response.success(data=updated_user['data'][0], details={"message":"用户信息更新成功"})
+        if updated_user:
+            return Response.success(data=updated_user[0], details={"message":"用户信息更新成功"})
         else:
             return Response.success(details={"message":"用户信息更新成功"})
     except Exception as e:
         return Response.error(details={"message": f"更新用户信息失败: {str(e)}"})
 
-@router.get("/user/favorite")
+@router.get("/user/favorites")
 async def get_user_favorites(
     openid: str = Query(..., description="用户openid"),
     offset: int = Query(0, description="分页偏移量"),
@@ -230,7 +198,7 @@ async def get_user_favorites(
 ):
     """获取用户收藏的帖子列表"""
     try:
-        # 获取用户收藏的帖子ID列表
+        # 获取用户收藏的帖子ID列表，只查询必要字段
         favorites = await async_query_records(
             "wxapp_action",
             conditions={
@@ -238,6 +206,7 @@ async def get_user_favorites(
                 "action_type": "favorite",
                 "target_type": "post"
             },
+            fields=["target_id", "create_time"],
             limit=limit,
             offset=offset,
             order_by="create_time DESC"
@@ -246,11 +215,12 @@ async def get_user_favorites(
         if not favorites or not favorites.get('data'):
             return Response.success(data={"total": 0, "list": []})
             
-        # 获取帖子详情
+        # 获取帖子详情，只查询需要的字段
         post_ids = [item["target_id"] for item in favorites["data"]]
         posts = await async_query_records(
             "wxapp_post",
             conditions={"id": ["IN", post_ids]},
+            fields=["id", "title", "content", "image", "view_count", "like_count", "comment_count", "create_time"],
             order_by="create_time DESC"
         )
         
@@ -358,13 +328,22 @@ async def get_user_followers(
 ):
     """获取用户的粉丝列表"""
     try:
-        # 获取关注该用户的用户openid列表
+        # 先获取用户的数字ID
+        user_query = "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1"
+        user_result = await async_execute_custom_query(user_query, [openid])
+        
+        if not user_result:
+            return Response.not_found(resource="用户")
+            
+        user_id = user_result[0]["id"]
+        
+        # 获取关注该用户的用户openid列表 - 使用数字ID查询
         followers = await async_query_records(
             "wxapp_action",
             conditions={
                 "action_type": "follow",
                 "target_type": "user",
-                "target_id": openid
+                "target_id": user_id  # 使用数字ID
             },
             limit=limit,
             offset=offset,
@@ -401,7 +380,7 @@ async def get_user_followings(
 ):
     """获取用户关注的用户列表"""
     try:
-        # 获取用户关注的用户openid列表
+        # 获取用户关注的用户ID列表
         followings = await async_query_records(
             "wxapp_action",
             conditions={
@@ -417,16 +396,22 @@ async def get_user_followings(
         if not followings or not followings.get('data'):
             return Response.success(data={"total": 0, "list": []})
             
-        # 获取关注的用户信息
+        # 获取关注的用户信息 - 通过数字ID查询
         following_ids = [item["target_id"] for item in followings["data"]]
-        users = await async_query_records(
-            "wxapp_user",
-            conditions={"openid": ["IN", following_ids]},
-            fields=["openid", "nickname", "avatar", "bio"]
-        )
+        users_query = """
+        SELECT openid, nickname, avatar, bio
+        FROM wxapp_user
+        WHERE id IN (%s)
+        """
+        placeholders = ', '.join(['%s'] * len(following_ids))
+        users_query = users_query.replace('%s', placeholders)
+        users_result = await async_execute_custom_query(users_query, following_ids)
+        
+        if not users_result:
+            users_result = []
         
         return Response.paged(
-            data=users.get("data", []),
+            data=users_result,
             pagination={
                 "total": followings.get("total", 0),
                 "offset": offset,
@@ -451,19 +436,27 @@ async def get_user_status(
         )
         if not target_user or not target_user['data']:
             return Response.not_found(resource="用户")
+            
+        # 获取目标用户的数字ID
+        target_user_id = target_user['data'][0]["id"]
 
-        # 检查是否已关注
-        follow_record = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "follow",
-                "target_type": "user",
-                "target_id": target_id
-            },
-            limit=1
-        )
-        is_following = bool(follow_record and follow_record.get('data'))
+        # 获取当前用户的数字ID
+        current_user_query = "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1"
+        current_user = await async_execute_custom_query(current_user_query, [openid])
+        
+        if not current_user:
+            return Response.not_found(resource="当前用户")
+            
+        current_user_id = current_user[0]["id"]
+
+        # 检查是否已关注 - 使用数字ID
+        follow_sql = """
+        SELECT * FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'follow' AND target_type = 'user' AND target_id = %s
+        LIMIT 1
+        """
+        follow_record = await async_execute_custom_query(follow_sql, [openid, target_user_id])
+        is_following = bool(follow_record)
 
         # 获取目标用户的统计数据
         user_data = target_user['data'][0]

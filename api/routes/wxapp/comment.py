@@ -3,11 +3,11 @@
 处理评论创建、查询、更新、删除和点赞等功能
 """
 from api.models.common import Request, Response, validate_params, PaginationInfo
-from fastapi import APIRouter, Query, Request, BackgroundTasks
+from fastapi import APIRouter, Query, BackgroundTasks
+import asyncio
 from etl.load.db_core import (
-    query_records, get_record_by_id, insert_record, update_record, count_records, delete_record,
-    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, execute_custom_query,
-    async_query, execute_query, async_execute_custom_query
+    async_query_records, async_get_by_id, async_insert, async_update, async_count_records,
+    async_execute_custom_query
 )
 from core.utils.logger import register_logger
 import time, json
@@ -28,32 +28,46 @@ async def get_comment_detail(
     if(not comment_id):
         return Response.bad_request(details={"message": "缺少comment_id参数"})
     try:
-        comment = await async_get_by_id(
-            table_name="wxapp_comment",
-            record_id=comment_id
-        )
-
-        if not comment:
-            return Response.not_found(resource="评论")
-
-        # 使用直接SQL查询获取评论回复
-        replies_sql = """
+        # 使用单一SQL查询获取评论详情
+        comment_sql = """
         SELECT * FROM wxapp_comment 
-        WHERE parent_id = %s AND status = 1
-        ORDER BY create_time
+        WHERE id = %s
         """
-        replies = execute_query(replies_sql, [comment_id])
+        comment_result = await async_execute_custom_query(comment_sql, [comment_id])
 
-        # 使用直接SQL查询检查是否已点赞
-        sql = "SELECT * FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s LIMIT 1"
-        like_record = execute_query(sql, [openid, "like", comment_id, "comment"])
+        if not comment_result:
+            return Response.not_found(resource="评论")
+            
+        comment = comment_result[0]
+
+        # 使用单一查询并行获取回复和点赞状态
+        replies_query = async_execute_custom_query(
+            """
+            SELECT * FROM wxapp_comment 
+            WHERE parent_id = %s AND status = 1
+            ORDER BY create_time
+            """, 
+            [comment_id]
+        )
+        
+        like_query = async_execute_custom_query(
+            """
+            SELECT 1 FROM wxapp_action 
+            WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'comment' 
+            LIMIT 1
+            """, 
+            [openid, comment_id]
+        )
+        
+        # 并行执行查询
+        replies, like_record = await asyncio.gather(replies_query, like_query)
         
         # 判断是否已点赞
         liked = bool(like_record)
 
         result = {
             **comment,
-            "replies": replies,
+            "replies": replies or [],
             "liked": liked,
             "like_count": comment.get("like_count", 0)
         }
@@ -114,76 +128,69 @@ async def get_post_comments(
 
 @router.get("/comment/status")
 async def get_comment_status(
-    comment_id: str = Query(..., description="评论ID，多个ID用逗号分隔"),
-    openid: str = Query(..., description="用户openid")
+    openid: str = Query(..., description="用户OpenID"),
+    comment_ids: str = Query(..., description="评论ID列表，用逗号分隔"),
 ):
-    """获取评论的交互状态"""
+    """获取评论状态"""
+    if not openid:
+        return Response.bad_request(details={"message": "缺少openid参数"})
+    if not comment_ids:
+        return Response.bad_request(details={"message": "缺少comment_ids参数"})
+    
     try:
-        if not comment_id:
-            return Response.bad_request(details={"message": "缺少comment_id参数"})
-            
-        # 处理多个comment_id
-        comment_ids = [int(cid.strip()) for cid in comment_id.split(",")]
+        # 分割评论ID列表
+        ids = comment_ids.split(',')
+        if not ids:
+            return Response.bad_request(details={"message": "评论ID列表格式错误"})
         
-        # 获取所有评论
-        comments = await async_query_records(
-            table_name="wxapp_comment",
-            conditions={"id": ["IN", comment_ids], "status": 1}
-        )
-
-        # 获取用户对这些评论的所有点赞
-        actions = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "target_id": ["IN", comment_ids],
-                "target_type": "comment",
-                "action_type": "like"
-            }
-        )
-
-        # 构建点赞映射
-        like_map = {}
-        if actions and actions.get('data'):
-            for action in actions.get('data'):
-                like_map[action["target_id"]] = True
-
-        # 构建状态响应
-        status_map = {}
-        existing_comment_ids = set()
-        if comments and comments.get('data'):
-            for comment in comments.get('data'):
-                comment_id = comment.get("id")
-                if comment_id:
-                    existing_comment_ids.add(comment_id)
-                    
-                    # 获取回复数
-                    reply_count = await async_count_records(
-                        table_name="wxapp_comment",
-                        conditions={"parent_id": comment_id, "status": 1}
-                    )
-                    
-                    status_map[str(comment_id)] = {
-                        "exist": True,
-                        "is_liked": like_map.get(comment_id, False),
-                        "is_author": comment.get("openid") == openid,
-                        "like_count": comment.get("like_count", 0),
-                        "reply_count": reply_count
-                    }
+        # 构建IN查询的占位符
+        placeholders = ','.join(['%s'] * len(ids))
         
-        # 为不存在的评论添加状态
-        for cid in comment_ids:
-            if cid not in existing_comment_ids:
-                status_map[str(cid)] = {
-                    "exist": False,
-                    "is_liked": False,
-                    "is_author": False,
-                    "like_count": 0,
+        # 获取评论存在状态和回复数量
+        comment_sql = f"""
+        SELECT id, 
+               (SELECT COUNT(*) FROM wxapp_comment WHERE parent_id = c.id AND status = 1) AS reply_count
+        FROM wxapp_comment c
+        WHERE id IN ({placeholders}) AND status = 1
+        """
+        
+        # 获取用户点赞状态
+        like_sql = f"""
+        SELECT target_id
+        FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'like' AND target_type = 'comment' AND target_id IN ({placeholders})
+        """
+        
+        # 执行查询
+        comments = await async_execute_custom_query(comment_sql, ids)
+        like_params = [openid] + ids
+        likes = await async_execute_custom_query(like_sql, like_params)
+        
+        # 转换点赞结果为集合，方便快速查找
+        liked_ids = {record['target_id'] for record in likes} if likes else set()
+        
+        # 为每个请求的评论ID构建状态信息
+        result = {}
+        comment_dict = {comment['id']: comment for comment in comments} if comments else {}
+        
+        for cid in ids:
+            comment = comment_dict.get(cid)
+            if comment:
+                result[cid] = {
+                    "exists": True,
+                    "liked": cid in liked_ids,
+                    "reply_count": int(comment.get('reply_count', 0))
+                }
+            else:
+                result[cid] = {
+                    "exists": False,
+                    "liked": False,
                     "reply_count": 0
                 }
-
-        return Response.success(data=status_map)
+        
+        return Response.success(data=result)
     except Exception as e:
+        logger.error(f"获取评论状态失败: {e}")
         return Response.error(details={"message": f"获取评论状态失败: {str(e)}"})
 
 

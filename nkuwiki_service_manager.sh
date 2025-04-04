@@ -1,5 +1,5 @@
 #!/bin/bash
-# nkuwiki_service_manager.sh - 管理多端口nkuwiki服务
+# nkuwiki_service_manager.sh - 管理nkuwiki双服务（8000端口1个worker和8001端口8个worker）
 # 用法: ./nkuwiki_service_manager.sh [命令] [参数]
 
 set -e
@@ -12,7 +12,6 @@ BLUE='\033[0;34m'
 NC='\033[0m' # 无颜色
 
 # 常量
-SERVICE_TEMPLATE="/etc/systemd/system/nkuwiki.service"
 NGINX_CONF_DIR="/etc/nginx/conf.d"
 NGINX_SITES_DIR="/etc/nginx/sites-available"
 NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
@@ -20,62 +19,35 @@ CLOUDFLARE_CONF="${NGINX_CONF_DIR}/cloudflare.conf"
 HTTP_CONF="${NGINX_SITES_DIR}/nkuwiki.conf"
 HTTPS_CONF="${NGINX_SITES_DIR}/nkuwiki-ssl.conf"
 UPSTREAM_CONF="${NGINX_CONF_DIR}/upstream.conf"
-BASE_PORT=8000
-SSL_CERT_PATH="/etc/ssl/certs/nkuwiki.com.pem"
+SSL_CERT_PATH="/etc/ssl/certs/nkuwiki.com.crt"
 SSL_KEY_PATH="/etc/ssl/private/nkuwiki.com.key"
 
 # 帮助信息
 function show_help {
     echo -e "${BLUE}nkuwiki服务管理脚本${NC}"
-    echo -e "${YELLOW}功能:${NC} 管理nkuwiki多实例服务、负载均衡和Nginx配置"
+    echo -e "${YELLOW}功能:${NC} 管理nkuwiki双实例服务（8000端口1个worker和8001端口8个worker）"
     echo -e "${YELLOW}版本:${NC} 1.0.0"
     echo ""
     echo -e "${BLUE}用法:${NC} $0 命令 [参数]"
     echo ""
-    echo -e "${GREEN}== 服务实例管理 ==${NC}"
-    echo -e "  ${YELLOW}create${NC} [起始端口] [实例数]   - 创建指定数量的服务实例，从起始端口开始"
+    echo -e "${GREEN}== 基本命令 ==${NC}"
+    echo -e "  ${YELLOW}deploy${NC}                      - 一键部署双服务配置"
     echo -e "  ${YELLOW}start${NC}                      - 启动所有nkuwiki服务"
-    echo -e "  ${YELLOW}stop${NC}                       - 停止所有nkuwiki服务"
     echo -e "  ${YELLOW}restart${NC}                    - 重启所有nkuwiki服务"
-    echo -e "  ${YELLOW}status${NC}                     - 显示所有nkuwiki服务状态和端口监听情况"
-    echo -e "  ${YELLOW}enable${NC}                     - 启用所有nkuwiki服务开机自启"
-    echo -e "  ${YELLOW}disable${NC}                    - 禁用所有nkuwiki服务开机自启"
-    echo ""
-    echo -e "${GREEN}== Nginx配置管理 ==${NC}"
-    echo -e "  ${YELLOW}nginx${NC} [起始端口] [实例数]   - 生成Nginx负载均衡配置，包括upstream、HTTP和HTTPS配置"
-    echo -e "  ${YELLOW}cloudflare${NC}                 - 配置Cloudflare IP范围和真实IP获取支持"
-    echo -e "  ${YELLOW}setup-ssl${NC}                  - 设置SSL证书路径并验证证书是否存在"
-    echo ""
-    echo -e "${GREEN}== 系统维护 ==${NC}"
-    echo -e "  ${YELLOW}cleanup${NC}                    - 清理所有创建的服务(不包括主服务)"
-    echo -e "  ${YELLOW}cleanup-config${NC}             - 清理所有生成的Nginx配置文件"
-    echo -e "  ${YELLOW}cleanup-logs${NC} [天数] [选项] - 清理日志文件，可指定天数清理指定时间前的日志，不指定则清理所有日志"
-    echo -e "                               选项: --force/-f 不询问直接清理"
-    echo ""
-    echo -e "${GREEN}== 一键操作 ==${NC}"
-    echo -e "  ${YELLOW}deploy${NC} [起始端口] [实例数]  - 一键部署服务和配置(创建服务+负载均衡+SSL配置+启动服务)"
+    echo -e "  ${YELLOW}cleanup${NC}                    - 清理所有服务"
     echo -e "  ${YELLOW}help${NC}                       - 显示此帮助信息"
     echo ""
     echo -e "${GREEN}== 使用示例 ==${NC}"
-    echo -e "  $0 create 8000 4           - 创建4个服务，监听端口8000-8003"
-    echo -e "  $0 nginx 8000 4            - 为端口8000-8003生成Nginx负载均衡配置"
-    echo -e "  $0 deploy 8000 4           - 一键部署4个服务实例并配置Nginx"
+    echo -e "  $0 deploy                  - 一键部署双服务配置"
     echo -e "  $0 start                   - 启动所有服务"
     echo -e "  $0 restart                 - 重启所有服务"
-    echo -e "  $0 status                  - 显示所有服务状态和端口监听情况"
-    echo -e "  $0 cleanup && $0 cleanup-config - 完全清理服务和配置"
-    echo -e "  $0 cleanup-logs            - 清理所有日志文件"
-    echo -e "  $0 cleanup-logs 7          - 清理7天前的日志文件"
-    echo -e "  $0 cleanup-logs --force    - 强制清理所有日志文件，不询问确认"
-    echo -e "  $0 cleanup-logs 7 --force  - 强制清理7天前的日志文件，不询问确认"
+    echo -e "  $0 cleanup                 - 清理所有服务"
     echo ""
     echo -e "${BLUE}注意事项:${NC}"
     echo -e "  1. 本脚本需要root权限执行"
-    echo -e "  2. 服务实例从指定起始端口开始，端口8000默认为主服务"
-    echo -e "  3. 配置使用的域名默认为nkuwiki.com，可在脚本中修改"
-    echo -e "  4. SSL证书默认路径为 ${SSL_CERT_PATH} 和 ${SSL_KEY_PATH}"
-    echo -e "  5. 使用Cloudflare时，建议设置SSL/TLS模式为Full或Full(Strict)"
-    echo -e "  6. 日志清理功能会操作 ${PROJECT_ROOT:-$(pwd)}/logs 目录"
+    echo -e "  2. 会创建两个服务：端口8000(1个worker)和端口8001(8个worker)"
+    echo -e "  3. 服务配置默认使用最少连接负载均衡策略"
+    echo -e "  4. 清理命令会停止所有服务并删除服务文件"
 }
 
 # 检查是否是root用户
@@ -96,34 +68,13 @@ function check_port_available {
     fi
 }
 
-# 创建服务文件
-function create_service {
-    local start_port=$1
-    local count=$2
+# 创建两个特定配置的API服务
+function create_dual_service {
+    echo -e "${BLUE}创建两个特定配置的API服务...${NC}"
     
-    # 验证参数
-    if ! [[ "$start_port" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}错误: 起始端口必须是数字${NC}"
-        exit 1
-    fi
-    
-    if ! [[ "$count" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}错误: 实例数必须是数字${NC}"
-        exit 1
-    fi
-    
-    # 检查模板文件是否存在
-    if [ ! -f "$SERVICE_TEMPLATE" ]; then
-        echo -e "${RED}错误: 服务模板文件 $SERVICE_TEMPLATE 不存在${NC}"
-        exit 1
-    fi
-    
-    echo -e "${BLUE}开始创建 $count 个服务实例，从端口 $start_port 开始...${NC}"
-    
-    # 检查各端口是否可用
+    # 检查端口可用性
     local ports_conflict=0
-    for ((i=0; i<count; i++)); do
-        port=$((start_port + i))
+    for port in 8000 8001; do
         if ! check_port_available $port; then
             process=$(netstat -tulnp | grep ":$port " | awk '{print $7}')
             echo -e "${YELLOW}警告: 端口 $port 已被进程 $process 占用${NC}"
@@ -135,7 +86,6 @@ function create_service {
     if [ $ports_conflict -eq 1 ]; then
         echo -e "${YELLOW}检测到端口冲突！您可以:${NC}"
         echo -e "  1. 停止占用端口的进程"
-        echo -e "  2. 使用不同的起始端口"
         read -p "是否继续创建服务? (y/n): " -n 1 -r
         echo
         if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -144,80 +94,75 @@ function create_service {
         fi
     fi
     
-    # 跳过主服务文件nkuwiki.service
-    for ((i=0; i<count; i++)); do
-        port=$((start_port + i))
-        
-        # 跳过端口8000的服务（已作为主服务)
-        if [ "$port" -eq 8000 ]; then
-            echo -e "${YELLOW}跳过端口 8000，已作为主服务${NC}"
-            continue
-        fi
-        
-        service_name="nkuwiki-$port.service"
-        service_path="/etc/systemd/system/$service_name"
-        
-        # 创建服务文件
-        cat > "$service_path" << EOF
+    # 创建8000端口服务 - 1个worker
+    local service_path="/etc/systemd/system/nkuwiki.service"
+    cat > "$service_path" << EOF
 [Unit]
-Description=NKU Wiki API Service (Port $port)
+Description=NKU Wiki API Service (Port 8000, 1 Worker)
 After=network.target nginx.service mysql.service
 
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
-ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port $port
+ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8000 --workers 1
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
-
-# 移除PYTHONOPTIMIZE=1，可能导致不稳定
-# Environment=PYTHONOPTIMIZE=1
-Environment=PYTHONHASHSEED=random
-
-# 资源限制 - 稳定性配置
-CPUQuota=70%
-MemoryLimit=4G
-TasksMax=128
+CPUQuota=30%
+MemoryLimit=2G
+TasksMax=64
 TimeoutStartSec=30
 TimeoutStopSec=30
-
-# OOM配置
 OOMScoreAdjust=-500
-
-# 日志设置
 StandardOutput=journal
 StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOF
-        
-        echo -e "${GREEN}创建服务文件: $service_path${NC}"
-    done
+    echo -e "${GREEN}创建服务文件: $service_path (端口: 8000, Worker: 1)${NC}"
+    
+    # 创建8001端口服务 - 4个worker
+    service_path="/etc/systemd/system/nkuwiki-8001.service"
+    cat > "$service_path" << EOF
+[Unit]
+Description=NKU Wiki API Service (Port 8001, 4 Workers)
+After=network.target nginx.service mysql.service
+
+[Service]
+User=root
+WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
+ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8001 --workers 4
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+CPUQuota=70%
+MemoryLimit=4G
+TasksMax=128
+TimeoutStartSec=30
+TimeoutStopSec=30
+OOMScoreAdjust=-500
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    echo -e "${GREEN}创建服务文件: $service_path (端口: 8001, Worker: 4)${NC}"
     
     # 重新加载systemd配置
     systemctl daemon-reload
     echo -e "${GREEN}所有服务文件已创建并加载${NC}"
 }
 
-# 生成Nginx upstream配置
-function generate_upstream_config {
-    local start_port=$1
-    local count=$2
+# 生成简化的Nginx upstream配置
+function generate_nginx_config {
+    echo -e "${BLUE}生成Nginx配置...${NC}"
     
-    # 验证参数
-    if ! [[ "$start_port" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}错误: 起始端口必须是数字${NC}"
-        exit 1
-    fi
-    
-    if ! [[ "$count" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}错误: 实例数必须是数字${NC}"
-        exit 1
-    fi
-    
-    echo -e "${BLUE}生成Nginx upstream配置...${NC}"
+    # 确保目录存在
+    mkdir -p "$NGINX_SITES_ENABLED"
+    mkdir -p "$NGINX_CONF_DIR"
+    mkdir -p "$NGINX_SITES_DIR"
     
     # 创建upstream配置
     cat > "$UPSTREAM_CONF" << EOF
@@ -229,29 +174,16 @@ upstream nkuwiki_backend {
     # 负载均衡策略: least_conn (最少连接)
     least_conn;
     
-    # 后端服务器列表
-EOF
-    
-    for ((i=0; i<count; i++)); do
-        port=$((start_port + i))
-        echo "    server 127.0.0.1:$port;" >> "$UPSTREAM_CONF"
-    done
-    
-    # 继续添加配置
-    cat >> "$UPSTREAM_CONF" << 'EOF'
+    # 后端服务器列表 - 特定配置
+    server 127.0.0.1:8000 weight=1; # 1 个worker，低负载
+    server 127.0.0.1:8001 weight=4; # 4 个worker，高负载
     
     # 长连接配置
     keepalive 32;
 }
 EOF
     
-    echo -e "${GREEN}Nginx upstream配置已生成: $UPSTREAM_CONF${NC}"
-}
-
-# 生成Cloudflare IP配置
-function generate_cloudflare_config {
-    echo -e "${BLUE}生成Cloudflare IP范围配置...${NC}"
-    
+    # 生成Cloudflare IP配置
     cat > "$CLOUDFLARE_CONF" << 'EOF'
 # Cloudflare IP ranges
 # IPv4
@@ -282,13 +214,7 @@ set_real_ip_from 2c0f:f248::/32;
 real_ip_header CF-Connecting-IP;
 EOF
     
-    echo -e "${GREEN}Cloudflare IP范围配置已生成: $CLOUDFLARE_CONF${NC}"
-}
-
-# 生成HTTP配置
-function generate_http_config {
-    echo -e "${BLUE}生成HTTP配置...${NC}"
-    
+    # 生成HTTP配置
     cat > "$HTTP_CONF" << 'EOF'
 server {
     listen 80;
@@ -343,12 +269,12 @@ server {
         proxy_read_timeout 300s;
     }
 
-    # 静态文件缓存设置 - 优化缓存配置
+    # 静态文件缓存
     location ~* \.(css|js)$ {
         proxy_pass http://nkuwiki_backend;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -356,9 +282,9 @@ server {
 
     location /static/ {
         proxy_pass http://nkuwiki_backend/static/;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -366,9 +292,9 @@ server {
 
     location /assets/ {
         proxy_pass http://nkuwiki_backend/assets/;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -376,9 +302,9 @@ server {
 
     location /img/ {
         proxy_pass http://nkuwiki_backend/img/;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
+        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -386,37 +312,22 @@ server {
 }
 EOF
     
-    echo -e "${GREEN}HTTP配置已生成: $HTTP_CONF${NC}"
-    
-    # 创建符号链接启用配置
+    # 创建HTTP配置链接
     if [ -f "$NGINX_SITES_ENABLED/nkuwiki.conf" ]; then
         rm -f "$NGINX_SITES_ENABLED/nkuwiki.conf"
     fi
     ln -sf "$HTTP_CONF" "$NGINX_SITES_ENABLED/nkuwiki.conf"
-    echo -e "${GREEN}HTTP配置已启用${NC}"
-}
-
-# 生成HTTPS配置
-function generate_https_config {
-    echo -e "${BLUE}生成HTTPS配置...${NC}"
     
-    # 检查SSL证书是否存在
-    if [ ! -f "$SSL_CERT_PATH" ] || [ ! -f "$SSL_KEY_PATH" ]; then
-        echo -e "${YELLOW}警告: SSL证书文件不存在，请确保以下文件存在:${NC}"
-        echo -e "  - 证书: $SSL_CERT_PATH"
-        echo -e "  - 密钥: $SSL_KEY_PATH"
-        echo -e "${YELLOW}HTTPS配置将继续生成，但可能无法正常工作，直到证书文件准备好${NC}"
-    fi
-    
-    cat > "$HTTPS_CONF" << 'EOF'
+    # 生成HTTPS配置
+    cat > "$HTTPS_CONF" << EOF
 server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name nkuwiki.com www.nkuwiki.com;
 
     # SSL证书配置
-    ssl_certificate /etc/ssl/certs/nkuwiki.com.pem;
-    ssl_certificate_key /etc/ssl/private/nkuwiki.com.key;
+    ssl_certificate ${SSL_CERT_PATH};
+    ssl_certificate_key ${SSL_KEY_PATH};
     
     # SSL协议设置
     ssl_protocols TLSv1.2 TLSv1.3;
@@ -450,11 +361,11 @@ server {
     location / {
         proxy_pass http://nkuwiki_backend;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
         proxy_buffering off;
         proxy_read_timeout 300s;
@@ -464,111 +375,65 @@ server {
     location /health {
         proxy_pass http://nkuwiki_backend/health;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host \$host;
         access_log off;
         proxy_read_timeout 5s;
     }
 
-    # 静态文件缓存设置 - 优化缓存配置
-    location ~* \.(css|js)$ {
+    # 静态文件缓存
+    location ~* \\.(css|js)$ {
         proxy_pass http://nkuwiki_backend;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /static/ {
         proxy_pass http://nkuwiki_backend/static/;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /assets/ {
         proxy_pass http://nkuwiki_backend/assets/;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
     location /img/ {
         proxy_pass http://nkuwiki_backend/img/;
-        proxy_set_header Host $host;
         proxy_cache_valid 200 1d;
         add_header Cache-Control "public, max-age=86400";
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
     }
 }
 EOF
     
-    echo -e "${GREEN}HTTPS配置已生成: $HTTPS_CONF${NC}"
-    
-    # 创建符号链接启用配置
+    # 创建HTTPS配置链接
     if [ -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf" ]; then
         rm -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf"
     fi
     ln -sf "$HTTPS_CONF" "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf"
-    echo -e "${GREEN}HTTPS配置已启用${NC}"
-}
-
-# 生成完整Nginx配置(包括upstream、HTTP和HTTPS)
-function generate_nginx_config {
-    local start_port=$1
-    local count=$2
-    
-    # 确保必要的目录存在
-    mkdir -p "$NGINX_SITES_ENABLED"
-    
-    # 生成upstream配置
-    generate_upstream_config "$start_port" "$count"
-    
-    # 生成Cloudflare IP配置
-    generate_cloudflare_config
-    
-    # 生成HTTP配置
-    generate_http_config
-    
-    # 生成HTTPS配置
-    generate_https_config
     
     # 验证Nginx配置
     echo -e "${BLUE}验证Nginx配置...${NC}"
     nginx -t
     
-    echo -e "${YELLOW}要应用配置，请运行: systemctl reload nginx${NC}"
-}
-
-# 设置SSL配置
-function setup_ssl {
-    echo -e "${BLUE}设置SSL配置...${NC}"
-    
-    # 检查SSL证书是否存在
-    if [ ! -f "$SSL_CERT_PATH" ] || [ ! -f "$SSL_KEY_PATH" ]; then
-        echo -e "${YELLOW}SSL证书文件不存在，您需要手动准备以下文件:${NC}"
-        echo -e "  - 证书: $SSL_CERT_PATH"
-        echo -e "  - 密钥: $SSL_KEY_PATH"
-        echo -e "${YELLOW}可以使用Let's Encrypt或其他提供商获取SSL证书${NC}"
-        
-        # 创建目录
-        mkdir -p "$(dirname "$SSL_CERT_PATH")"
-        mkdir -p "$(dirname "$SSL_KEY_PATH")"
-        
-        return 1
-    else
-        echo -e "${GREEN}SSL证书已就绪${NC}"
-        return 0
-    fi
+    echo -e "${GREEN}Nginx配置已生成${NC}"
 }
 
 # 获取所有nkuwiki服务
@@ -631,76 +496,31 @@ function start_services {
     fi
 }
 
-# 配置Nginx
-function configure_nginx {
-    local start_port=$1
-    local count=$2
+# 一键部署简化双服务配置
+function deploy_dual {
+    echo -e "${BLUE}开始一键部署双服务配置...${NC}"
     
-    # 验证参数
-    if ! [[ "$start_port" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}错误: 起始端口必须是数字${NC}"
-        exit 1
-    fi
-    
-    if ! [[ "$count" =~ ^[0-9]+$ ]]; then
-        echo -e "${RED}错误: 实例数必须是数字${NC}"
-        exit 1
-    fi
-    
-    echo -e "${BLUE}开始配置Nginx负载均衡...${NC}"
-    
-    # 1. 生成upstream配置
-    generate_upstream_config "$start_port" "$count"
-    
-    # 2. 生成Cloudflare IP配置
-    generate_cloudflare_config
-    
-    # 3. 生成HTTP配置
-    generate_http_config
-    
-    # 4. 生成HTTPS配置
-    generate_https_config
-    
-    echo -e "${GREEN}Nginx配置完成!${NC}"
-    echo -e "${YELLOW}请使用 'nginx -t && systemctl reload nginx' 检查并应用配置${NC}"
-}
-
-# 一键部署
-function deploy {
-    if [ $# -lt 2 ]; then
-        echo -e "${RED}错误: 需要起始端口和实例数参数${NC}"
-        exit 1
-    fi
-    
-    local start_port=$1
-    local num_instance=$2
-    
-    # 1. 创建所有服务
-    create_service $start_port $num_instance
+    # 1. 创建两个特定配置的服务
+    create_dual_service
     
     # 2. 生成Nginx配置
-    generate_nginx_config $start_port $num_instance
+    generate_nginx_config
     
-    # 3. 生成Cloudflare配置
-    generate_cloudflare_config
-    
-    # 4. 启动所有服务
+    # 3. 启动所有服务
     start_services
     
-    # 5. 设置开机自启
-    enable_services
-    
-    echo -e "${GREEN}完整部署成功完成!${NC}"
-}
-
-# 停止所有服务
-function stop_services {
-    echo -e "${BLUE}停止所有nkuwiki服务...${NC}"
+    # 4. 设置开机自启
+    echo -e "${BLUE}启用所有nkuwiki服务开机自启...${NC}"
     for service in $(get_all_services); do
-        echo -e "停止 $service..."
-        systemctl stop $service
+        echo -e "启用 $service..."
+        systemctl enable $service
     done
-    echo -e "${GREEN}所有服务已停止${NC}"
+    
+    # 5. 重载Nginx配置
+    echo -e "${BLUE}重载Nginx配置...${NC}"
+    nginx -t && systemctl reload nginx
+    
+    echo -e "${GREEN}双服务配置部署完成!${NC}"
 }
 
 # 重启所有服务
@@ -743,95 +563,12 @@ function restart_services {
     fi
 }
 
-# 显示所有服务状态
-function status_services {
-    echo -e "${BLUE}nkuwiki服务状态:${NC}"
-    echo -e "${BLUE}-------------------------------------${NC}"
-    
-    # 检查主服务状态
-    local main_status=$(systemctl is-active nkuwiki.service 2>/dev/null)
-    if [ "$main_status" == "active" ]; then
-        echo -e "${GREEN}主服务 nkuwiki.service: $main_status${NC}"
-    else
-        echo -e "${RED}主服务 nkuwiki.service: $main_status${NC}"
-    fi
-    
-    # 检查其他服务状态
-    local active_count=1  # 初始计数包括主服务
-    local total_count=1
-    
-    # 直接列出所有端口服务
-    for service_file in /etc/systemd/system/nkuwiki-*.service; do
-        if [ -f "$service_file" ]; then
-            service=$(basename "$service_file")
-            total_count=$((total_count + 1))
-            
-            local status=$(systemctl is-active "$service" 2>/dev/null)
-            if [ "$status" == "active" ]; then
-                active_count=$((active_count + 1))
-                echo -e "${GREEN}$service: $status${NC}"
-            else
-                echo -e "${RED}$service: $status${NC}"
-            fi
-        fi
-    done
-    
-    # 显示摘要信息
-    echo -e "${BLUE}-------------------------------------${NC}"
-    echo -e "${YELLOW}活跃服务: $active_count / $total_count${NC}"
-    
-    # 显示进程信息
-    echo -e "${BLUE}-------------------------------------${NC}"
-    echo -e "${YELLOW}进程信息:${NC}"
-    ps aux | grep -E "python3.*app.py.*--port" | grep -v grep
-    
-    # 显示端口监听情况 - 改进这部分以显示所有nkuwiki相关端口
-    echo -e "${BLUE}-------------------------------------${NC}"
-    echo -e "${YELLOW}端口监听情况:${NC}"
-    # 收集所有可能的端口号
-    local ports=$(grep -oE "port [0-9]+" /etc/systemd/system/nkuwiki*.service 2>/dev/null | awk '{print $2}' | sort -n | uniq | tr '\n' '|')
-    if [ -n "$ports" ]; then
-        ports=${ports%|}  # 移除最后一个|
-        # 使用收集到的所有端口号构建grep模式
-        netstat -tulnp | grep -E ":(${ports})" | sort -n -k 4
-    else
-        # 如果无法从服务文件中获取端口，则使用默认范围
-        netstat -tulnp | grep -E ":(8000|8001|8002|8003|8004|8005|8006|8007|8008|8009)" | sort -n -k 4
-    fi
-    
-    # 显示Nginx状态
-    echo -e "${BLUE}-------------------------------------${NC}"
-    echo -e "${YELLOW}Nginx状态:${NC}"
-    systemctl status nginx --no-pager | head -n 3
-    nginx -T 2>/dev/null | grep -E "upstream|server.*8[0-9]{3}" | head -n 15
-}
-
-# 启用所有服务开机自启
-function enable_services {
-    echo -e "${BLUE}启用所有nkuwiki服务开机自启...${NC}"
-    for service in $(get_all_services); do
-        echo -e "启用 $service..."
-        systemctl enable $service
-    done
-    echo -e "${GREEN}所有服务已启用开机自启${NC}"
-}
-
-# 禁用所有服务开机自启
-function disable_services {
-    echo -e "${BLUE}禁用所有nkuwiki服务开机自启...${NC}"
-    for service in $(get_all_services); do
-        echo -e "禁用 $service..."
-        systemctl disable $service
-    done
-    echo -e "${GREEN}所有服务已禁用开机自启${NC}"
-}
-
-# 清理服务(除了主服务)
+# 清理服务
 function cleanup_services {
-    echo -e "${BLUE}清理所有nkuwiki服务(除主服务外)...${NC}"
+    echo -e "${BLUE}清理所有nkuwiki服务...${NC}"
     
     # 先停止服务
-    for service in $(get_all_services | grep -v "^nkuwiki.service$"); do
+    for service in $(get_all_services); do
         echo -e "停止 $service..."
         systemctl stop $service 2>/dev/null || true
         
@@ -845,16 +582,7 @@ function cleanup_services {
         fi
     done
     
-    # 重新加载systemd配置
-    systemctl daemon-reload
-    echo -e "${GREEN}清理完成${NC}"
-}
-
-# 清理所有配置文件
-function cleanup_config {
-    echo -e "${BLUE}清理所有Nginx配置文件...${NC}"
-    
-    # 移除启用的配置链接
+    # 清理Nginx配置
     if [ -f "$NGINX_SITES_ENABLED/nkuwiki.conf" ]; then
         echo -e "删除 $NGINX_SITES_ENABLED/nkuwiki.conf..."
         rm -f "$NGINX_SITES_ENABLED/nkuwiki.conf"
@@ -863,17 +591,6 @@ function cleanup_config {
     if [ -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf" ]; then
         echo -e "删除 $NGINX_SITES_ENABLED/nkuwiki-ssl.conf..."
         rm -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf"
-    fi
-    
-    # 移除配置文件
-    if [ -f "$HTTP_CONF" ]; then
-        echo -e "删除 $HTTP_CONF..."
-        rm -f "$HTTP_CONF"
-    fi
-    
-    if [ -f "$HTTPS_CONF" ]; then
-        echo -e "删除 $HTTPS_CONF..."
-        rm -f "$HTTPS_CONF"
     fi
     
     if [ -f "$UPSTREAM_CONF" ]; then
@@ -886,91 +603,14 @@ function cleanup_config {
         rm -f "$CLOUDFLARE_CONF"
     fi
     
-    # 重启Nginx应用更改
-    echo -e "${BLUE}重启Nginx应用配置修改...${NC}"
-    nginx -t && systemctl restart nginx
+    # 重新加载systemd配置
+    systemctl daemon-reload
     
-    echo -e "${GREEN}所有配置文件已清理${NC}"
-}
-
-# 清理日志文件
-function cleanup_logs {
-    local days=$1
-    local force=$2
+    # 重载Nginx配置
+    echo -e "${BLUE}重载Nginx配置...${NC}"
+    nginx -t && systemctl reload nginx
     
-    # 获取项目根目录
-    if [ -z "$PROJECT_ROOT" ]; then
-        PROJECT_ROOT="$(pwd)"
-    fi
-    
-    LOGS_DIR="${PROJECT_ROOT}/logs"
-    
-    # 检查日志目录是否存在
-    if [ ! -d "$LOGS_DIR" ]; then
-        echo -e "${YELLOW}警告: 日志目录不存在 ${LOGS_DIR}${NC}"
-        echo -e "${BLUE}创建日志目录...${NC}"
-        mkdir -p "$LOGS_DIR"
-        echo -e "${GREEN}日志目录已创建${NC}"
-        return 0
-    fi
-    
-    # 统计日志文件大小和数量
-    total_size=$(du -sh "$LOGS_DIR" | cut -f1)
-    total_files=$(find "$LOGS_DIR" -type f | wc -l)
-    
-    echo -e "${BLUE}日志目录信息:${NC}"
-    echo -e "  目录: ${LOGS_DIR}"
-    echo -e "  文件总数: ${total_files}"
-    echo -e "  总大小: ${total_size}"
-    
-    # 根据不同的清理策略执行清理
-    if [ -z "$days" ]; then
-        # 清理所有日志文件
-        if [ "$force" != "force" ]; then
-            echo -e "${YELLOW}准备清理所有日志文件...${NC}"
-            read -p "确认清理所有日志文件? (y/n): " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                echo -e "${RED}操作已取消${NC}"
-                return 1
-            fi
-        else
-            echo -e "${YELLOW}强制模式: 清理所有日志文件...${NC}"
-        fi
-        
-        echo -e "${BLUE}清理所有日志文件...${NC}"
-        find "$LOGS_DIR" -type f -name "*.log" -delete
-        find "$LOGS_DIR" -type f -name "*.log.*" -delete
-        echo -e "${GREEN}所有日志文件已清理完成${NC}"
-    else
-        # 清理指定天数前的日志
-        if [ "$force" != "force" ]; then
-            echo -e "${YELLOW}准备清理 $days 天前的日志文件...${NC}"
-            read -p "确认清理 $days 天前的日志文件? (y/n): " -n 1 -r
-            echo
-            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-                echo -e "${RED}操作已取消${NC}"
-                return 1
-            fi
-        else
-            echo -e "${YELLOW}强制模式: 清理 $days 天前的日志文件...${NC}"
-        fi
-        
-        echo -e "${BLUE}清理 $days 天前的日志文件...${NC}"
-        find "$LOGS_DIR" -type f -name "*.log" -mtime +$days -delete
-        find "$LOGS_DIR" -type f -name "*.log.*" -mtime +$days -delete
-        echo -e "${GREEN}$days 天前的日志文件已清理完成${NC}"
-    fi
-    
-    # 清理后的统计
-    new_total_size=$(du -sh "$LOGS_DIR" | cut -f1)
-    new_total_files=$(find "$LOGS_DIR" -type f | wc -l)
-    
-    echo -e "${BLUE}清理后信息:${NC}"
-    echo -e "  文件总数: ${new_total_files} (清理了 $((total_files - new_total_files)) 个文件)"
-    echo -e "  总大小: ${new_total_size}"
-    
-    return 0
+    echo -e "${GREEN}清理完成${NC}"
 }
 
 # 主函数
@@ -983,81 +623,17 @@ function main {
     fi
     
     case "$1" in
-        create)
-            if [ $# -lt 3 ]; then
-                echo -e "${RED}错误: create命令需要起始端口和实例数参数${NC}"
-                show_help
-                exit 1
-            fi
-            create_service $2 $3
+        deploy)
+            deploy_dual
             ;;
         start)
             start_services
             ;;
-        stop)
-            stop_services
-            ;;
         restart)
             restart_services
             ;;
-        status)
-            status_services
-            ;;
-        enable)
-            enable_services
-            ;;
-        disable)
-            disable_services
-            ;;
-        nginx)
-            if [ $# -lt 3 ]; then
-                echo -e "${RED}错误: nginx命令需要起始端口和实例数参数${NC}"
-                show_help
-                exit 1
-            fi
-            generate_nginx_config $2 $3
-            ;;
-        cloudflare)
-            generate_cloudflare_config
-            ;;
-        setup-ssl)
-            setup_ssl
-            ;;
-        deploy)
-            if [ $# -lt 3 ]; then
-                echo -e "${RED}错误: deploy命令需要起始端口和实例数参数${NC}"
-                show_help
-                exit 1
-            fi
-            deploy $2 $3
-            ;;
         cleanup)
             cleanup_services
-            ;;
-        cleanup-config)
-            cleanup_config
-            ;;
-        cleanup-logs)
-            local force_flag=""
-            local days_value=""
-            
-            # 检查参数
-            shift  # 移除第一个参数 (cleanup-logs)
-            while [ $# -gt 0 ]; do
-                case "$1" in
-                    --force|-f)
-                        force_flag="force"
-                        ;;
-                    *)
-                        if [[ "$1" =~ ^[0-9]+$ ]]; then
-                            days_value="$1"
-                        fi
-                        ;;
-                esac
-                shift
-            done
-            
-            cleanup_logs "$days_value" "$force_flag"
             ;;
         help)
             show_help

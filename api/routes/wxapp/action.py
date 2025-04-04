@@ -2,15 +2,14 @@
 微信小程序互动动作API接口
 包括点赞、收藏、关注等功能
 """
-from fastapi import APIRouter, Request, Query
+from fastapi import APIRouter, Query
 from api.models.common import Response, Request, validate_params, PaginationInfo
 from etl.load.db_core import (
-    query_records, get_record_by_id, insert_record, update_record, count_records, delete_record,
-    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, execute_custom_query,
-    async_query, execute_query
+    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, 
+    execute_query, async_execute_custom_query
 )
-from datetime import datetime
 import time
+import json
 
 # 初始化路由器
 router = APIRouter()
@@ -265,63 +264,63 @@ async def like_post(request: Request):
         req_data = await request.json()
         required_params = ["post_id", "openid"]
         error_response = validate_params(req_data, required_params)
-        if(error_response):
+        if error_response:
             return error_response
 
         openid = req_data.get("openid")
         post_id = req_data.get("post_id")
 
-        post = await async_get_by_id(
-            table_name="wxapp_post",
-            record_id=post_id
-        )
-        if not post:
+        # 使用单一查询获取帖子信息
+        post_query = """
+        SELECT * FROM wxapp_post 
+        WHERE id = %s
+        """
+        post_result = await async_execute_custom_query(post_query, [post_id])
+        
+        if not post_result:
             return Response.not_found(resource="帖子")
+            
+        post = post_result[0]
 
-        # 查询是否已点赞
-        like_record = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "like",
-                "target_id": post_id,
-                "target_type": "post"
-            },
-            limit=1
-        )
-
-        already_liked = like_record and len(like_record.get('data', [])) > 0
+        # 使用直接SQL查询检查是否已点赞
+        like_query = """
+        SELECT id FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'post' 
+        LIMIT 1
+        """
+        like_record = await async_execute_custom_query(like_query, [openid, post_id])
+        
+        already_liked = bool(like_record)
 
         if already_liked:
             # 取消点赞
             try:
-                execute_query(
-                    "DELETE FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s",
-                    [openid, "like", post_id, "post"]
-                )
+                # 使用单一查询删除点赞记录
+                delete_sql = """
+                DELETE FROM wxapp_action 
+                WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'post'
+                """
+                await async_execute_custom_query(delete_sql, [openid, post_id], fetch=False)
             except Exception as e:
                 return Response.db_error(details={"message": f"取消点赞失败: {str(e)}"})
             
             new_like_count = max(0, post.get("like_count", 0) - 1)
-            await async_update(
-                table_name="wxapp_post",
-                record_id=post_id,
-                data={"like_count": new_like_count}
-            )
+            
+            # 使用单一查询更新帖子点赞数
+            update_post_sql = """
+            UPDATE wxapp_post 
+            SET like_count = %s 
+            WHERE id = %s
+            """
+            await async_execute_custom_query(update_post_sql, [new_like_count, post_id], fetch=False)
 
-            # 更新用户点赞数
-            user = await async_query_records(
-                table_name="wxapp_user",
-                conditions={"openid": openid},
-                limit=1
-            )
-            if user and user.get('data'):
-                user_data = user['data'][0]
-                await async_update(
-                    table_name="wxapp_user",
-                    record_id=user_data["id"],
-                    data={"like_count": max(0, user_data.get("like_count", 0) - 1)}
-                )
+            # 使用单一查询更新用户点赞数
+            update_user_sql = """
+            UPDATE wxapp_user 
+            SET like_count = GREATEST(0, like_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_user_sql, [openid], fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -332,56 +331,58 @@ async def like_post(request: Request):
         else:
             # 创建点赞
             try:
-                like_id = await async_insert(
-                    table_name="wxapp_action",
-                    data={
-                        "openid": openid,
-                        "action_type": "like",
-                        "target_id": post_id,
-                        "target_type": "post"
-                    }
+                # 使用单一查询插入点赞记录
+                insert_sql = """
+                INSERT INTO wxapp_action (openid, action_type, target_id, target_type, create_time, update_time)
+                VALUES (%s, %s, %s, %s, NOW(), NOW())
+                """
+                await async_execute_custom_query(
+                    insert_sql, 
+                    [openid, "like", post_id, "post"], 
+                    fetch=False
                 )
             except Exception as e:
                 return Response.db_error(details={"message": f"点赞操作失败: {str(e)}"})
 
             new_like_count = post.get("like_count", 0) + 1
-            await async_update(
-                table_name="wxapp_post",
-                record_id=post_id,
-                data={"like_count": new_like_count}
-            )
+            
+            # 使用单一查询更新帖子点赞数
+            update_post_sql = """
+            UPDATE wxapp_post 
+            SET like_count = %s 
+            WHERE id = %s
+            """
+            await async_execute_custom_query(update_post_sql, [new_like_count, post_id], fetch=False)
 
-            # 更新用户点赞数
-            user = await async_query_records(
-                table_name="wxapp_user",
-                conditions={"openid": openid},
-                limit=1
-            )
-            if user and user.get('data'):
-                user_data = user['data'][0]
-                await async_update(
-                    table_name="wxapp_user",
-                    record_id=user_data["id"],
-                    data={"like_count": user_data.get("like_count", 0) + 1}
-                )
+            # 使用单一查询更新用户点赞数
+            update_user_sql = """
+            UPDATE wxapp_user 
+            SET like_count = like_count + 1 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_user_sql, [openid], fetch=False)
 
+            # 创建通知
             if openid != post["openid"]:
-                notification_data = {
-                    "openid": post["openid"],
-                    "title": "收到点赞",
-                    "content": f"有用户点赞了你的帖子「{post.get('title', '无标题')}」",
-                    "type": "like",
-                    "is_read": False,
-                    "sender": {"openid": openid},
-                    "target_id": post_id,
-                    "target_type": "post",
-                    "status": 1
-                }
-
-                await async_insert(
-                    table_name="wxapp_notification",
-                    data=notification_data
+                notification_sql = """
+                INSERT INTO wxapp_notification (
+                    openid, title, content, type, is_read, sender, target_id, 
+                    target_type, status, create_time, update_time
                 )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                notification_params = [
+                    post["openid"],
+                    "收到点赞",
+                    f"有用户点赞了你的帖子「{post.get('title', '无标题')}」",
+                    "like",
+                    False,
+                    json.dumps({"openid": openid}),
+                    post_id,
+                    "post",
+                    1
+                ]
+                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -391,6 +392,7 @@ async def like_post(request: Request):
             }, details={"message": "点赞成功"})
 
     except Exception as e:
+        logger.error(f"点赞操作失败: {e}")
         return Response.error(details={"message": f"操作失败: {str(e)}"})
 
 @router.post("/post/favorite")
@@ -405,36 +407,46 @@ async def favorite_post(request: Request):
 
         openid = req_data.get("openid")
         post_id = req_data.get("post_id")
-        post = await async_get_by_id("wxapp_post", post_id)
-        if not post:
-            return Response.not_found(resource="帖子")
-
-        exists = await async_query_records(
-            "wxapp_action",
-            {"openid": openid, "action_type": "favorite", "target_id": post_id, "target_type": "post"},
-            limit=1
-        )
         
-        has_favorited = exists and exists.get('data') and len(exists.get('data')) > 0
+        # 获取帖子信息
+        post_sql = "SELECT * FROM wxapp_post WHERE id = %s"
+        post_result = await async_execute_custom_query(post_sql, [post_id])
+        
+        if not post_result:
+            return Response.not_found(resource="帖子")
+            
+        post = post_result[0]
+
+        # 检查是否已收藏
+        favorite_sql = """
+        SELECT * FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'favorite' AND target_id = %s AND target_type = 'post'
+        LIMIT 1
+        """
+        favorite_result = await async_execute_custom_query(favorite_sql, [openid, post_id])
+        
+        has_favorited = bool(favorite_result)
+        
         if has_favorited:
             # 取消收藏
-            execute_custom_query(
-                "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'favorite' AND target_id = %s AND target_type = %s",
-                [openid, post_id, "post"],
-                fetch=False
-            )
+            delete_sql = """
+            DELETE FROM wxapp_action 
+            WHERE openid = %s AND action_type = 'favorite' AND target_id = %s AND target_type = 'post'
+            """
+            await async_execute_custom_query(delete_sql, [openid, post_id], fetch=False)
             
+            # 更新帖子收藏数
             new_count = max(0, post["favorite_count"] - 1)
-            await async_update("wxapp_post", post_id, {"favorite_count": new_count})
+            update_post_sql = "UPDATE wxapp_post SET favorite_count = %s WHERE id = %s"
+            await async_execute_custom_query(update_post_sql, [new_count, post_id], fetch=False)
             
             # 更新被收藏用户的收藏数
-            await async_update(
-                "wxapp_user",
-                {"openid": post["openid"]},
-                {"favorite_count": execute_custom_query(
-                    "SELECT favorite_count FROM wxapp_user WHERE openid = %s",
-                    [post["openid"]], fetch=True)[0]["favorite_count"] - 1}
-            )
+            update_user_sql = """
+            UPDATE wxapp_user 
+            SET favorite_count = GREATEST(0, favorite_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_user_sql, [post["openid"]], fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -444,41 +456,42 @@ async def favorite_post(request: Request):
             }, details={"message": "取消收藏成功"})
         else:
             # 创建收藏
-            await async_insert("wxapp_action", {
-                "openid": openid,
-                "action_type": "favorite",
-                "target_id": post_id,
-                "target_type": "post"
-            })
+            insert_sql = """
+            INSERT INTO wxapp_action (openid, action_type, target_id, target_type, create_time, update_time)
+            VALUES (%s, %s, %s, %s, NOW(), NOW())
+            """
+            await async_execute_custom_query(insert_sql, [openid, "favorite", post_id, "post"], fetch=False)
 
+            # 更新帖子收藏数
             new_count = post["favorite_count"] + 1
-            await async_update("wxapp_post", post_id, {"favorite_count": new_count})
+            update_post_sql = "UPDATE wxapp_post SET favorite_count = %s WHERE id = %s"
+            await async_execute_custom_query(update_post_sql, [new_count, post_id], fetch=False)
 
-            # 更新被收藏用户的获赞数
-            await async_update(
-                "wxapp_user",
-                {"openid": post["openid"]},
-                {"favorite_count": execute_custom_query(
-                    "SELECT favorite_count FROM wxapp_user WHERE openid = %s",
-                    [post["openid"]], fetch=True)[0]["favorite_count"] + 1}
-            )
+            # 更新被收藏用户的收藏数
+            update_user_sql = "UPDATE wxapp_user SET favorite_count = favorite_count + 1 WHERE openid = %s"
+            await async_execute_custom_query(update_user_sql, [post["openid"]], fetch=False)
 
+            # 创建通知
             if post["openid"] != openid:
-                notification_data = {
-                    "openid": post["openid"],
-                    "title": "帖子被收藏",
-                    "content": f"您的帖子「{post.get('title', '无标题')}」被用户收藏了",
-                    "type": "favorite",
-                    "is_read": False,
-                    "sender": {"openid": openid},
-                    "target_id": post_id,
-                    "target_type": "post",
-                    "status": 1
-                }
-                await async_insert(
-                    table_name="wxapp_notification",
-                    data=notification_data
+                notification_sql = """
+                INSERT INTO wxapp_notification (
+                    openid, title, content, type, is_read, sender, target_id, 
+                    target_type, status, create_time, update_time
                 )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                notification_params = [
+                    post["openid"],
+                    "帖子被收藏",
+                    f"您的帖子「{post.get('title', '无标题')}」被用户收藏了",
+                    "favorite",
+                    False,
+                    json.dumps({"openid": openid}),
+                    post_id,
+                    "post",
+                    1
+                ]
+                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -488,6 +501,7 @@ async def favorite_post(request: Request):
             }, details={"message": "收藏成功"})
 
     except Exception as e:
+        logger.error(f"收藏操作失败: {e}")
         return Response.error(details={"message": f"操作失败: {str(e)}"})
 
 @router.post("/user/follow")
@@ -506,51 +520,58 @@ async def follow_user(request: Request):
         if openid == followed_id:
             return Response.bad_request(details={"message": "不能关注自己"})
 
-        # 检查被关注用户是否存在
-        followed_user = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": followed_id},
-            limit=1
-        )
+        # 检查被关注用户是否存在，并获取其用户ID
+        followed_sql = "SELECT id, openid FROM wxapp_user WHERE openid = %s LIMIT 1"
+        followed_user = await async_execute_custom_query(followed_sql, [followed_id])
         
-        if not followed_user or not followed_user.get('data'):
+        if not followed_user:
             return Response.not_found(resource="被关注用户")
+            
+        # 获取用户数字ID
+        user_id = followed_user[0]["id"]
+        
+        # 也获取当前用户的ID
+        current_user_sql = "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1"
+        current_user = await async_execute_custom_query(current_user_sql, [openid])
+        
+        if not current_user:
+            return Response.not_found(resource="当前用户")
+            
+        current_user_id = current_user[0]["id"]
 
-        existing_follow = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "follow",
-                "target_type": "user",
-                "target_id": followed_id
-            },
-            limit=1
-        )
-        has_followed = existing_follow and existing_follow.get('data')
+        # 查询是否已关注 - 使用数字ID
+        follow_sql = """
+        SELECT * FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'follow' AND target_type = 'user' AND target_id = %s
+        LIMIT 1
+        """
+        existing_follow = await async_execute_custom_query(follow_sql, [openid, user_id])
+        
+        has_followed = bool(existing_follow)
 
         if has_followed:
-            # 取消关注
-            execute_custom_query(
-                "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'follow' AND target_type = 'user' AND target_id = %s",
-                [openid, followed_id],
-                fetch=False
-            )
+            # 取消关注 - 使用数字ID
+            delete_sql = """
+            DELETE FROM wxapp_action 
+            WHERE openid = %s AND action_type = 'follow' AND target_type = 'user' AND target_id = %s
+            """
+            await async_execute_custom_query(delete_sql, [openid, user_id], fetch=False)
 
-            # 更新关注者和被关注者的计数
-            await async_update(
-                "wxapp_user",
-                {"openid": openid},
-                {"following_count": execute_custom_query(
-                    "SELECT following_count FROM wxapp_user WHERE openid = %s",
-                    [openid], fetch=True)[0]["following_count"] - 1}
-            )
-            await async_update(
-                "wxapp_user",
-                {"openid": followed_id},
-                {"follower_count": execute_custom_query(
-                    "SELECT follower_count FROM wxapp_user WHERE openid = %s",
-                    [followed_id], fetch=True)[0]["follower_count"] - 1}
-            )
+            # 更新关注者的关注数
+            update_following_sql = """
+            UPDATE wxapp_user 
+            SET following_count = GREATEST(0, following_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_following_sql, [openid], fetch=False)
+            
+            # 更新被关注者的粉丝数
+            update_follower_sql = """
+            UPDATE wxapp_user 
+            SET follower_count = GREATEST(0, follower_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_follower_sql, [followed_id], fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -558,44 +579,50 @@ async def follow_user(request: Request):
                 "is_following": False
             }, details={"message": "取消关注成功"})
         else:
-            # 创建关注
-            action_data = {
-                "openid": openid,
-                "action_type": "follow",
-                "target_type": "user",
-                "target_id": followed_id
-            }
-            await async_insert("wxapp_action", action_data)
+            # 创建关注 - 使用数字ID
+            insert_sql = """
+            INSERT INTO wxapp_action (openid, action_type, target_type, target_id, create_time, update_time)
+            VALUES (%s, %s, %s, %s, NOW(), NOW())
+            """
+            await async_execute_custom_query(insert_sql, [openid, "follow", "user", user_id], fetch=False)
 
-            # 更新关注者和被关注者的计数
-            await async_update(
-                "wxapp_user",
-                {"openid": openid},
-                {"following_count": execute_custom_query(
-                    "SELECT following_count FROM wxapp_user WHERE openid = %s",
-                    [openid], fetch=True)[0]["following_count"] + 1}
-            )
-            await async_update(
-                "wxapp_user",
-                {"openid": followed_id},
-                {"follower_count": execute_custom_query(
-                    "SELECT follower_count FROM wxapp_user WHERE openid = %s",
-                    [followed_id], fetch=True)[0]["follower_count"] + 1}
-            )
+            # 更新关注者的关注数
+            update_following_sql = """
+            UPDATE wxapp_user 
+            SET following_count = following_count + 1 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_following_sql, [openid], fetch=False)
+            
+            # 更新被关注者的粉丝数
+            update_follower_sql = """
+            UPDATE wxapp_user 
+            SET follower_count = follower_count + 1 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_follower_sql, [followed_id], fetch=False)
 
+            # 创建通知 - 为通知保存openid
             if followed_id != openid:
-                notification_data = {
-                    "openid": followed_id,
-                    "title": "收到新关注",
-                    "content": "有用户关注了你",
-                    "type": "follow",
-                    "is_read": False,
-                    "sender": {"openid": openid},
-                    "target_id": openid,
-                    "target_type": "user",
-                    "status": 1
-                }
-                await async_insert("wxapp_notification", notification_data)
+                notification_sql = """
+                INSERT INTO wxapp_notification (
+                    openid, title, content, type, is_read, sender, target_id, 
+                    target_type, status, create_time, update_time
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                notification_params = [
+                    followed_id,
+                    "收到新关注",
+                    "有用户关注了你",
+                    "follow",
+                    False,
+                    json.dumps({"openid": openid}),
+                    current_user_id, # 使用关注者的数字ID作为target_id
+                    "user",
+                    1
+                ]
+                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -604,5 +631,6 @@ async def follow_user(request: Request):
             }, details={"message": "关注成功"})
 
     except Exception as e:
+        logger.error(f"关注操作失败: {e}")
         return Response.error(details={"message": f"操作失败: {str(e)}"})
 

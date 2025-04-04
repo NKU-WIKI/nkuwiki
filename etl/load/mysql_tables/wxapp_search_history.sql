@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS wxapp_search_history (
     id INT AUTO_INCREMENT PRIMARY KEY,
     openid VARCHAR(64),
-    keyword VARCHAR(255) NOT NULL,
+    keyword VARCHAR(255) DEFAULT NULL,
     search_time DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_openid (openid),
     INDEX idx_keyword (keyword),
