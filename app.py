@@ -8,11 +8,9 @@ import time
 import argparse
 import atexit
 import warnings
-import asyncio
 from pathlib import Path
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
-from datetime import datetime
 from fastapi import FastAPI, APIRouter
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -24,7 +22,6 @@ from api import router
 from api.models.common import Response, Request
 from core.utils.logger import register_logger
 from config import Config
-import importlib.metadata
 
 # 过滤pydub的ffmpeg警告
 warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", category=RuntimeWarning)
@@ -38,7 +35,7 @@ config = Config()
 # 初始化日志系统
 logger = register_logger("app")
 # 创建应用上下文
-request_id_var: ContextVar[str] = ContextVar("request_id", default="")
+request_id_var = ContextVar("request_id", default="")
 
 
 # =============================================================================
@@ -258,15 +255,14 @@ def run_qa_service():
         logger.error(f"Error starting channel {channel_type}: {str(e)}")
         sys.exit(1)
 
-def run_api_service(port):
+def run_api_service(port, workers=1):
     """启动API服务，通过Nginx反向代理实现HTTP/HTTPS访问"""
     host = "127.0.0.1"  # 只监听本地接口，由Nginx转发请求
     
     try:
-        # 准备启动参数 - 单进程稳定模式
         common_params = {
             "reload": False,
-            "workers": 1,           
+            "workers": workers,           
             "log_level": "info",
             "limit_concurrency": 500, 
             "timeout_keep_alive": 30, 
@@ -276,7 +272,7 @@ def run_api_service(port):
         }
         
         # 启动HTTP服务
-        logger.debug(f"以单进程稳定模式启动 ({host}:{port})，worker数量: 1")
+        logger.debug(f"以多进程模式启动 ({host}:{port})，worker数量: {workers}")
         uvicorn.run(
             "app:app", 
             host=host, 
@@ -302,6 +298,7 @@ if __name__ == "__main__":
     parser.add_argument("--qa", action="store_true", help="启动问答服务")
     parser.add_argument("--api", action="store_true", help="启动API服务")
     parser.add_argument("--port", type=int, default=8000, help="API服务监听端口")
+    parser.add_argument("--workers", type=int, default=1, help="API服务worker进程数量，默认为1")
     
     args = parser.parse_args()
     
@@ -320,7 +317,7 @@ if __name__ == "__main__":
     
     if args.api:
         # 启动API服务
-        run_api_service(args.port)
+        run_api_service(args.port, args.workers)
     elif args.qa:
         # 如果只启动了问答服务，则等待问答服务线程结束
         qa_thread.join()

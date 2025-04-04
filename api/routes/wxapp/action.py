@@ -2,15 +2,14 @@
 微信小程序互动动作API接口
 包括点赞、收藏、关注等功能
 """
-from fastapi import Query, APIRouter, Request
+from fastapi import APIRouter, Query
 from api.models.common import Response, Request, validate_params, PaginationInfo
 from etl.load.db_core import (
-    query_records, get_record_by_id, insert_record, update_record, count_records, delete_record,
-    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, execute_custom_query,
-    async_query, execute_query
+    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, 
+    execute_query, async_execute_custom_query
 )
-from datetime import datetime
 import time
+import json
 
 # 初始化路由器
 router = APIRouter()
@@ -30,7 +29,7 @@ async def create_comment(request: Request):
         post_id = req_data.get("post_id")
         content = req_data.get("content")
         parent_id = req_data.get("parent_id")
-        images = req_data.get("images", [])
+        image = req_data.get("image", [])
         
         print(f"参数校验通过: openid={openid}, post_id={post_id}, content={content}")
 
@@ -72,7 +71,7 @@ async def create_comment(request: Request):
             "content": content,
             "parent_id": parent_id,
             "root_id": req_data.get("root_id", parent_id),
-            "images": images,
+            "image": image,
             "like_count": 0,
             "status": 1
         }
@@ -153,7 +152,7 @@ async def create_comment(request: Request):
 
 @router.post("/comment/like")
 async def like_comment(request: Request):
-    """点赞评论"""
+    """点赞/取消点赞评论"""
     try:
         req_data = await request.json()
         required_params = ["comment_id", "openid"]
@@ -186,261 +185,219 @@ async def like_comment(request: Request):
         already_liked = like_record and len(like_record.get('data', [])) > 0
 
         if already_liked:
+            # 取消点赞
+            try:
+                execute_query(
+                    "DELETE FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s",
+                    [openid, "like", comment_id, "comment"]
+                )
+            except Exception as e:
+                return Response.db_error(details={"message": f"取消点赞失败: {str(e)}"})
+            
+            new_like_count = max(0, comment.get("like_count", 0) - 1)
+            await async_update(
+                table_name="wxapp_comment",
+                record_id=comment_id,
+                data={"like_count": new_like_count}
+            )
+
             return Response.success(data={
                 "success": True,
-                "status": "already_liked",
-                "message": "已经点赞",
-                "like_count": comment.get("like_count", 0),
-                "is_liked": True
-            })
-
-        # 创建点赞记录
-        like_data = {
-            "openid": openid,
-            "action_type": "like",
-            "target_id": comment_id,
-            "target_type": "comment"
-        }
-
-        try:
-            like_id = await async_insert(
-                table_name="wxapp_action",
-                data=like_data
-            )
-        except Exception as e:
-            return Response.db_error(details={"message": f"点赞操作失败: {str(e)}"})
-
-        new_like_count = comment.get("like_count", 0) + 1
-        await async_update(
-            table_name="wxapp_comment",
-            record_id=comment_id,
-            data={"like_count": new_like_count}
-        )
-
-        if openid != comment["openid"]:
-            notification_data = {
-                "openid": comment["openid"],
-                "title": "收到点赞",
-                "content": "有用户点赞了你的评论",
-                "type": "like",
-                "is_read": False,
-                "sender": {"openid": openid},
-                "target_id": comment_id,
-                "target_type": "comment",
-                "status": 1
-            }
-
-            await async_insert(
-                table_name="wxapp_notification",
-                data=notification_data
-            )
-
-        return Response.success(data={
-            "success": True,
-            "status": "liked",
-            "message": "点赞成功",
-            "like_count": new_like_count,
-            "is_liked": True
-        })
-    except Exception as e:
-        return Response.error(details={"message": f"点赞评论失败: {str(e)}"})
-
-@router.post("/comment/unlike")
-async def unlike_comment(request: Request):
-    """取消点赞评论"""
-    try:
-        req_data = await request.json()
-        required_params = ["comment_id", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
-
-        openid = req_data.get("openid")
-        comment_id = req_data.get("comment_id")
-
-        # 查询是否已点赞
-        like_record = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "like",
-                "target_id": comment_id,
-                "target_type": "comment"
-            },
-            limit=1
-        )
-
-        # 判断逻辑修改为与get_comment_status一致
-        already_liked = bool(like_record)
-        if not already_liked:
-            return Response.bad_request(details={"message": "未点赞，无法取消点赞"})
-
-        comment = await async_get_by_id(
-            table_name="wxapp_comment",
-            record_id=comment_id
-        )
-        if comment and comment.get("like_count", 0) > 0:
-            new_like_count = comment["like_count"] - 1
+                "status": "unliked",
+                "like_count": new_like_count,
+                "is_liked": False
+            }, details={"message": "取消点赞成功"})
         else:
-            new_like_count = 0
+            # 创建点赞
+            try:
+                like_id = await async_insert(
+                    table_name="wxapp_action",
+                    data={
+                        "openid": openid,
+                        "action_type": "like",
+                        "target_id": comment_id,
+                        "target_type": "comment"
+                    }
+                )
+            except Exception as e:
+                return Response.db_error(details={"message": f"点赞操作失败: {str(e)}"})
 
-        # 删除点赞记录
-        try:
-            execute_query(
-                "DELETE FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s",
-                [openid, "like", comment_id, "comment"]
+            new_like_count = comment.get("like_count", 0) + 1
+            await async_update(
+                table_name="wxapp_comment",
+                record_id=comment_id,
+                data={"like_count": new_like_count}
             )
-        except Exception as e:
-            return Response.db_error(details={"message": f"删除点赞记录失败: {str(e)}"})
-        
-        # 更新评论点赞数
-        await async_update(
-            table_name="wxapp_comment",
-            record_id=comment_id,
-            data={"like_count": new_like_count}
-        )
 
-        return Response.success(data={
-            "success": True,
-            "status": "unliked",
-            "like_count": new_like_count,
-            "is_liked": False
-        }, details={"message": "取消点赞成功"})
+            if openid != comment["openid"]:
+                notification_data = {
+                    "openid": comment["openid"],
+                    "title": "收到点赞",
+                    "content": "有用户点赞了你的评论",
+                    "type": "like",
+                    "is_read": False,
+                    "sender": {"openid": openid},
+                    "target_id": comment_id,
+                    "target_type": "comment",
+                    "status": 1
+                }
+
+                await async_insert(
+                    table_name="wxapp_notification",
+                    data=notification_data
+                )
+
+            return Response.success(data={
+                "success": True,
+                "status": "liked",
+                "like_count": new_like_count,
+                "is_liked": True
+            }, details={"message": "点赞成功"})
+
     except Exception as e:
-        return Response.error(details={"message": f"取消点赞评论失败: {str(e)}"})
-
+        return Response.error(details={"message": f"操作失败: {str(e)}"})
 
 @router.post("/post/like")
-async def like_post(
-    request: Request,
-):
-    """点赞帖子"""
+async def like_post(request: Request):
+    """点赞/取消点赞帖子"""
     try:
         req_data = await request.json()
         required_params = ["post_id", "openid"]
         error_response = validate_params(req_data, required_params)
-        if (error_response):
+        if error_response:
             return error_response
 
         openid = req_data.get("openid")
         post_id = req_data.get("post_id")
-        post = await async_get_by_id("wxapp_post", post_id)
-        if not post:
+
+        # 使用单一查询获取帖子信息
+        post_query = """
+        SELECT * FROM wxapp_post 
+        WHERE id = %s
+        """
+        post_result = await async_execute_custom_query(post_query, [post_id])
+        
+        if not post_result:
             return Response.not_found(resource="帖子")
+            
+        post = post_result[0]
 
-        exists = await async_query_records(
-            "wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": 'like',
-                "target_id": post_id
-            },
-            limit=1,
-        )
-        if exists:
-            return Response.bad_request(details={"message": "已经点赞，请勿重复点赞"})
+        # 使用直接SQL查询检查是否已点赞
+        like_query = """
+        SELECT id FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'post' 
+        LIMIT 1
+        """
+        like_record = await async_execute_custom_query(like_query, [openid, post_id])
+        
+        already_liked = bool(like_record)
 
-        await async_insert(
-            "wxapp_action",
-            data={
-                "openid": openid,
-                "action_type": 'like',
-                "target_id": post_id
-            },
-        )
+        if already_liked:
+            # 取消点赞
+            try:
+                # 使用单一查询删除点赞记录
+                delete_sql = """
+                DELETE FROM wxapp_action 
+                WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'post'
+                """
+                await async_execute_custom_query(delete_sql, [openid, post_id], fetch=False)
+            except Exception as e:
+                return Response.db_error(details={"message": f"取消点赞失败: {str(e)}"})
+            
+            new_like_count = max(0, post.get("like_count", 0) - 1)
+            
+            # 使用单一查询更新帖子点赞数
+            update_post_sql = """
+            UPDATE wxapp_post 
+            SET like_count = %s 
+            WHERE id = %s
+            """
+            await async_execute_custom_query(update_post_sql, [new_like_count, post_id], fetch=False)
 
-        await async_update(
-            "wxapp_post",
-            post_id,
-            {"like_count": post["like_count"] + 1},
-        )
+            # 使用单一查询更新用户点赞数
+            update_user_sql = """
+            UPDATE wxapp_user 
+            SET like_count = GREATEST(0, like_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_user_sql, [openid], fetch=False)
 
-        if post["openid"] != openid:
-            notification_data = {
-                "openid": post["openid"],
-                "title": "帖子被点赞",
-                "content": f"您的帖子「{post.get('title', '无标题')}」被用户点赞了",
-                "type": "like",
-                "is_read": False,
-                "sender": {"openid": openid},
-                "target_id": post_id,
-                "target_type": "post",
-                "status": 1
-            }
-            await async_insert(
-                table_name="wxapp_notification",
-                data=notification_data
-            )
+            return Response.success(data={
+                "success": True,
+                "status": "unliked",
+                "like_count": new_like_count,
+                "is_liked": False
+            }, details={"message": "取消点赞成功"})
+        else:
+            # 创建点赞
+            try:
+                # 使用单一查询插入点赞记录
+                insert_sql = """
+                INSERT INTO wxapp_action (openid, action_type, target_id, target_type, create_time, update_time)
+                VALUES (%s, %s, %s, %s, NOW(), NOW())
+                """
+                await async_execute_custom_query(
+                    insert_sql, 
+                    [openid, "like", post_id, "post"], 
+                    fetch=False
+                )
+            except Exception as e:
+                return Response.db_error(details={"message": f"点赞操作失败: {str(e)}"})
 
-        return Response.success(details={"like_count": post["like_count"] + 1})
+            new_like_count = post.get("like_count", 0) + 1
+            
+            # 使用单一查询更新帖子点赞数
+            update_post_sql = """
+            UPDATE wxapp_post 
+            SET like_count = %s 
+            WHERE id = %s
+            """
+            await async_execute_custom_query(update_post_sql, [new_like_count, post_id], fetch=False)
+
+            # 使用单一查询更新用户点赞数
+            update_user_sql = """
+            UPDATE wxapp_user 
+            SET like_count = like_count + 1 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_user_sql, [openid], fetch=False)
+
+            # 创建通知
+            if openid != post["openid"]:
+                notification_sql = """
+                INSERT INTO wxapp_notification (
+                    openid, title, content, type, is_read, sender, target_id, 
+                    target_type, status, create_time, update_time
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                notification_params = [
+                    post["openid"],
+                    "收到点赞",
+                    f"有用户点赞了你的帖子「{post.get('title', '无标题')}」",
+                    "like",
+                    False,
+                    json.dumps({"openid": openid}),
+                    post_id,
+                    "post",
+                    1
+                ]
+                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
+
+            return Response.success(data={
+                "success": True,
+                "status": "liked",
+                "like_count": new_like_count,
+                "is_liked": True
+            }, details={"message": "点赞成功"})
+
     except Exception as e:
-        return Response.error(details={"message": f"点赞失败: {str(e)}"})
-
-
-@router.post("/post/unlike")
-async def unlike_post(
-    request: Request,
-):
-    """取消点赞帖子"""
-    try:
-        req_data = await request.json()
-        required_params = ["post_id", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if (error_response):
-            return error_response
-
-        openid = req_data.get("openid")
-        post_id = req_data.get("post_id")
-        post = await async_get_by_id("wxapp_post", post_id)
-        if not post:
-            return Response.not_found(resource="帖子")
-
-        # 查询是否已点赞
-        like_record = await async_query_records(
-            "wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "like",
-                "target_id": post_id,
-                "target_type": "post"
-            },
-            limit=1
-        )
-        
-        if not like_record or not like_record.get('data'):
-            return Response.bad_request(details={"message": "未点赞，无法取消点赞"})
-        
-        # 更新点赞数，确保不小于0
-        new_like_count = max(0, post["like_count"] - 1)
-        
-        # 删除点赞记录
-        execute_custom_query(
-            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'post'",
-            [openid, post_id],
-            fetch=False
-        )
-        
-        # 更新帖子点赞数
-        await async_update(
-            "wxapp_post",
-            post_id,
-            {"like_count": new_like_count}
-        )
-
-        return Response.success(data={
-            "success": True,
-            "like_count": new_like_count,
-            "is_liked": False
-        }, details={"message": "取消点赞成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"取消点赞失败: {str(e)}"})
-
+        logger.error(f"点赞操作失败: {e}")
+        return Response.error(details={"message": f"操作失败: {str(e)}"})
 
 @router.post("/post/favorite")
-async def favorite_post(
-    request: Request,
-):
-    """收藏帖子"""
+async def favorite_post(request: Request):
+    """收藏/取消收藏帖子"""
     try:
         req_data = await request.json()
         required_params = ["post_id", "openid"]
@@ -450,106 +407,106 @@ async def favorite_post(
 
         openid = req_data.get("openid")
         post_id = req_data.get("post_id")
-        post = await async_get_by_id("wxapp_post", post_id)
-        if not post:
-            return Response.not_found(resource="帖子")
-
-        exists = await async_query_records(
-            "wxapp_action",
-            {"openid": openid, "action_type": "favorite", "target_id": post_id},
-            limit=1
-        )
-
-        if exists:
-            return Response.success(details={"status": "already_favorited"})
-
-        await async_insert("wxapp_action", {
-            "openid": openid,
-            "action_type": "favorite",
-            "target_id": post_id,
-            "target_type": "post"
-        })
-
-        post = await async_get_by_id("wxapp_post", post_id)
-        new_count = post["favorite_count"] + 1
-        await async_update("wxapp_post", post_id, {"favorite_count": new_count})
-
-        if post["openid"] != openid:
-            notification_data = {
-                "openid": post["openid"],
-                "title": "帖子被收藏",
-                "content": f"您的帖子「{post.get('title', '无标题')}」被用户收藏了",
-                "type": "favorite",
-                "is_read": False,
-                "sender": {"openid": openid},
-                "target_id": post_id,
-                "target_type": "post",
-                "status": 1
-            }
-            await async_insert(
-                table_name="wxapp_notification",
-                data=notification_data
-            )
-
-        return Response.success(details={
-            "favorite_count": new_count,
-            "is_favorited": True
-        })
-    except Exception as e:
-        return Response.error(details={"message": f"收藏失败: {str(e)}"})
-
-@router.post("/post/unfavorite")
-async def unlike_favorite(
-    request: Request,
-):
-    """取消收藏帖子"""
-    try:
-        req_data = await request.json()
-        required_params = ["post_id", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if (error_response):
-            return error_response
-
-        openid = req_data.get("openid")
-        post_id = req_data.get("post_id")
-        post = await async_get_by_id("wxapp_post", post_id)
-        if not post:
-            return Response.not_found(resource="帖子")
-
-        favorite_record = await async_query_records(
-            "wxapp_action",
-            {"openid": openid, "action_type": "favorite", "target_id": post_id},
-            limit=1
-        )
-        if not favorite_record:
-            return Response.bad_request(details={"message": "未收藏，无法取消收藏"})
-
-        post = await async_get_by_id("wxapp_post", post_id)
-        new_count = max(0, post["favorite_count"] - 1) #  防止favorite_count < 0
-
-        # 删除收藏记录
-        execute_custom_query(
-            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = 'favorite' AND target_id = %s",
-            [openid, post_id],
-            fetch=False
-        )
         
-        # 更新帖子收藏数
-        await async_update("wxapp_post", post_id, {"favorite_count": new_count})
+        # 获取帖子信息
+        post_sql = "SELECT * FROM wxapp_post WHERE id = %s"
+        post_result = await async_execute_custom_query(post_sql, [post_id])
         
-        return Response.success(data={
-            "favorite_count": new_count,
-            "is_favorited": False
-        }, details={"message": "取消收藏成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"取消收藏失败: {str(e)}"})
+        if not post_result:
+            return Response.not_found(resource="帖子")
+            
+        post = post_result[0]
 
+        # 检查是否已收藏
+        favorite_sql = """
+        SELECT * FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'favorite' AND target_id = %s AND target_type = 'post'
+        LIMIT 1
+        """
+        favorite_result = await async_execute_custom_query(favorite_sql, [openid, post_id])
+        
+        has_favorited = bool(favorite_result)
+        
+        if has_favorited:
+            # 取消收藏
+            delete_sql = """
+            DELETE FROM wxapp_action 
+            WHERE openid = %s AND action_type = 'favorite' AND target_id = %s AND target_type = 'post'
+            """
+            await async_execute_custom_query(delete_sql, [openid, post_id], fetch=False)
+            
+            # 更新帖子收藏数
+            new_count = max(0, post["favorite_count"] - 1)
+            update_post_sql = "UPDATE wxapp_post SET favorite_count = %s WHERE id = %s"
+            await async_execute_custom_query(update_post_sql, [new_count, post_id], fetch=False)
+            
+            # 更新被收藏用户的收藏数
+            update_user_sql = """
+            UPDATE wxapp_user 
+            SET favorite_count = GREATEST(0, favorite_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_user_sql, [post["openid"]], fetch=False)
+
+            return Response.success(data={
+                "success": True,
+                "status": "unfavorited",
+                "favorite_count": new_count,
+                "is_favorited": False
+            }, details={"message": "取消收藏成功"})
+        else:
+            # 创建收藏
+            insert_sql = """
+            INSERT INTO wxapp_action (openid, action_type, target_id, target_type, create_time, update_time)
+            VALUES (%s, %s, %s, %s, NOW(), NOW())
+            """
+            await async_execute_custom_query(insert_sql, [openid, "favorite", post_id, "post"], fetch=False)
+
+            # 更新帖子收藏数
+            new_count = post["favorite_count"] + 1
+            update_post_sql = "UPDATE wxapp_post SET favorite_count = %s WHERE id = %s"
+            await async_execute_custom_query(update_post_sql, [new_count, post_id], fetch=False)
+
+            # 更新被收藏用户的收藏数
+            update_user_sql = "UPDATE wxapp_user SET favorite_count = favorite_count + 1 WHERE openid = %s"
+            await async_execute_custom_query(update_user_sql, [post["openid"]], fetch=False)
+
+            # 创建通知
+            if post["openid"] != openid:
+                notification_sql = """
+                INSERT INTO wxapp_notification (
+                    openid, title, content, type, is_read, sender, target_id, 
+                    target_type, status, create_time, update_time
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                notification_params = [
+                    post["openid"],
+                    "帖子被收藏",
+                    f"您的帖子「{post.get('title', '无标题')}」被用户收藏了",
+                    "favorite",
+                    False,
+                    json.dumps({"openid": openid}),
+                    post_id,
+                    "post",
+                    1
+                ]
+                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
+
+            return Response.success(data={
+                "success": True,
+                "status": "favorited",
+                "favorite_count": new_count,
+                "is_favorited": True
+            }, details={"message": "收藏成功"})
+
+    except Exception as e:
+        logger.error(f"收藏操作失败: {e}")
+        return Response.error(details={"message": f"操作失败: {str(e)}"})
 
 @router.post("/user/follow")
-async def follow_user(
-    request: Request,
-):
-    """关注用户"""
+async def follow_user(request: Request):
+    """关注/取消关注用户"""
     try:
         req_data = await request.json()
         required_params = ["followed_id", "openid"]
@@ -563,90 +520,117 @@ async def follow_user(
         if openid == followed_id:
             return Response.bad_request(details={"message": "不能关注自己"})
 
-        # 检查被关注用户是否存在
-        followed_user = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": followed_id},
-            limit=1
-        )
+        # 检查被关注用户是否存在，并获取其用户ID
+        followed_sql = "SELECT id, openid FROM wxapp_user WHERE openid = %s LIMIT 1"
+        followed_user = await async_execute_custom_query(followed_sql, [followed_id])
         
-        if not followed_user or not followed_user.get('data'):
+        if not followed_user:
             return Response.not_found(resource="被关注用户")
+            
+        # 获取用户数字ID
+        user_id = followed_user[0]["id"]
+        
+        # 也获取当前用户的ID
+        current_user_sql = "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1"
+        current_user = await async_execute_custom_query(current_user_sql, [openid])
+        
+        if not current_user:
+            return Response.not_found(resource="当前用户")
+            
+        current_user_id = current_user[0]["id"]
 
-        existing_follow = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "follow",
-                "target_type": "user",
-                "target_id": followed_id
-            },
-            limit=1
-        )
-        if existing_follow and existing_follow.get('data'):
-            return Response.bad_request(details={"message": "已关注，请勿重复关注"})
+        # 查询是否已关注 - 使用数字ID
+        follow_sql = """
+        SELECT * FROM wxapp_action 
+        WHERE openid = %s AND action_type = 'follow' AND target_type = 'user' AND target_id = %s
+        LIMIT 1
+        """
+        existing_follow = await async_execute_custom_query(follow_sql, [openid, user_id])
+        
+        has_followed = bool(existing_follow)
 
-        action_data = {
-            "openid": openid,
-            "action_type": "follow",
-            "target_type": "user",
-            "target_id": followed_id
-        }
-        await async_insert("wxapp_action", action_data)
+        if has_followed:
+            # 取消关注 - 使用数字ID
+            delete_sql = """
+            DELETE FROM wxapp_action 
+            WHERE openid = %s AND action_type = 'follow' AND target_type = 'user' AND target_id = %s
+            """
+            await async_execute_custom_query(delete_sql, [openid, user_id], fetch=False)
 
-        if followed_id != openid:
-            notification_data = {
-                "openid": followed_id,
-                "title": "收到新关注",
-                "content": "有用户关注了你",
-                "type": "follow",
-                "is_read": False,
-                "sender": {"openid": openid},
-                "target_id": openid,
-                "target_type": "user",
-                "status": 1
-            }
-            await async_insert("wxapp_notification", notification_data)
+            # 更新关注者的关注数
+            update_following_sql = """
+            UPDATE wxapp_user 
+            SET following_count = GREATEST(0, following_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_following_sql, [openid], fetch=False)
+            
+            # 更新被关注者的粉丝数
+            update_follower_sql = """
+            UPDATE wxapp_user 
+            SET follower_count = GREATEST(0, follower_count - 1) 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_follower_sql, [followed_id], fetch=False)
 
-        return Response.success(details={"message": "关注成功"})
+            return Response.success(data={
+                "success": True,
+                "status": "unfollowed",
+                "is_following": False
+            }, details={"message": "取消关注成功"})
+        else:
+            # 创建关注 - 使用数字ID
+            insert_sql = """
+            INSERT INTO wxapp_action (openid, action_type, target_type, target_id, create_time, update_time)
+            VALUES (%s, %s, %s, %s, NOW(), NOW())
+            """
+            await async_execute_custom_query(insert_sql, [openid, "follow", "user", user_id], fetch=False)
+
+            # 更新关注者的关注数
+            update_following_sql = """
+            UPDATE wxapp_user 
+            SET following_count = following_count + 1 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_following_sql, [openid], fetch=False)
+            
+            # 更新被关注者的粉丝数
+            update_follower_sql = """
+            UPDATE wxapp_user 
+            SET follower_count = follower_count + 1 
+            WHERE openid = %s
+            """
+            await async_execute_custom_query(update_follower_sql, [followed_id], fetch=False)
+
+            # 创建通知 - 为通知保存openid
+            if followed_id != openid:
+                notification_sql = """
+                INSERT INTO wxapp_notification (
+                    openid, title, content, type, is_read, sender, target_id, 
+                    target_type, status, create_time, update_time
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                notification_params = [
+                    followed_id,
+                    "收到新关注",
+                    "有用户关注了你",
+                    "follow",
+                    False,
+                    json.dumps({"openid": openid}),
+                    current_user_id, # 使用关注者的数字ID作为target_id
+                    "user",
+                    1
+                ]
+                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
+
+            return Response.success(data={
+                "success": True,
+                "status": "followed",
+                "is_following": True
+            }, details={"message": "关注成功"})
+
     except Exception as e:
-        return Response.error(details={"message": f"关注用户失败: {str(e)}"})
+        logger.error(f"关注操作失败: {e}")
+        return Response.error(details={"message": f"操作失败: {str(e)}"})
 
-
-@router.post("/user/unfollow")
-async def unfollow_user(
-    request: Request,
-):
-    """取消关注用户"""
-    try:
-        req_data = await request.json()
-        required_params = ["followed_id", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if (error_response):
-            return error_response
-
-        openid = req_data.get("openid")
-        followed_id = req_data.get("followed_id")
-
-        existing_follow = await async_query_records(
-            table_name="wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "follow",
-                "target_type": "user",
-                "target_id": followed_id
-            },
-            limit=1
-        )
-        if not existing_follow:
-            return Response.bad_request(details={"message": "未关注，无法取消关注"})
-
-        # 使用直接的原始SQL查询，确保类型匹配
-        execute_custom_query(
-            "DELETE FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_type = %s AND target_id = %s",
-            [openid, "follow", "user", followed_id],
-            fetch=False
-        )
-        return Response.success(details={"message": "取消关注成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"取消关注用户失败: {str(e)}"})

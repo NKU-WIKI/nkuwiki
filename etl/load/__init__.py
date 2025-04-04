@@ -78,16 +78,16 @@ from etl.load.db_core import (
     count_records,
     execute_custom_query,
     batch_insert,
-    upsert_record,
     get_all_tables,
-    get_table_structure,
     
     # 异步函数
     async_query,
     async_insert,
     async_update,
     async_get_by_id,
-    async_query_records
+    async_query_records,
+    async_count_records,            
+    async_execute_custom_query
 )
 
 # 版本信息
@@ -102,11 +102,11 @@ __all__ = [
     # 基本数据库操作
     'execute_query', 'insert_record', 'update_record', 'delete_record',
     'get_record_by_id', 'query_records', 'count_records', 'execute_custom_query',
-    'batch_insert', 'upsert_record', 'get_all_tables', 'get_table_structure',
+    'batch_insert', 'get_all_tables',
     
     # 异步函数
     'async_query', 'async_insert', 'async_update', 'async_get_by_id',
-    'async_query_records',
+    'async_query_records', 'async_count_records', 'async_execute_custom_query',
     
     # 核心模块
     'db_core'
