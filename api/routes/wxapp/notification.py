@@ -64,6 +64,10 @@ async def get_notification_list(
             if "openid" in notification:
                 notification["receiver"] = notification["openid"]
                 del notification["openid"]
+            
+            # 确保sender字段符合API文档格式
+            if "sender" in notification and isinstance(notification["sender"], str):
+                notification["sender"] = {"openid": notification["sender"]}
         
         # 添加未读通知数量到返回数据
         result_data = {
@@ -111,6 +115,10 @@ async def get_notification_detail(
         if "openid" in notification_data:
             notification_data["receiver"] = notification_data["openid"]
             del notification_data["openid"]
+        
+        # 确保sender字段符合API文档格式
+        if "sender" in notification_data and isinstance(notification_data["sender"], str):
+            notification_data["sender"] = {"openid": notification_data["sender"]}
             
         return Response.success(data=notification_data)
     except Exception as e:

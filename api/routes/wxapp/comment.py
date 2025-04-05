@@ -77,55 +77,6 @@ async def get_comment_detail(
         return Response.error(details={"message": f"获取评论详情失败: {str(e)}"})
 
 
-@router.get("/post/comment")
-async def get_post_comments(
-    post_id: str = Query(..., description="帖子ID"),
-    page: int = Query(1, description="页码"),
-    size: int = Query(10, description="每页数量")
-):
-    if(not post_id):
-        return Response.bad_request(details={"message": "缺少post_id参数"})
-    """获取帖子评论列表（分页）"""
-    try:
-        offset = (page - 1) * size
-
-        post = await async_get_by_id(
-            table_name="wxapp_post",
-            record_id=post_id
-        )
-
-        if not post:
-            return Response.not_found(resource="帖子")
-
-        # 使用直接SQL查询获取评论总数
-        count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE post_id = %s AND parent_id IS NULL AND status = 1"
-        count_result = execute_query(count_sql, [post_id])
-        comment_count = count_result[0]['total'] if count_result else 0
-
-        # 使用直接SQL查询获取评论列表
-        comments_sql = """
-        SELECT * FROM wxapp_comment 
-        WHERE post_id = %s AND parent_id IS NULL AND status = 1
-        ORDER BY create_time DESC
-        LIMIT %s OFFSET %s
-        """
-        comments = execute_query(comments_sql, [post_id, size, offset])
-
-        result = {
-            "comments": comments,
-            "pagination": {
-                "page": page,
-                "size": size,
-                "total": comment_count,
-                "pages": (comment_count + size - 1) // size if size > 0 else 0
-            }
-        }
-
-        return Response.success(data=result)
-    except Exception as e:
-        return Response.error(details={"message": f"获取帖子评论列表失败: {str(e)}"})
-
-
 @router.get("/comment/status")
 async def get_comment_status(
     openid: str = Query(..., description="用户OpenID"),
@@ -210,7 +161,7 @@ async def get_comment_replies(
         ORDER BY create_time
         LIMIT %s
         """
-        replies = execute_query(replies_sql, [comment_id, limit])
+        replies = await async_execute_custom_query(replies_sql, [comment_id, limit])
 
         return Response.success(data={
             "comment_id": comment_id,
@@ -330,124 +281,22 @@ async def update_comment(
     except Exception as e:
         return Response.error(details={"message": f"更新评论失败: {str(e)}"})
 
-@router.post("/comment")
-async def create_comment(
-    request: Request,
-):
-    """创建评论"""
-    try:
-        req_data = await request.json()
-        required_params = ["post_id", "content", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
-        
-        post_id = req_data.get("post_id")
-        content = req_data.get("content")
-        openid = req_data.get("openid")
-        parent_id = req_data.get("parent_id")
-        image = req_data.get("image")
-        
-        # 确保post_id是整数
-        try:
-            post_id = int(post_id)
-        except ValueError:
-            return Response.bad_request(details={"message": "post_id必须是整数"})
-        
-        # 验证帖子是否存在
-        post = await async_get_by_id(
-            table_name="wxapp_post",
-            record_id=post_id
-        )
-        
-        if not post:
-            return Response.not_found(resource="帖子")
-        
-        # 验证用户是否存在
-        user_data = await async_query_records(
-            table_name="wxapp_user",
-            conditions={"openid": openid},
-            limit=1
-        )
-        
-        if not user_data or not user_data['data']:
-            return Response.not_found(resource="用户")
-        
-        # 构建评论数据
-        comment_data = {
-            "post_id": post_id,
-            "openid": openid,
-            "content": content,
-            "status": 1,
-            "like_count": 0,
-            "create_time": time.strftime("%Y-%m-%d %H:%M:%S"),
-            "update_time": time.strftime("%Y-%m-%d %H:%M:%S")
-        }
-        
-        # 如果有父评论ID，添加到数据中
-        if parent_id:
-            try:
-                parent_id = int(parent_id)
-                parent_comment = await async_get_by_id(
-                    table_name="wxapp_comment",
-                    record_id=parent_id
-                )
-                
-                if not parent_comment:
-                    return Response.not_found(resource="父评论")
-                    
-                comment_data["parent_id"] = parent_id
-            except ValueError:
-                return Response.bad_request(details={"message": "parent_id必须是整数"})
-        
-        # 如果有图片，添加到数据中
-        if image:
-            comment_data["image"] = image
-        
-        # 插入评论
-        try:
-            comment_id = await async_insert(
-                table_name="wxapp_comment",
-                data=comment_data
-            )
-            
-            if comment_id <= 0:
-                return Response.db_error(details={"message": "创建评论失败"})
-                
-            # 更新帖子评论数
-            await async_update(
-                table_name="wxapp_post",
-                record_id=post_id,
-                data={
-                    "comment_count": post.get("comment_count", 0) + 1,
-                    "update_time": time.strftime("%Y-%m-%d %H:%M:%S")
-                }
-            )
-            
-            return Response.success(details={
-                "comment_id": comment_id,
-                "message": "评论创建成功"
-            })
-            
-        except Exception as e:
-            logger.error(f"创建评论失败: {str(e)}")
-            return Response.db_error(details={"message": f"创建评论失败: {str(e)}"})
-            
-    except Exception as e:
-        logger.error(f"评论接口异常: {str(e)}")
-        return Response.error(details={"message": f"创建评论失败: {str(e)}"})
-
 @router.get("/comment/list")
 async def get_comment_list(
     post_id: str = Query(..., description="帖子ID"),
     limit: int = Query(20, description="每页数量"),
     offset: int = Query(0, description="偏移量"),
+    page: int = Query(None, description="页码"),
     openid: str = Query(None, description="用户OpenID"),
     parent_id: str = Query(None, description="父评论ID")
 ):
     """获取帖子评论列表"""
     if not post_id:
         return Response.bad_request(details={"message": "缺少post_id参数"})
+    
+    # 如果提供了page参数，计算偏移量
+    if page is not None:
+        offset = (page - 1) * limit if page > 0 else 0
     
     try:
         # 确保post_id是整数
@@ -465,69 +314,74 @@ async def get_comment_list(
         if not post:
             return Response.not_found(resource="帖子")
         
-        # 使用直接SQL查询评论
-        where_clauses = ["post_id = %s", "status = 1"]
-        params = [post_id_int]
-        
-        # 处理parent_id参数
-        if parent_id:
-            try:
-                parent_id_int = int(parent_id)
-                where_clauses.append("parent_id = %s")
-                params.append(parent_id_int)
-            except ValueError:
-                return Response.bad_request(details={"message": "parent_id必须是整数"})
-        else:
-            where_clauses.append("parent_id IS NULL")
-        
-        # 构建查询条件
-        where_clause = " AND ".join(where_clauses)
-        
-        # 查询评论总数
-        count_sql = f"SELECT COUNT(*) as total FROM wxapp_comment WHERE {where_clause}"
-        logger.info(f"评论数量SQL: {count_sql}, 参数: {params}")
-        
-        count_result = await async_execute_custom_query(count_sql, params)
-        total = count_result[0]['total'] if count_result else 0
-        
-        logger.info(f"评论总数: {total}")
-        
-        # 查询评论列表
-        query_sql = f"""
-            SELECT * FROM wxapp_comment 
-            WHERE {where_clause} 
-            ORDER BY create_time DESC 
-            LIMIT {limit} OFFSET {offset}
+        # 使用直接SQL查询获取评论总数
+        count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE post_id = %s AND parent_id IS NULL AND status = 1"
+        count_result = await async_execute_custom_query(count_sql, [post_id_int])
+        comment_count = count_result[0]['total'] if count_result else 0
+
+        # 使用直接SQL查询获取评论列表
+        comments_sql = """
+        SELECT 
+            id, post_id, parent_id, openid, 
+            content, image, like_count, reply_count, status, is_deleted, 
+            create_time, update_time
+        FROM wxapp_comment
+        WHERE post_id = %s AND parent_id IS NULL AND status = 1
+        ORDER BY create_time DESC
+        LIMIT %s OFFSET %s
         """
+        logger.debug(f"SQL查询: {comments_sql}")
+        logger.debug(f"参数: [post_id={post_id_int}, limit={limit}, offset={offset}]")
         
-        logger.info(f"评论列表SQL: {query_sql}, 参数: {params}")
-        
-        comments = await async_execute_custom_query(query_sql, params)
-        
-        logger.info(f"查询到评论数: {len(comments)}")
+        comments = await async_execute_custom_query(comments_sql, [post_id_int, limit, offset])
+        logger.debug(f"SQL结果: {comments}")
+        logger.debug(f"结果类型: {type(comments)}, 长度: {len(comments)}")
         
         # 处理每个评论的点赞状态和回复预览
         for comment in comments:
+            # 手动获取用户昵称和头像
+            user_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+            user_info = await async_execute_custom_query(user_sql, [comment.get("openid")])
+            if user_info and len(user_info) > 0:
+                comment["nickname"] = user_info[0].get("nickname")
+                comment["avatar"] = user_info[0].get("avatar")
+            
             # 如果提供了openid，检查用户是否点赞
             if openid:
                 # 使用直接SQL查询检查是否已点赞
-                sql = "SELECT * FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s LIMIT 1"
-                like_record = execute_query(sql, [openid, "like", str(comment.get("id")), "comment"])
+                sql = "SELECT 1 FROM wxapp_action WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'comment' LIMIT 1"
+                like_record = await async_execute_custom_query(sql, [openid, str(comment.get("id"))])
                 comment["liked"] = bool(like_record)
+            else:
+                comment["liked"] = False
             
             # 获取回复预览（最新的3条回复）
             if not parent_id:  # 只为一级评论获取回复预览
                 replies_sql = """
-                SELECT * FROM wxapp_comment 
-                WHERE parent_id = %s AND status = 1
-                ORDER BY create_time DESC
+                SELECT 
+                    c.id, c.post_id, c.parent_id, c.openid, 
+                    u.nickname as user_nickname, 
+                    u.avatar as user_avatar, 
+                    c.content, c.image, c.like_count, c.status, c.is_deleted, 
+                    c.create_time, c.update_time
+                FROM wxapp_comment c
+                LEFT JOIN wxapp_user u ON c.openid = u.openid
+                WHERE c.parent_id = %s AND c.status = 1
+                ORDER BY c.create_time DESC
                 LIMIT 3
                 """
-                reply_preview = execute_query(replies_sql, [comment.get("id")])
+                reply_preview = await async_execute_custom_query(replies_sql, [comment.get("id")])
+                
+                # 处理回复预览中的用户昵称和头像
+                for reply in reply_preview:
+                    if 'user_nickname' in reply and reply['user_nickname']:
+                        reply['nickname'] = reply.pop('user_nickname')
+                    if 'user_avatar' in reply and reply['user_avatar']:
+                        reply['avatar'] = reply.pop('user_avatar')
                 
                 # 获取回复总数
                 reply_count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE parent_id = %s AND status = 1"
-                reply_count_result = execute_query(reply_count_sql, [comment.get("id")])
+                reply_count_result = await async_execute_custom_query(reply_count_sql, [comment.get("id")])
                 reply_count = reply_count_result[0]['total'] if reply_count_result else 0
                 
                 comment["reply_preview"] = reply_preview
@@ -535,10 +389,10 @@ async def get_comment_list(
         
         # 构建分页信息
         pagination = {
-            "total": total,
+            "total": comment_count,
             "limit": limit,
             "offset": offset,
-            "has_more": offset + len(comments) < total
+            "has_more": offset + len(comments) < comment_count
         }
         
         return Response.paged(data=comments, pagination=pagination)

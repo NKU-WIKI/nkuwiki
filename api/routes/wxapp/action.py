@@ -10,6 +10,20 @@ from etl.load.db_core import (
 )
 import time
 import json
+import logging
+import traceback
+import os
+
+# 配置日志
+logger = logging.getLogger("wxapp.action")
+logger.setLevel(logging.DEBUG)  # 设置为DEBUG级别以捕获所有日志
+
+# 添加控制台处理器
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 # 初始化路由器
 router = APIRouter()
@@ -17,6 +31,11 @@ router = APIRouter()
 @router.post("/comment")
 async def create_comment(request: Request):
     """创建新评论"""
+    # 修改logger输出级别确保所有消息都会打印
+    logger.setLevel(logging.DEBUG)
+    for handler in logger.handlers:
+        handler.setLevel(logging.DEBUG)
+        
     try:
         print("开始创建评论...")
         req_data = await request.json()
@@ -70,7 +89,6 @@ async def create_comment(request: Request):
             "openid": openid,
             "content": content,
             "parent_id": parent_id,
-            "root_id": req_data.get("root_id", parent_id),
             "image": image,
             "like_count": 0,
             "status": 1
@@ -87,10 +105,10 @@ async def create_comment(request: Request):
             
             if comment_id <= 0:
                 print(f"评论插入失败: comment_id={comment_id}")
-                return Response.db_error(message="评论创建失败", error_detail=f"未能成功插入评论，返回ID: {comment_id}")
+                return Response.db_error(details={"message": f"未能成功插入评论，返回ID: {comment_id}"})
         except Exception as e:
             print(f"评论插入异常: {str(e)}")
-            return Response.db_error(message="评论创建失败", error_detail=str(e))
+            return Response.db_error(details={"message": f"评论创建失败: {str(e)}"})
 
 
         comment = await async_get_by_id(
@@ -104,45 +122,142 @@ async def create_comment(request: Request):
                 data={"comment_count": post.get("comment_count", 0) + 1}
             )
         except Exception as e:
-            return Response.db_error(message="帖子评论数更新失败", error_detail=str(e))
+            return Response.db_error(details={"message": f"帖子评论数更新失败: {str(e)}"})
 
         if parent_id:
-            parent_comment = await async_get_by_id(
-                table_name="wxapp_comment",
-                record_id=parent_id
-            )
-            if parent_comment and parent_comment["openid"] != openid:
-                notification_data = {
-                    "openid": parent_comment["openid"],
-                    "title": "收到新回复",
-                    "content": f"用户回复了你的评论",
-                    "type": "comment",
-                    "is_read": False,
-                    "sender": {"openid": openid},
-                    "target_id": comment_id,
-                    "target_type": "comment",
-                    "status": 1
-                }
-                await async_insert(
-                    table_name="wxapp_notification",
-                    data=notification_data
+            try:
+                parent_comment = await async_get_by_id(
+                    table_name="wxapp_comment",
+                    record_id=parent_id
                 )
+                logger.debug(f"获取父评论: parent_id={parent_id}, 结果={parent_comment}")
+                
+                if parent_comment and parent_comment["openid"] != openid:
+                    # 对评论的回复应该每次都产生通知
+                    logger.debug(f"创建评论回复通知前检查: post={post}, comment_id={comment_id}, parent_openid={parent_comment['openid']}")
+                    
+                    # 输出到终端方便调试
+                    print(f"创建评论回复通知: post_id={post_id}, comment_id={comment_id}, parent_id={parent_id}")
+                    print(f"creator_openid={openid}, parent_openid={parent_comment['openid']}")
+                    
+                    # 使用直接执行SQL的方式插入通知
+                    notification_sql = """
+                    INSERT INTO wxapp_notification (
+                        openid, title, content, type, is_read, sender, target_id, 
+                        target_type, status, create_time, update_time
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    """
+                    notification_params = [
+                        parent_comment["openid"],
+                        "收到新回复",
+                        f"用户回复了你的评论",
+                        "comment",
+                        0,
+                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        int(comment_id),
+                        "comment",
+                        1
+                    ]
+                    logger.debug(f"SQL: {notification_sql}")
+                    logger.debug(f"参数: {notification_params}")
+                    
+                    # 执行数据库查询前输出终端信息
+                    print(f"执行SQL: {notification_sql}")
+                    print(f"参数: {notification_params}")
+                    
+                    try:
+                        # 使用execute_query直接执行SQL
+                        notification_id = execute_query(
+                            notification_sql, 
+                            notification_params, 
+                            fetch=False
+                        )
+                        logger.debug(f"评论回复通知创建结果: notification_id={notification_id}")
+                        print(f"评论回复通知创建结果: notification_id={notification_id}")
+                        
+                        # 验证通知是否实际创建
+                        check_sql = "SELECT * FROM wxapp_notification WHERE target_id = %s AND type = 'comment' ORDER BY id DESC LIMIT 1"
+                        check_result = execute_query(check_sql, [int(comment_id)])
+                        logger.debug(f"检查通知创建结果: {check_result}")
+                        print(f"检查通知创建结果: {check_result}")
+                        
+                        if not notification_id:
+                            logger.error(f"评论回复通知创建失败，返回结果: {notification_id}")
+                    except Exception as ne:
+                        logger.exception(f"创建评论回复通知异常: {str(ne)}")
+                        logger.error(traceback.format_exc())
+                        print(f"创建评论回复通知异常: {str(ne)}")
+            except Exception as pe:
+                logger.exception(f"获取父评论异常: {str(pe)}")
+                logger.error(traceback.format_exc())
+                print(f"获取父评论异常: {str(pe)}")
         elif post["openid"] != openid:
-            notification_data = {
-                "openid": post["openid"],
-                "title": "收到新评论",
-                "content": f"用户评论了你的帖子「{post.get('title', '无标题')}」",
-                "type": "comment",
-                "is_read": False,
-                "sender": {"openid": openid},
-                "target_id": comment_id,
-                "target_type": "comment",
-                "status": 1
-            }
-            await async_insert(
-                table_name="wxapp_notification",
-                data=notification_data
-            )
+            try:
+                # 对帖子的评论应该每次都产生通知
+                logger.debug(f"创建帖子评论通知前检查: post={post}, comment_id={comment_id}")
+                
+                # 输出到终端方便调试
+                print(f"创建帖子评论通知: post_id={post_id}, comment_id={comment_id}")
+                print(f"creator_openid={openid}, post_owner_openid={post['openid']}")
+                print(f"条件判断: post['openid']({post['openid']}) != openid({openid}) = {post['openid'] != openid}")
+                
+                # 使用async_execute_custom_query直接执行SQL
+                notification_sql = """
+                INSERT INTO wxapp_notification (
+                    openid, title, content, type, is_read, sender, target_id, 
+                    target_type, status, create_time, update_time
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                """
+                safe_title = post.get('title', '无标题')
+                notification_params = [
+                    post["openid"],
+                    "收到新评论",
+                    f"用户评论了你的帖子「{safe_title}」",
+                    "comment",
+                    0,
+                    json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                    int(comment_id),
+                    "comment",
+                    1
+                ]
+                
+                print(f"执行SQL: {notification_sql}")
+                print(f"参数: {notification_params}")
+                
+                try:
+                    # 使用异步方式执行SQL
+                    notification_id = await async_execute_custom_query(
+                        notification_sql, 
+                        notification_params, 
+                        fetch=False
+                    )
+                    print(f"帖子评论通知创建结果: notification_id={notification_id}")
+                    
+                    # 验证通知是否实际创建
+                    check_sql = "SELECT * FROM wxapp_notification WHERE target_id = %s AND type = 'comment' ORDER BY id DESC LIMIT 1"
+                    check_result = await async_execute_custom_query(check_sql, [int(comment_id)])
+                    print(f"检查通知创建结果: {check_result}")
+                    
+                    if not check_result:
+                        print("警告: 无法找到刚刚创建的通知记录，尝试直接使用mysql命令插入")
+                        # 备用方案: 使用mysql命令直接插入
+                        safe_title_escape = safe_title.replace("'", "\\'").replace('"', '\\"')
+                        sender_json = json.dumps({"openid": openid}).replace("'", "\\'")
+                        os_command = f"""
+                        mysql -u root -p"root" -e "INSERT INTO nkuwiki.wxapp_notification (openid, title, content, type, is_read, sender, target_id, target_type, status, create_time, update_time) VALUES ('{post['openid']}', '收到新评论', '用户评论了你的帖子「{safe_title_escape}」', 'comment', 0, '{sender_json}', {int(comment_id)}, 'comment', 1, NOW(), NOW());"
+                        """
+                        print(f"执行备用命令: {os_command}")
+                        os.system(os_command)
+                    
+                except Exception as ne:
+                    print(f"创建帖子评论通知异常: {str(ne)}")
+                    print(traceback.format_exc())
+                
+            except Exception as pe:
+                print(f"处理帖子评论通知异常: {str(pe)}")
+                print(traceback.format_exc())
 
         return Response.success(data=comment)
 
@@ -230,22 +345,36 @@ async def like_comment(request: Request):
             )
 
             if openid != comment["openid"]:
-                notification_data = {
-                    "openid": comment["openid"],
-                    "title": "收到点赞",
-                    "content": "有用户点赞了你的评论",
-                    "type": "like",
-                    "is_read": False,
-                    "sender": {"openid": openid},
-                    "target_id": comment_id,
-                    "target_type": "comment",
-                    "status": 1
-                }
-
-                await async_insert(
-                    table_name="wxapp_notification",
-                    data=notification_data
+                # 先检查是否已存在此类通知
+                check_notification_sql = """
+                SELECT id FROM wxapp_notification 
+                WHERE openid = %s AND type = 'like' AND target_id = %s AND target_type = 'comment'
+                AND sender LIKE %s
+                LIMIT 1
+                """
+                existing_notification = await async_execute_custom_query(
+                    check_notification_sql, 
+                    [comment["openid"], comment_id, f'%{openid}%']
                 )
+                
+                # 只有在不存在通知时才创建
+                if not existing_notification:
+                    notification_data = {
+                        "openid": comment["openid"],
+                        "title": "收到点赞",
+                        "content": "有用户点赞了你的评论",
+                        "type": "like",
+                        "is_read": False,
+                        "sender": json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        "target_id": comment_id,
+                        "target_type": "comment",
+                        "status": 1
+                    }
+
+                    await async_insert(
+                        table_name="wxapp_notification",
+                        data=notification_data
+                    )
 
             return Response.success(data={
                 "success": True,
@@ -364,25 +493,39 @@ async def like_post(request: Request):
 
             # 创建通知
             if openid != post["openid"]:
-                notification_sql = """
-                INSERT INTO wxapp_notification (
-                    openid, title, content, type, is_read, sender, target_id, 
-                    target_type, status, create_time, update_time
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                # 先检查是否已存在此类通知
+                check_notification_sql = """
+                SELECT id FROM wxapp_notification 
+                WHERE openid = %s AND type = 'like' AND target_id = %s AND target_type = 'post'
+                AND sender LIKE %s
+                LIMIT 1
                 """
-                notification_params = [
-                    post["openid"],
-                    "收到点赞",
-                    f"有用户点赞了你的帖子「{post.get('title', '无标题')}」",
-                    "like",
-                    False,
-                    json.dumps({"openid": openid}),
-                    post_id,
-                    "post",
-                    1
-                ]
-                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
+                existing_notification = await async_execute_custom_query(
+                    check_notification_sql, 
+                    [post["openid"], post_id, f'%{openid}%']
+                )
+                
+                # 只有在不存在通知时才创建
+                if not existing_notification:
+                    notification_sql = """
+                    INSERT INTO wxapp_notification (
+                        openid, title, content, type, is_read, sender, target_id, 
+                        target_type, status, create_time, update_time
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    """
+                    notification_params = [
+                        post["openid"],
+                        "收到点赞",
+                        f"有用户点赞了你的帖子「{post.get('title', '无标题')}」",
+                        "like",
+                        False,
+                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        post_id,
+                        "post",
+                        1
+                    ]
+                    await async_execute_custom_query(notification_sql, notification_params, fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -473,25 +616,39 @@ async def favorite_post(request: Request):
 
             # 创建通知
             if post["openid"] != openid:
-                notification_sql = """
-                INSERT INTO wxapp_notification (
-                    openid, title, content, type, is_read, sender, target_id, 
-                    target_type, status, create_time, update_time
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                # 先检查是否已存在此类通知
+                check_notification_sql = """
+                SELECT id FROM wxapp_notification 
+                WHERE openid = %s AND type = 'favorite' AND target_id = %s AND target_type = 'post'
+                AND sender LIKE %s
+                LIMIT 1
                 """
-                notification_params = [
-                    post["openid"],
-                    "帖子被收藏",
-                    f"您的帖子「{post.get('title', '无标题')}」被用户收藏了",
-                    "favorite",
-                    False,
-                    json.dumps({"openid": openid}),
-                    post_id,
-                    "post",
-                    1
-                ]
-                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
+                existing_notification = await async_execute_custom_query(
+                    check_notification_sql, 
+                    [post["openid"], post_id, f'%{openid}%']
+                )
+                
+                # 只有在不存在通知时才创建
+                if not existing_notification:
+                    notification_sql = """
+                    INSERT INTO wxapp_notification (
+                        openid, title, content, type, is_read, sender, target_id, 
+                        target_type, status, create_time, update_time
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    """
+                    notification_params = [
+                        post["openid"],
+                        "帖子被收藏",
+                        f"您的帖子「{post.get('title', '无标题')}」被用户收藏了",
+                        "favorite",
+                        False,
+                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        post_id,
+                        "post",
+                        1
+                    ]
+                    await async_execute_custom_query(notification_sql, notification_params, fetch=False)
 
             return Response.success(data={
                 "success": True,
@@ -604,25 +761,39 @@ async def follow_user(request: Request):
 
             # 创建通知 - 为通知保存openid
             if followed_id != openid:
-                notification_sql = """
-                INSERT INTO wxapp_notification (
-                    openid, title, content, type, is_read, sender, target_id, 
-                    target_type, status, create_time, update_time
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                # 先检查是否已存在此类通知
+                check_notification_sql = """
+                SELECT id FROM wxapp_notification 
+                WHERE openid = %s AND type = 'follow' AND target_type = 'user'
+                AND sender LIKE %s
+                LIMIT 1
                 """
-                notification_params = [
-                    followed_id,
-                    "收到新关注",
-                    "有用户关注了你",
-                    "follow",
-                    False,
-                    json.dumps({"openid": openid}),
-                    current_user_id, # 使用关注者的数字ID作为target_id
-                    "user",
-                    1
-                ]
-                await async_execute_custom_query(notification_sql, notification_params, fetch=False)
+                existing_notification = await async_execute_custom_query(
+                    check_notification_sql, 
+                    [followed_id, f'%{openid}%']
+                )
+                
+                # 只有在不存在通知时才创建
+                if not existing_notification:
+                    notification_sql = """
+                    INSERT INTO wxapp_notification (
+                        openid, title, content, type, is_read, sender, target_id, 
+                        target_type, status, create_time, update_time
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    """
+                    notification_params = [
+                        followed_id,
+                        "收到新关注",
+                        "有用户关注了你",
+                        "follow",
+                        False,
+                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        current_user_id, # 使用关注者的数字ID作为target_id
+                        "user",
+                        1
+                    ]
+                    await async_execute_custom_query(notification_sql, notification_params, fetch=False)
 
             return Response.success(data={
                 "success": True,

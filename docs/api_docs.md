@@ -1133,8 +1133,6 @@ API接口的参数类型规范如下：
   "post_id": 1, // 必填，整数类型
   "content": "评论内容", // 必填
   "parent_id": null, // 可选，父评论ID，整数类型
-  "nickname": "用户昵称", // 可选，如不提供则从用户表获取
-  "avatar": "用户头像URL", // 可选，如不提供则从用户表获取
   "image": [] // 可选，评论图片
 }
 ```
@@ -1145,20 +1143,36 @@ API接口的参数类型规范如下：
 {
   "code": 200,
   "message": "success",
-  "data": null,
-  "details": {
-    "comment_id": 1,
-    "message": "评论创建成功"
+  "data": {
+    "id": 5,
+    "post_id": 1,
+    "parent_id": null,
+    "openid": "评论用户openid",
+    "nickname": null,
+    "avatar": null,
+    "content": "评论内容",
+    "image": "[]",
+    "like_count": 0,
+    "reply_count": 0,
+    "status": 1,
+    "is_deleted": 0,
+    "create_time": "2025-04-05T20:24:11",
+    "update_time": "2025-04-05T20:24:11"
   },
-  "timestamp": "2023-01-01 12:00:00"
+  "details": null,
+  "timestamp": "2025-04-05T20:24:11.177597",
+  "pagination": null
 }
 ```
+
+> **注意**：创建评论时，如果评论的是帖子（parent_id为null），并且评论者不是帖子作者，则会自动向帖子作者发送通知；如果评论的是评论（提供parent_id），并且评论者不是父评论作者，则会自动向父评论作者发送通知。
 
 ### 3.2 获取评论详情
 
 **接口**：`GET /api/wxapp/comment/detail`  
 **描述**：获取指定评论的详情  
 **参数**：
+- `openid` - 查询参数，用户OpenID（必填）
 - `comment_id` - 查询参数，评论ID（必填，整数类型）
 
 **响应**：
@@ -1177,9 +1191,8 @@ API接口的参数类型规范如下：
     "avatar": "用户头像URL",
     "image": [],
     "like_count": 0,
-    "liked_users": [],
-    "reply_count": 0,
-    "reply_preview": [],
+    "replies": [],
+    "liked": false,
     "create_time": "2023-01-01 12:00:00",
     "update_time": "2023-01-01 12:00:00",
     "status": 1,
@@ -1199,6 +1212,7 @@ API接口的参数类型规范如下：
 - `parent_id` - 查询参数，父评论ID，可选（整数类型，为null时获取一级评论）
 - `limit` - 查询参数，返回记录数量限制，默认20，最大100
 - `offset` - 查询参数，分页偏移量，默认0
+- `page` - 查询参数，页码，可选替代offset
 - `openid` - 查询参数，用户openid，可选（用于查询点赞状态）
 
 **响应**：
@@ -1299,7 +1313,7 @@ API接口的参数类型规范如下：
 
 ### 4.1 获取通知列表
 
-**接口**：`GET /api/wxapp/notification/list`  
+**接口**：`GET /api/wxapp/notification`  
 **描述**：获取用户的通知列表  
 **参数**：
 - `openid` - 查询参数，用户openid（必填，可以使用receiver代替）

@@ -15,7 +15,6 @@ NC='\033[0m' # 无颜色
 NGINX_CONF_DIR="/etc/nginx/conf.d"
 NGINX_SITES_DIR="/etc/nginx/sites-available"
 NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
-CLOUDFLARE_CONF="${NGINX_CONF_DIR}/cloudflare.conf"
 HTTP_CONF="${NGINX_SITES_DIR}/nkuwiki.conf"
 HTTPS_CONF="${NGINX_SITES_DIR}/nkuwiki-ssl.conf"
 UPSTREAM_CONF="${NGINX_CONF_DIR}/upstream.conf"
@@ -34,6 +33,7 @@ function show_help {
     echo -e "  ${YELLOW}deploy${NC}                      - 一键部署双服务配置"
     echo -e "  ${YELLOW}start${NC}                      - 启动所有nkuwiki服务"
     echo -e "  ${YELLOW}restart${NC}                    - 重启所有nkuwiki服务"
+    echo -e "  ${YELLOW}status${NC}                     - 查看所有nkuwiki服务状态"
     echo -e "  ${YELLOW}cleanup${NC}                    - 清理所有服务"
     echo -e "  ${YELLOW}help${NC}                       - 显示此帮助信息"
     echo ""
@@ -41,6 +41,7 @@ function show_help {
     echo -e "  $0 deploy                  - 一键部署双服务配置"
     echo -e "  $0 start                   - 启动所有服务"
     echo -e "  $0 restart                 - 重启所有服务"
+    echo -e "  $0 status                  - 查看所有服务状态"
     echo -e "  $0 cleanup                 - 清理所有服务"
     echo ""
     echo -e "${BLUE}注意事项:${NC}"
@@ -126,13 +127,13 @@ EOF
     service_path="/etc/systemd/system/nkuwiki-8001.service"
     cat > "$service_path" << EOF
 [Unit]
-Description=NKU Wiki API Service (Port 8001, 4 Workers)
+Description=NKU Wiki API Service (Port 8001, 1 Worker)
 After=network.target nginx.service mysql.service
 
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
-ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8001 --workers 4
+ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8001 --workers 1
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
@@ -148,7 +149,7 @@ StandardError=journal
 [Install]
 WantedBy=multi-user.target
 EOF
-    echo -e "${GREEN}创建服务文件: $service_path (端口: 8001, Worker: 4)${NC}"
+    echo -e "${GREEN}创建服务文件: $service_path (端口: 8001, Worker: 1)${NC}"
     
     # 重新加载systemd配置
     systemctl daemon-reload
@@ -176,42 +177,11 @@ upstream nkuwiki_backend {
     
     # 后端服务器列表 - 特定配置
     server 127.0.0.1:8000 weight=1; # 1 个worker，低负载
-    server 127.0.0.1:8001 weight=4; # 4 个worker，高负载
+    server 127.0.0.1:8001 weight=1; # 1 个worker，高负载
     
     # 长连接配置
     keepalive 32;
 }
-EOF
-    
-    # 生成Cloudflare IP配置
-    cat > "$CLOUDFLARE_CONF" << 'EOF'
-# Cloudflare IP ranges
-# IPv4
-set_real_ip_from 173.245.48.0/20;
-set_real_ip_from 103.21.244.0/22;
-set_real_ip_from 103.22.200.0/22;
-set_real_ip_from 103.31.4.0/22;
-set_real_ip_from 141.101.64.0/18;
-set_real_ip_from 108.162.192.0/18;
-set_real_ip_from 190.93.240.0/20;
-set_real_ip_from 188.114.96.0/20;
-set_real_ip_from 197.234.240.0/22;
-set_real_ip_from 198.41.128.0/17;
-set_real_ip_from 162.158.0.0/15;
-set_real_ip_from 172.64.0.0/13;
-set_real_ip_from 131.0.72.0/22;
-
-# IPv6
-set_real_ip_from 2400:cb00::/32;
-set_real_ip_from 2606:4700::/32;
-set_real_ip_from 2803:f800::/32;
-set_real_ip_from 2405:b500::/32;
-set_real_ip_from 2405:8100::/32;
-set_real_ip_from 2a06:98c0::/29;
-set_real_ip_from 2c0f:f248::/32;
-
-# 从Cloudflare头部获取真实IP
-real_ip_header CF-Connecting-IP;
 EOF
     
     # 生成HTTP配置
@@ -224,9 +194,6 @@ server {
     # 记录访问日志
     access_log /var/log/nginx/nkuwiki.access.log;
     error_log /var/log/nginx/nkuwiki.error.log;
-
-    # 包含Cloudflare IP范围配置
-    include /etc/nginx/conf.d/cloudflare.conf;
     
     # 字符集设置
     charset utf-8;
@@ -339,9 +306,6 @@ server {
     # 记录访问日志
     access_log /var/log/nginx/nkuwiki-ssl.access.log;
     error_log /var/log/nginx/nkuwiki-ssl.error.log;
-
-    # 包含Cloudflare IP范围配置
-    include /etc/nginx/conf.d/cloudflare.conf;
     
     # 字符集设置
     charset utf-8;
@@ -442,9 +406,24 @@ function get_all_services {
     ls /etc/systemd/system/nkuwiki*.service 2>/dev/null | xargs -n1 basename 2>/dev/null || echo ""
 }
 
+# 清空logs目录
+function clean_logs_directory {
+    echo -e "${YELLOW}清空logs目录...${NC}"
+    if [ -d "/home/nkuwiki/nkuwiki-shell/nkuwiki/logs" ]; then
+        rm -rf /home/nkuwiki/nkuwiki-shell/nkuwiki/logs/*
+        echo -e "${GREEN}logs目录已清空${NC}"
+    else
+        mkdir -p /home/nkuwiki/nkuwiki-shell/nkuwiki/logs
+        echo -e "${GREEN}logs目录已创建${NC}"
+    fi
+}
+
 # 启动所有服务
 function start_services {
     echo -e "${BLUE}启动所有nkuwiki服务实例...${NC}"
+    
+    # 清空logs目录
+    clean_logs_directory
     
     # 检查并启动主服务
     if systemctl is-active nkuwiki.service >/dev/null 2>&1; then
@@ -527,6 +506,9 @@ function deploy_dual {
 function restart_services {
     echo -e "${BLUE}重启所有nkuwiki服务实例...${NC}"
     
+    # 清空logs目录
+    clean_logs_directory
+    
     # 重启主服务
     echo -e "${YELLOW}重启 nkuwiki.service...${NC}"
     systemctl restart nkuwiki.service
@@ -598,11 +580,6 @@ function cleanup_services {
         rm -f "$UPSTREAM_CONF"
     fi
     
-    if [ -f "$CLOUDFLARE_CONF" ]; then
-        echo -e "删除 $CLOUDFLARE_CONF..."
-        rm -f "$CLOUDFLARE_CONF"
-    fi
-    
     # 重新加载systemd配置
     systemctl daemon-reload
     
@@ -611,6 +588,78 @@ function cleanup_services {
     nginx -t && systemctl reload nginx
     
     echo -e "${GREEN}清理完成${NC}"
+}
+
+# 检查所有服务状态
+function check_service_status {
+    echo -e "${BLUE}检查所有nkuwiki服务状态...${NC}"
+    
+    echo -e "\n${GREEN}=== 服务状态摘要 ===${NC}"
+    local all_services=$(get_all_services)
+    
+    if [ -z "$all_services" ]; then
+        echo -e "${YELLOW}未发现任何nkuwiki服务${NC}"
+        return
+    fi
+    
+    local active_count=0
+    local inactive_count=0
+    local failed_count=0
+    
+    for service in $all_services; do
+        local status=$(systemctl is-active "$service" 2>/dev/null)
+        local enabled=$(systemctl is-enabled "$service" 2>/dev/null || echo "disabled")
+        
+        case "$status" in
+            active)
+                echo -e "${GREEN}✓ $service - 运行中${NC} (自启: $enabled)"
+                active_count=$((active_count+1))
+                ;;
+            failed)
+                echo -e "${RED}✗ $service - 失败${NC} (自启: $enabled)"
+                failed_count=$((failed_count+1))
+                ;;
+            *)
+                echo -e "${YELLOW}○ $service - 未运行${NC} (自启: $enabled)"
+                inactive_count=$((inactive_count+1))
+                ;;
+        esac
+    done
+    
+    echo -e "\n${GREEN}=== 统计信息 ===${NC}"
+    echo -e "服务总数: ${#all_services[@]}"
+    echo -e "运行中: ${GREEN}$active_count${NC}"
+    echo -e "未运行: ${YELLOW}$inactive_count${NC}"
+    echo -e "失败: ${RED}$failed_count${NC}"
+    
+    echo -e "\n${GREEN}=== Nginx和负载均衡状态 ===${NC}"
+    if [ -f "$UPSTREAM_CONF" ]; then
+        echo -e "${GREEN}✓ 负载均衡配置已存在${NC}"
+        echo -e "配置文件: $UPSTREAM_CONF"
+    else
+        echo -e "${RED}✗ 负载均衡配置不存在${NC}"
+    fi
+    
+    if systemctl is-active nginx >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ Nginx服务运行中${NC}"
+        nginx -t 2>/dev/null
+    else
+        echo -e "${RED}✗ Nginx服务未运行${NC}"
+    fi
+    
+    # 检查端口状态
+    echo -e "\n${GREEN}=== 端口状态 ===${NC}"
+    for port in 8000 8001; do
+        if netstat -tuln | grep -q ":$port "; then
+            local pid=$(netstat -tulnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1)
+            local process=$(ps -p $pid -o comm= 2>/dev/null || echo "未知")
+            echo -e "${GREEN}✓ 端口 $port - 已使用${NC} (进程: $process, PID: $pid)"
+        else
+            echo -e "${RED}✗ 端口 $port - 未使用${NC}"
+        fi
+    done
+    
+    echo -e "\n${BLUE}状态检查完成${NC}"
 }
 
 # 主函数
@@ -631,6 +680,9 @@ function main {
             ;;
         restart)
             restart_services
+            ;;
+        status)
+            check_service_status
             ;;
         cleanup)
             cleanup_services

@@ -6,10 +6,16 @@ import re
 import json
 import time
 import asyncio
-from typing import Dict, List, Any, Optional, Union, Tuple
+import os
+import multiprocessing
+from typing import Dict, List, Any, Optional, Union, Tuple, Callable
 from contextlib import contextmanager
+from functools import wraps
 import pymysql
 from pymysql.cursors import DictCursor
+import concurrent.futures
+import atexit
+import queue
 
 from etl import config
 from core.utils.logger import register_logger
@@ -17,6 +23,107 @@ from etl.load.db_pool_manager import get_db_connection
 
 # 创建模块专用日志记录器
 db_logger = register_logger("etl.load.db_core")
+
+# 根据CPU核心数动态设置线程池大小
+# 数据库IO密集型操作通常设置为CPU核心数的2-4倍，但这里我们减少数量以避免线程耗尽
+CPU_COUNT = multiprocessing.cpu_count()
+MAX_WORKERS = max(10, CPU_COUNT * 2)  # 至少10个线程，最多CPU核心数的2倍
+THREAD_TIMEOUT = 60  # 空闲线程的超时时间（秒）
+
+# 添加环境变量检查，确保只有一个进程创建线程池
+thread_pool_key = os.environ.get('NKUWIKI_THREAD_POOL_PID', '')
+current_pid = str(os.getpid())
+
+# 如果是第一个进程或者线程池未初始化，则创建线程池
+if not thread_pool_key or current_pid == thread_pool_key:
+    os.environ['NKUWIKI_THREAD_POOL_PID'] = current_pid
+    db_logger.info(f"初始化数据库线程池 - 进程ID: {current_pid}, CPU核心数: {CPU_COUNT}, 最大工作线程: {MAX_WORKERS}")
+    
+    # 创建全局线程池，设置线程保持活跃的时间
+    THREAD_POOL = concurrent.futures.ThreadPoolExecutor(
+        max_workers=MAX_WORKERS,
+        thread_name_prefix="db_worker",
+    )
+else:
+    db_logger.info(f"使用现有线程池 - 当前进程ID: {current_pid}, 线程池进程ID: {thread_pool_key}")
+    # 使用已有的线程池或创建一个较小的备用线程池
+    THREAD_POOL = concurrent.futures.ThreadPoolExecutor(
+        max_workers=5,  # 极小的线程池，仅用于必要操作
+        thread_name_prefix=f"db_worker_sub_{current_pid}"
+    )
+
+# 创建任务队列，用于批量处理数据库操作
+TASK_QUEUE = queue.Queue()
+MAX_BATCH_SIZE = 50  # 最大批处理数量
+BATCH_TIMEOUT = 0.1  # 批处理等待超时时间（秒）
+
+# 注册程序退出时关闭线程池
+@atexit.register
+def close_thread_pool():
+    db_logger.info("关闭数据库线程池")
+    THREAD_POOL.shutdown(wait=True)
+
+# 连接池状态监控
+class DBPoolMonitor:
+    """数据库连接池状态监控"""
+    def __init__(self):
+        self.active_tasks = 0
+        self.completed_tasks = 0
+        self.failed_tasks = 0
+        self.last_reset_time = time.time()
+    
+    def task_started(self):
+        """记录任务开始"""
+        self.active_tasks += 1
+    
+    def task_completed(self):
+        """记录任务完成"""
+        self.active_tasks -= 1
+        self.completed_tasks += 1
+    
+    def task_failed(self):
+        """记录任务失败"""
+        self.active_tasks -= 1
+        self.failed_tasks += 1
+    
+    def get_stats(self):
+        """获取统计信息"""
+        return {
+            "active_tasks": self.active_tasks,
+            "completed_tasks": self.completed_tasks,
+            "failed_tasks": self.failed_tasks,
+            "uptime": int(time.time() - self.last_reset_time)
+        }
+    
+    def reset_stats(self):
+        """重置统计信息"""
+        self.completed_tasks = 0
+        self.failed_tasks = 0
+        self.last_reset_time = time.time()
+
+# 创建监控实例
+db_monitor = DBPoolMonitor()
+
+# 添加性能监控装饰器
+def monitor_execution(func):
+    """监控数据库操作执行时间的装饰器"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start_time = time.time()
+        db_monitor.task_started()
+        try:
+            result = func(*args, **kwargs)
+            execution_time = time.time() - start_time
+            if execution_time > 0.5:  # 记录超过0.5秒的慢查询
+                # 尝试从参数中获取SQL语句
+                sql = args[0] if args and isinstance(args[0], str) else "未知SQL"
+                db_logger.warning(f"慢查询 [{execution_time:.2f}秒]: {sql[:200]}...")
+            db_monitor.task_completed()
+            return result
+        except Exception as e:
+            db_monitor.task_failed()
+            raise
+    return wrapper
 
 def get_mysql_config() -> Dict[str, Any]:
     """获取MySQL配置"""
@@ -52,6 +159,7 @@ def validate_table_name(table_name: str) -> bool:
     """验证表名是否合法，防止SQL注入"""
     return bool(re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name))
 
+@monitor_execution
 def execute_query(sql: str, params: Any = None, fetch: bool = True) -> Union[List[Dict[str, Any]], int]:
     """
     执行SQL查询，返回结果或受影响的行数
@@ -465,34 +573,51 @@ async def async_query(sql: str, params: Any = None) -> List[Dict[str, Any]]:
     return await asyncio.to_thread(execute_query, sql, params)
 
 async def async_insert(table_name: str, data: Dict[str, Any]) -> int:
-    """异步插入记录"""
-    return await asyncio.to_thread(insert_record, table_name, data)
+    """
+    异步插入记录
+    
+    Args:
+        table_name: 表名
+        data: 要插入的数据
+        
+    Returns:
+        int: 插入记录的ID
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            THREAD_POOL,
+            lambda: insert_record(table_name, data)
+        )
+    except Exception as e:
+        db_logger.error(f"异步插入记录失败: {str(e)}")
+        return -1
 
 async def async_update(table_name: str, record_id: int, data: Dict[str, Any]) -> bool:
-    """异步更新记录"""
-    return await asyncio.to_thread(update_record, table_name, record_id, data)
-
-async def async_get_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
     """
-    异步获取记录
+    异步更新记录
     
     Args:
         table_name: 表名
         record_id: 记录ID
+        data: 要更新的数据
         
     Returns:
-        记录数据字典，未找到则返回None
+        bool: 更新是否成功
     """
     try:
-        result = await async_query_records(
-            table_name=table_name,
-            conditions={"id": record_id},
-            limit=1
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            THREAD_POOL,
+            lambda: update_record(table_name, record_id, data)
         )
-        return result['data'][0] if result and result['data'] else None
     except Exception as e:
-        db_logger.error(f"通过ID查询记录失败: {str(e)}")
-        return None
+        db_logger.error(f"异步更新记录失败: {str(e)}")
+        return False
+
+async def async_get_by_id(table_name: str, record_id: int) -> Optional[Dict[str, Any]]:
+    """异步获取指定ID的记录"""
+    return await asyncio.to_thread(get_record_by_id, table_name, record_id)
 
 async def async_query_records(table_name: str, 
                               conditions: Dict[str, Any] = None,
@@ -501,15 +626,22 @@ async def async_query_records(table_name: str,
                               limit: int = 1000, 
                               offset: int = 0) -> Dict[str, Any]:
     """异步条件查询记录，并返回分页信息"""
-    return await asyncio.to_thread(
-        query_records,
-        table_name=table_name,
-        conditions=conditions,
-        fields=fields,
-        order_by=order_by,
-        limit=limit,
-        offset=offset
-    )
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            THREAD_POOL, 
+            lambda: query_records(
+                table_name=table_name,
+                conditions=conditions,
+                fields=fields,
+                order_by=order_by,
+                limit=limit,
+                offset=offset
+            )
+        )
+    except Exception as e:
+        db_logger.error(f"异步查询记录失败: {str(e)}")
+        return {"data": [], "pagination": None}
 
 async def async_count_records(table_name: str, conditions: Dict[str, Any] = None) -> int:
     """异步计算记录数量
@@ -521,7 +653,15 @@ async def async_count_records(table_name: str, conditions: Dict[str, Any] = None
     Returns:
         记录数量
     """
-    return await asyncio.to_thread(count_records, table_name, conditions)
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            THREAD_POOL,
+            lambda: count_records(table_name, conditions)
+        )
+    except Exception as e:
+        db_logger.error(f"异步计数记录失败: {str(e)}")
+        return 0
 
 async def async_execute_custom_query(query: str, params: Any = None, fetch: bool = True) -> Union[List[Dict[str, Any]], int, None]:
     """
@@ -536,7 +676,33 @@ async def async_execute_custom_query(query: str, params: Any = None, fetch: bool
         查询结果列表，每个结果是一个字典，或者影响的行数，或者None
     """
     try:
-        return await asyncio.to_thread(execute_query, query, params, fetch)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            THREAD_POOL,
+            lambda: execute_query(query, params, fetch)
+        )
     except Exception as e:
         db_logger.error(f"异步自定义查询执行失败: {str(e)}")
-        return [] if fetch else 0 
+        return [] if fetch else 0
+
+async def async_delete(table_name: str, record_id: int, logical: bool = True) -> bool:
+    """
+    异步删除记录
+    
+    Args:
+        table_name: 表名
+        record_id: 记录ID
+        logical: 是否逻辑删除
+        
+    Returns:
+        bool: 删除是否成功
+    """
+    try:
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            THREAD_POOL,
+            lambda: delete_record(table_name, record_id, logical)
+        )
+    except Exception as e:
+        db_logger.error(f"异步删除记录失败: {str(e)}")
+        return False 

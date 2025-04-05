@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_notification` (
     `content` TEXT DEFAULT NULL COMMENT '通知内容',
     `type` VARCHAR(20) DEFAULT 'system' COMMENT '通知类型: system-系统通知, like-点赞, comment-评论, follow-关注',
     `is_read` BOOLEAN DEFAULT FALSE COMMENT '是否已读',
-    `sender` JSON DEFAULT NULL COMMENT '发送者信息',
+    `sender` VARCHAR(100) DEFAULT NULL COMMENT '发送者openid',
     `target_id` INT DEFAULT NULL COMMENT '目标ID，如帖子ID、评论ID等',
     `target_type` VARCHAR(20) DEFAULT NULL COMMENT '目标类型，如post, comment等',
     `extra_data` JSON DEFAULT NULL COMMENT '额外数据',
