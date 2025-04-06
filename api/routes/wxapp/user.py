@@ -161,20 +161,27 @@ async def update_user_info(
             update_data["qqId"] = req_data["qqId"]
         if "status" in req_data:
             update_data["status"] = req_data["status"]
-        if "extra" in req_data:
-            update_data["extra"] = req_data["extra"]
             
         if not update_data:
             return Response.bad_request(details={"message": "未提供任何更新数据"})
 
-        update_success = await async_update(
-            table_name="wxapp_user",
-            record_id=user_id,
-            data=update_data
-        )
-        
-        if not update_success:
-            return Response.db_error(details={"message": "用户信息更新失败"})
+        try:
+            update_success = await async_update(
+                table_name="wxapp_user",
+                record_id=user_id,
+                data=update_data
+            )
+            
+            # 此处修改判断逻辑，只有当明确返回False时才认为失败
+            # 当数据无变化时，MySQL不会更新行，返回的affected rows为0
+            # 但这种情况不应视为错误
+            if update_success is False:  # 只有明确返回False时才视为失败
+                return Response.db_error(details={"message": "用户信息更新失败"})
+        except Exception as err:
+            # 添加详细的错误日志
+            import logging
+            logging.error(f"用户信息更新SQL执行错误: {str(err)}")
+            return Response.db_error(details={"message": f"用户信息更新失败: {str(err)}"})
             
         # 获取更新后的用户信息，直接使用SQL查询
         query_fields = "id, openid, nickname, avatar, bio, gender, country, province, city"

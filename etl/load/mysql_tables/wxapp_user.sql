@@ -2,7 +2,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_user` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `openid` VARCHAR(100) NOT NULL COMMENT '微信用户唯一标识',
     `nickname` VARCHAR(100) DEFAULT NULL COMMENT '用户昵称',
-    `avatar` VARCHAR(500) DEFAULT 'cloud://nkuwiki-0g6bkdy9e8455d93.6e6b-nkuwiki-0g6bkdy9e8455d93-1346872102/default/default-avatar.png' COMMENT '头像URL',
+    `avatar` VARCHAR(500) DEFAULT NULL COMMENT '头像URL',
     `unionid` VARCHAR(100) DEFAULT NULL COMMENT '微信开放平台唯一标识',
     `gender` TINYINT DEFAULT 0 COMMENT '性别：0-未知, 1-男, 2-女',
     `bio` VARCHAR(255) DEFAULT NULL COMMENT '用户个人简介',

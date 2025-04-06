@@ -259,7 +259,9 @@ def update_record(table_name: str, record_id: int, data: Dict[str, Any]) -> bool
         sql = f"UPDATE {table_name} SET {set_clause} WHERE id = %s"
         
         rows_affected = execute_query(sql, values, fetch=False)
-        return rows_affected > 0
+        # 修改逻辑：当SQL执行成功但影响行数为0时(数据未变化)也视为成功
+        # 只有明确出错时才返回False
+        return True  # 只要没有抛出异常，就认为更新成功
     except Exception as e:
         db_logger.error(f"更新记录失败: {str(e)}")
         return False

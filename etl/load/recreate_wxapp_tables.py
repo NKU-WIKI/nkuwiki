@@ -46,7 +46,7 @@ def apply_config_defaults(sql_content):
     """应用配置文件中的默认值到SQL语句"""
     try:
         # 硬编码默认头像URL
-        default_avatar = "cloud://nkuwiki-0g6bkdy9e8455d93.6e6b-nkuwiki-0g6bkdy9e8455d93-1346872102/default/default-avatar.png"
+        default_avatar = "cloud://cloud1-7gu881ir0a233c29.636c-cloud1-7gu881ir0a233c29-1352978573/avatar1.png"
         
         logger.debug(f"使用硬编码的默认头像URL: {default_avatar}")
         
