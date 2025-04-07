@@ -74,11 +74,12 @@ class PaginationInfo(BaseAPI):
     page: int = Field(description="当前页码")
     page_size: int = Field(description="每页数量")
     total_pages: int = Field(description="总页数")
+    has_more: bool = Field(description="是否还有更多")
 
 class Request(FastAPIRequest):
     """请求基类，包装FastAPIRequest并添加openid属性"""
     openid: Optional[str] = None
-    
+    pagination: Optional[PaginationInfo] = Field(None, description="分页信息")
     async def json(self):
         """重写json方法获取请求体数据"""
         body = await super().json()
@@ -105,7 +106,7 @@ class Response(JSONResponse):
         data: Any = None,
         details: Optional[Dict[str, Any]] = None,
         timestamp: Optional[datetime] = None,
-        pagination: Optional[Dict[str, Any]] = None,
+        pagination: Optional[PaginationInfo] = None,
         status_code: int = 200,
         headers: Optional[Dict[str, str]] = None,
         **kwargs

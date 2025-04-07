@@ -200,32 +200,35 @@ async def get_posts(
             count_sql += " AND tag LIKE %s"
             count_params.append(f"%{tag}%")
         
-        # 并行执行帖子查询和计数查询
-        posts_query = async_execute_custom_query(base_sql, params)
+        # 并行执行帖子查询和总数查询
+        post_query = async_execute_custom_query(base_sql, params)
         count_query = async_execute_custom_query(count_sql, count_params)
         
-        posts, count_result = await asyncio.gather(posts_query, count_query)
+        posts, count_result = await asyncio.gather(post_query, count_query)
+        
+        # 获取总记录数
+        total = count_result[0]['total'] if count_result else 0
         
         # 计算总页数
-        total = count_result[0]['total'] if count_result else 0
-        total_pages = (total + limit - 1) // limit
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
         
-        # 构建分页信息
+        # 构建标准分页信息
         pagination = {
-            "page": page,
-            "size": limit,
             "total": total,
-            "pages": total_pages
+            "page": page,
+            "page_size": limit,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
         }
         
-        # 返回结果
+        # 返回标准分页响应
         return Response.paged(
-            data=posts or [],
+            data=posts,
             pagination=pagination,
-            details={"message":"查询帖子列表成功"}
+            details={"message": "查询帖子列表成功"}
         )
     except Exception as e:
-        logger.error(f"查询帖子列表失败: {e}")
+        logger.error(f"查询帖子列表异常: {str(e)}")
         return Response.error(details={"message": f"查询帖子列表失败: {str(e)}"})
 
 @router.post("/post/update")
@@ -349,94 +352,81 @@ async def search_posts(
 ):
     """搜索帖子"""
     try:
-        # 构建查询条件
-        conditions = []
-        params = []
-        
-        # 忽略已删除的帖子
-        conditions.append("is_deleted = 0")
-        
-        # 搜索关键词
-        if keywords:
-            conditions.append("(title LIKE %s OR content LIKE %s)")
-            keywords_param = f"%{keywords}%"
-            params.extend([keywords_param, keywords_param])
-            
-        # 分类ID
-        if category_id:
-            conditions.append("category_id = %s")
-            params.append(category_id)
-            
-        # 点赞数范围
-        if min_likes is not None:
-            conditions.append("like_count >= %s")
-            params.append(min_likes)
-            
-        if max_likes is not None:
-            conditions.append("like_count <= %s")
-            params.append(max_likes)
-            
-        # 构建查询条件字符串
-        where_clause = " AND ".join(conditions)
-        
-        # 只查询需要的字段
-        fields = ["id", "title", "content", "image", "openid", "nickname", "avatar", 
-                 "view_count", "like_count", "comment_count", "create_time", "update_time"]
-        
-        # 计算分页参数
-        offset = (page - 1) * limit
-        
         # 验证并规范排序字段
-        ALLOWED_ORDERS = {"update_time", "create_time", "view_count", "like_count"}
+        ALLOWED_ORDERS = {"update_time", "create_time", "view_count", "like_count", "comment_count"}
         
         order_by_parts = order_by.split()
         if len(order_by_parts) != 2 or order_by_parts[0] not in ALLOWED_ORDERS or order_by_parts[1].upper() not in {"ASC", "DESC"}:
             order_by = "create_time DESC"
-        
-        # 构建查询SQL
-        sql = f"""
-            SELECT {', '.join(fields)}
-            FROM wxapp_post
-            WHERE {where_clause}
-            ORDER BY {order_by}
-            LIMIT %s OFFSET %s
-        """
-        query_params = params.copy()
-        query_params.extend([limit, offset])
-        
-        # 构建计数SQL
-        count_sql = f"""
-            SELECT COUNT(*) as total
-            FROM wxapp_post 
-            WHERE {where_clause}
+            
+        # 构建基础SQL和条件
+        base_sql = """
+        SELECT 
+            id, title, content, image, openid, nickname, avatar, bio, 
+            view_count, like_count, comment_count, favorite_count, 
+            create_time, update_time, tag, category_id, status
+        FROM wxapp_post
+        WHERE status = 1
         """
         
-        # 并行执行查询和计数
-        posts_query = async_execute_custom_query(sql, query_params)
-        count_query = async_execute_custom_query(count_sql, params)
+        params = []
         
-        posts_result, count_result = await asyncio.gather(posts_query, count_query)
+        # 添加关键词筛选
+        if keywords:
+            base_sql += " AND (title LIKE %s OR content LIKE %s)"
+            params.extend([f"%{keywords}%", f"%{keywords}%"])
         
-        # 处理结果
+        # 添加分类筛选
+        if category_id:
+            base_sql += " AND category_id = %s"
+            params.append(category_id)
+        
+        # 添加点赞数范围筛选
+        if min_likes is not None:
+            base_sql += " AND like_count >= %s"
+            params.append(min_likes)
+            
+        if max_likes is not None:
+            base_sql += " AND like_count <= %s"
+            params.append(max_likes)
+        
+        # 计数SQL
+        count_sql = base_sql.replace("SELECT \n            id, title, content, image, openid, nickname, avatar, bio, \n            view_count, like_count, comment_count, favorite_count, \n            create_time, update_time, tag, category_id, status", "SELECT COUNT(*) as total")
+        
+        # 添加排序和分页
+        base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
+        params.extend([limit, (page - 1) * limit])
+        
+        # 并行执行查询
+        post_query = async_execute_custom_query(base_sql, params)
+        count_query = async_execute_custom_query(count_sql, params[:-2])  # 移除分页参数
+        
+        posts, count_result = await asyncio.gather(post_query, count_query)
+        
+        # 获取总记录数
         total = count_result[0]['total'] if count_result else 0
-        total_pages = (total + limit - 1) // limit if total > 0 else 0
         
-        # 构建分页信息
+        # 计算总页数
+        total_pages = (total + limit - 1) // limit if limit > 0 else 1
+        
+        # 构建标准分页信息
         pagination = {
-            "page": page,
-            "size": limit,
             "total": total,
-            "pages": total_pages
+            "page": page,
+            "page_size": limit,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
         }
         
-        # 返回结果
+        # 返回标准分页响应
         return Response.paged(
-            data=posts_result or [],
+            data=posts,
             pagination=pagination,
-            details={"message": "搜索帖子成功"}
+            details={"message": "搜索帖子成功", "keywords": keywords}
         )
+        
     except Exception as e:
-        logger.error(f"搜索帖子失败: {e}")
+        logger.error(f"搜索帖子异常: {str(e)}")
         return Response.error(details={"message": f"搜索帖子失败: {str(e)}"})
 
 # 使用并行查询优化

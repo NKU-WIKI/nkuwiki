@@ -112,6 +112,77 @@ pipeline.run(source="公众号名称")
 
 ```text
 
+## 数据导入脚本
+
+### 通用数据导入工具 (import_data.py)
+
+脚本用于将JSON数据文件导入到MySQL数据库中。支持wechat、website、market和wxapp等多种平台数据。
+
+#### 使用方法
+
+```bash
+# 基本用法
+python -m etl.load.import_data --platform wechat --tag nku --data-dir /data/raw/wechat
+
+# 导入指定目录的特定文件，并在导入前重建表
+python -m etl.load.import_data --platform website --tag nku --data-dir /data/raw/website --pattern "*.json" --rebuild-table
+
+# 导入微信数据示例（使用默认配置路径）
+python -m etl.load.import_data --platform wechat
+
+# 导入网站数据示例（使用默认配置路径）
+python -m etl.load.import_data --platform website
+
+# 显示详细日志
+python -m etl.load.import_data --platform market --verbose
+```
+
+#### 参数说明
+
+- `--platform`: 必填，数据平台类型，可选值为wechat、website、market、wxapp
+- `--tag`: 数据标签，默认为nku
+- `--data-dir`: 数据目录路径，默认使用配置中的路径
+- `--pattern`: JSON文件匹配模式，默认为*.json
+- `--rebuild-table`: 导入前重建表（会清空表中原有数据）
+- `--batch-size`: 批量插入大小，默认100
+- `--verbose`: 显示详细日志
+
+#### 数据格式要求
+
+脚本支持以下两种JSON格式：
+
+1. 直接的记录列表：
+```json
+[
+  {"title": "标题1", "content": "内容1", "author": "作者1", ...},
+  {"title": "标题2", "content": "内容2", "author": "作者2", ...}
+]
+```
+
+2. 包含data字段的对象：
+```json
+{
+  "data": [
+    {"title": "标题1", "content": "内容1", "author": "作者1", ...},
+    {"title": "标题2", "content": "内容2", "author": "作者2", ...}
+  ]
+}
+```
+
+### 数据字段
+
+脚本会自动处理以下字段：
+
+- `title`: 标题，缺失时设置为空字符串
+- `content`: 内容，缺失时设置为空字符串
+- `author`: 作者，缺失时设置为"未知作者"
+- `original_url`: 原始URL，缺失时设置为空字符串
+- `platform`: 平台，根据参数设置
+- `publish_time`: 发布时间，支持多种日期格式
+- `scrape_time`: 爬取时间，支持多种日期格式
+
+其他字段将按原样导入。
+
 ## 注意事项
 
 1. **批处理**: 对于大规模数据，使用批处理进行加载
