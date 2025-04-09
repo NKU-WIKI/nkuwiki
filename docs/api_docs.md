@@ -1978,7 +1978,7 @@ data: [DONE]
 {
   "openid": "用户openid", 
   "query": "南开大学的校训是什么",
-  "tables": ["wxapp_posts", "website_nku", "wechat_nku"],
+  "platform": "wechat，website,market,wxapp",
   "max_results": 3,
   "stream": false,
   "format": "markdown"
@@ -1988,14 +1988,10 @@ data: [DONE]
 **请求参数说明**：
 - `openid` - 字符串，必填，用户的openid
 - `query` - 字符串，必填，用户的问题
-- `tables` - 字符串数组，必填，要检索的数据表列表：
-  - `wxapp_posts` - 小程序帖子
-  - `wxapp_comments` - 小程序评论
-  - `wechat_nku` - 微信公众号文章
-  - `website_nku` - 南开网站文章
-  - `market_nku` - 校园集市帖子
-- `max_results` - 整数，可选，每个数据源返回的最大结果数，默认为5
-- `stream` - 布尔值，可选，是否使用流式返回，默认为false
+- `platform` - 平台标识，可选值：wechat/website/market/wxapp，多个用逗号分隔
+- `tag`: 标签，可选多个用逗号分隔，默认nku，其他标签没啥意义，数据库里也没有（
+- `max_results` - 整数，可选，每个数据源返回的最大结果数，默认为3
+- `stream` - 布尔值，可选，是否使用流式返回，默认为false。流式暂不支持。
 - `format` - 字符串，可选，返回格式：markdown或text，默认为markdown
 
 **响应**：
@@ -2006,7 +2002,7 @@ data: [DONE]
   "message": "success",
   "data": {
     "original_query": "南开大学的校训是什么",
-    "rewritten_query": "南开大学校训",
+    "rewritten_query": "校训",
     "response": "南开大学的校训是"允公允能，日新月异"。\n\n这八个字出自...",
     "sources": [
       {
@@ -2033,6 +2029,8 @@ data: [DONE]
 ```
 
 **流式响应格式**：
+
+**还在测试中，暂无。**
 当 `stream=true` 时，返回SSE格式数据流，每个事件包含以下数据类型之一：
 
 1. 查询信息:
