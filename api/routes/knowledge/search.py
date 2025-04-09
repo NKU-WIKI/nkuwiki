@@ -1,0 +1,667 @@
+import re
+import time
+import asyncio
+from datetime import datetime
+from fastapi import Query, APIRouter, Body
+from typing import Optional, List
+from api.models.knowledge import Source
+
+from api.models.common import Response, Request, validate_params
+from etl.load.db_core import (
+    async_query_records,async_execute_custom_query
+)
+from core.utils.logger import register_logger
+
+router = APIRouter()
+
+logger = register_logger('api.routes.knowledge.search')
+
+TABLE_MAPPING = {
+    # 微信小程序平台
+    "wxapp": {
+        "name": "小程序",
+        "post": {
+            "content_field": "content",
+            "title_field": "title",
+            "author_field": "nickname",
+            "status_field": "status",
+            "deleted_field": "is_deleted"
+        },
+        "comment": {
+            "content_field": "content",
+            "title_field": "content",
+            "author_field": "nickname",
+            "status_field": "status",
+            "deleted_field": "is_deleted"
+        }
+    },
+    # 微信公众号平台
+    "wechat": {
+        "name": "微信公众号",
+        "content_field": "content",
+        "title_field": "title",
+        "author_field": "author"
+    },
+    # 网站平台
+    "website": {
+        "name": "南开网站",
+        "content_field": "content",
+        "title_field": "title",
+        "author_field": "author"
+    },
+    # 校园集市平台
+    "market": {
+        "name": "校园集市",
+        "content_field": "content",
+        "title_field": "title",
+        "author_field": "author",
+        "status_field": "status"
+    }
+}
+
+def calculate_relevance(query: str, title: str, content: str) -> float:
+    """计算文本相关度
+    
+    Args:
+        query: 搜索关键词
+        title: 标题
+        content: 内容
+        
+    Returns:
+        float: 相关度分数，范围0-1
+    """
+    # 将查询词拆分为关键词列表
+    keywords = re.findall(r'\w+', query.lower())
+    if not keywords:
+        return 0.0
+        
+    # 计算标题相关度
+    title_score = 0.0
+    title_lower = title.lower()
+    for keyword in keywords:
+        if keyword in title_lower:
+            # 标题中的关键词权重更高
+            title_score += 2.0
+            
+    # 计算内容相关度
+    content_score = 0.0
+    content_lower = content.lower()
+    for keyword in keywords:
+        # 内容中的关键词权重较低
+        content_score += content_lower.count(keyword) * 0.1
+        
+    # 计算总相关度
+    total_score = title_score + content_score
+    
+    # 归一化到0-1范围
+    max_score = len(keywords) * 2.0  # 最大可能分数
+    if max_score == 0:
+        return 0.0
+        
+    return min(total_score / max_score, 1.0)
+
+@router.get("/search")
+async def search_endpoint(
+    query: str = Query(..., description="搜索关键词"),
+    openid: str = Query(..., description="用户openid"),
+    platform: Optional[str] = Query(None, description="平台标识(wechat,website,market,wxapp)，多个用逗号分隔"),
+    tag: Optional[str] = Query(None, description="标签，多个用逗号分隔"),
+    max_results: int = Query(10, description="单表最大结果数"),
+    page: int = Query(1, description="分页页码"),
+    page_size: int = Query(10, description="每页结果数"),
+    sort_by: str = Query("relevance", description="排序方式：relevance-相关度，time-时间"),
+    max_content_length: int = Query(500, description="单条内容最大长度，超过将被截断")
+):
+    """多表综合检索接口
+    
+    参数说明：
+    - query: 搜索关键词，必填
+    - openid: 用户openid，必填
+    - platform: 平台标识，可选值：wechat/website/market/wxapp，多个用逗号分隔
+    - tag: 标签，多个用逗号分隔
+    - max_results: 单表最大结果数，默认10
+    - page: 分页页码，默认1
+    - page_size: 每页结果数，默认10
+    - sort_by: 排序方式，可选值：relevance(相关度)/time(时间)，默认relevance
+    - max_content_length: 单条内容最大长度，默认500，超过将被截断
+    
+    返回格式：
+    {
+        "code": 200,
+        "message": "success",
+        "data": [
+            {
+                "create_time": "2025-04-07T16:13:49",
+                "update_time": "2025-04-07T16:13:49",
+                "author": "作者",
+                "platform": "平台标识",
+                "original_url": "原文链接",
+                "tag": "标签",
+                "title": "标题",
+                "content": "内容",
+                "relevance": 0.85
+            }
+        ],
+        "pagination": {
+            "total": 100,
+            "page": 1,
+            "page_size": 10,
+            "total_pages": 10
+        }
+    }
+    """
+    try:
+        start_time = time.time()
+
+        if not query:
+            return Response.bad_request(details={"message": "查询关键词不能为空"})
+        
+        # 处理平台标识参数，支持多平台
+        table_list = []
+        if platform:
+            # 分割平台字符串
+            platform_list = [p.strip() for p in platform.split(',') if p.strip()]
+            
+            for p in platform_list:
+                if p == "wxapp":
+                    table_list.append("wxapp_post")
+                elif p in ["wechat", "website", "market"]:
+                    table_list.append(f"{p}_nku")
+                else:
+                    return Response.bad_request(details={"message": f"平台 {p} 不存在或不支持搜索"})
+        else:
+            # 不指定平台时，搜索所有表
+            table_list = ["wechat_nku", "website_nku", "market_nku", "wxapp_post"]
+        
+        # 处理标签参数，为不同平台提供默认标签
+        tag_list = []
+        if tag:
+            tag_list = tag.split(",")
+        else:
+            # 不指定tag时，根据平台添加默认标签
+            if len(table_list) == 1:
+                if table_list[0] == "wxapp_post":
+                    tag_list = ["post"]
+                elif table_list[0] in ["wechat_nku", "website_nku", "market_nku"]:
+                    tag_list = ["nku"]
+        
+        logger.debug(f"综合检索请求: query={query}, platform={platform}, tag={tag_list}, tables={table_list}, max_content_length={max_content_length}")
+        
+        # 验证表名是否合法
+        for table in table_list:
+            platform_name = table.split("_")[0]
+            if platform_name not in TABLE_MAPPING:
+                return Response.bad_request(details={"message": f"平台 {platform_name} 不存在或不支持搜索"})
+                
+        offset = (page - 1) * page_size
+        
+        # 搜索所有指定表
+        all_results = []
+        search_tasks = []
+        
+        # 构建并发搜索任务
+        for table in table_list:
+            # 从表名中提取平台和标签
+            platform_name, tag_name = table.split("_")
+            platform_info = TABLE_MAPPING[platform_name]
+            
+            # 如果是wxapp平台，需要根据tag获取对应的表结构
+            if platform_name == "wxapp":
+                table_info = platform_info[tag_name]
+            else:
+                table_info = platform_info
+                
+            content_field = table_info["content_field"]
+            title_field = table_info["title_field"]
+            
+            # 构建LIKE条件，同时搜索标题和内容
+            where_condition = f"({title_field} LIKE %s OR {content_field} LIKE %s)"
+            sql_params = [f"%{query}%", f"%{query}%"]
+            
+            # 如果表有状态字段，只搜索正常状态的记录
+            if "status_field" in table_info:
+                where_condition += f" AND {table_info['status_field']} = 1"
+                
+            # 如果表有删除字段，只搜索未删除的记录
+            if "deleted_field" in table_info:
+                where_condition += f" AND {table_info['deleted_field']} = 0"
+            
+            search_task = async_query_records(
+                table_name=table,
+                conditions={"where_condition": where_condition, "params": sql_params},
+                order_by="id DESC",
+                limit=max_results
+            )
+            search_tasks.append((table, search_task))
+            
+        # 并发执行所有搜索任务
+        search_results = await asyncio.gather(*[task for _, task in search_tasks])
+        
+        # 处理搜索结果
+        total_count = 0
+        for i, (table, _) in enumerate(search_tasks):
+            table_results = search_results[i]
+            platform_name = table.split("_")[0]
+            platform_info = TABLE_MAPPING[platform_name]
+            
+            for item in table_results["data"]:
+                # 计算相关度
+                relevance = calculate_relevance(query, item.get("title", ""), item.get("content", ""))
+                item["relevance"] = relevance
+                
+                # 为每个结果添加表和来源信息
+                item["_table"] = table
+                item["_type"] = platform_info["name"]
+                
+                # 截断过长内容
+                if "content" in item and item["content"] and len(item["content"]) > max_content_length:
+                    item["content"] = item["content"][:max_content_length] + "..."
+                    item["_content_truncated"] = True
+                    
+                all_results.append(item)
+                total_count += 1
+                
+        # 根据排序方式排序
+        if sort_by == "relevance":
+            all_results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+        else:  # time
+            all_results.sort(key=lambda x: x.get("update_time", x.get("create_time", "1970-01-01")), reverse=True)
+        
+        # 分页
+        paged_results = all_results[offset:offset+page_size] if all_results else []
+        
+        # 转换为Source模型格式
+        sources = []
+        for item in paged_results:
+            table_name = item.get("_table", "")
+            platform_name = table_name.split("_")[0]
+            if platform_name in TABLE_MAPPING:
+                platform_info = TABLE_MAPPING[platform_name]
+                
+                # 获取各字段值，不存在则使用空字符串
+                author = item.get(platform_info["author_field"], "") or "未知作者"
+                title = item.get(platform_info["title_field"], "") or "无标题"
+                content = item.get(platform_info["content_field"], "") or ""
+                
+                # 转换平台标识为简短形式
+                platform_value = platform_name
+                
+                original_url = item.get("original_url", "")
+                
+                # 提取标签，如果存在
+                tag = None
+                if "tag" in item and item["tag"]:
+                    try:
+                        if isinstance(item["tag"], str):
+                            import json
+                            tag = json.loads(item["tag"])
+                        else:
+                            tag = item["tag"]
+                    except:
+                        tag = None
+                
+                # 提取图片，如果存在
+                image = None
+                if "image" in item and item["image"]:
+                    try:
+                        if isinstance(item["image"], str):
+                            import json
+                            image = json.loads(item["image"])
+                        else:
+                            image = item["image"]
+                    except:
+                        image = None
+                
+                # 发布时间和爬取时间
+                publish_time = item.get("publish_time")
+                scrape_time = item.get("scrape_time")
+                
+                # 标记内容是否被截断
+                is_truncated = item.get("_content_truncated", False)
+                
+                # 创建Source实例
+                source = Source(
+                    author=author,
+                    platform=platform_value,
+                    original_url=original_url,
+                    tag=tag,
+                    title=title,
+                    content=content,
+                    image=image,
+                    publish_time=publish_time,
+                    scrape_time=scrape_time,
+                    create_time=item.get("create_time"),
+                    update_time=item.get("update_time"),
+                    relevance=item.get("relevance", 0)
+                )
+                
+                # 添加是否截断标记
+                if is_truncated:
+                    source.is_truncated = True
+                    
+                sources.append(source)
+        
+        # 创建分页信息
+        pagination = {
+            "total": total_count,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_count + page_size - 1) // page_size if page_size > 0 else 1
+        }
+        
+        # 记录搜索历史
+        asyncio.create_task(_record_search_history(query, openid))
+        
+        total_time = time.time() - start_time
+        logger.debug(f"综合检索完成: query={query}, 耗时={total_time:.2f}秒, 结果数={len(sources)}")
+        
+        return Response.paged(
+            data=sources,
+            pagination=pagination,
+            details={"message": "搜索成功", "query": query, "response_time": total_time}
+        )
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"综合检索失败: {str(e)}\n{error_detail}")
+        return Response.error(message=f"搜索失败: {str(e)}")
+
+async def _record_search_history(query: str, openid: str):
+    """记录搜索历史"""
+    try:
+        # 检查是否存在相同的搜索记录
+        sql = """
+            SELECT id FROM search_history 
+            WHERE query = %s AND openid = %s 
+            ORDER BY create_time DESC 
+            LIMIT 1
+        """
+        result = execute_query(sql, [query, openid])
+        
+        if result:
+            # 更新现有记录的时间
+            sql = "UPDATE search_history SET update_time = %s WHERE id = %s"
+            execute_query(sql, [datetime.now(), result[0]["id"]])
+        else:
+            # 插入新记录
+            sql = """
+                INSERT INTO search_history (query, openid, create_time, update_time)
+                VALUES (%s, %s, %s, %s)
+            """
+            execute_query(sql, [query, openid, datetime.now(), datetime.now()])
+    except Exception as e:
+        logger.error(f"记录搜索历史失败: {str(e)}") 
+
+
+
+
+@router.get("/suggestion")
+async def get_search_suggest(
+    query: str = Query(..., description="搜索关键词"),
+    openid: str = Query(..., description="用户openid"),
+    page_size: int = Query(5, description="返回结果数量")
+):
+    """搜索建议"""
+    try:
+        logger.debug(f"获取搜索建议: query={query}")
+        if not query.strip():
+            return Response.success(data=[])
+            
+        suggestions = await async_execute_custom_query(
+            """
+            SELECT keyword 
+            FROM wxapp_search_history 
+            WHERE keyword LIKE %s 
+            GROUP BY keyword 
+            ORDER BY COUNT(*) DESC, MAX(search_time) DESC
+            LIMIT %s
+            """,
+            [f"%{query}%", page_size]
+        )
+        
+        # 异步记录搜索历史
+        if openid:
+            asyncio.create_task(_record_search_history(query, openid))
+            
+        return Response.success(data=[s["keyword"] for s in suggestions])
+    except Exception as e:
+        logger.error(f"获取搜索建议失败: {str(e)}")
+        return Response.error(details={"message": f"获取搜索建议失败: {str(e)}"})
+
+@router.get("/search-wxapp")
+async def search(
+    query: str = Query(..., description="搜索关键词"),
+    search_type: str = Query("all", description="搜索类型: all, post, user"),
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页记录数量")
+):
+    """综合搜索"""
+    try:
+        if not query.strip():
+            return Response.bad_request(details={"message": "搜索关键词不能为空"})
+            
+        logger.debug(f"执行搜索: query={query}, search_type={search_type}, page={page}, page_size={page_size}")
+        offset = (page - 1) * page_size
+        search_results = []
+        total = 0
+        
+        # 准备异步查询任务
+        search_tasks = []
+        count_tasks = []
+        
+        if search_type == "all" or search_type == "post":
+            # 搜索帖子任务
+            post_sql = """
+            SELECT id, openid, title, content, category_id, view_count, like_count, 
+                   comment_count, favorite_count, create_time, update_time
+            FROM wxapp_post
+            WHERE status = 1 AND (title LIKE %s OR content LIKE %s)
+            ORDER BY update_time DESC
+            LIMIT %s OFFSET %s
+            """
+            search_tasks.append(
+                ("post", async_execute_custom_query(
+                    post_sql, 
+                    [f"%{query}%", f"%{query}%", page_size, offset]
+                ))
+            )
+            
+            # 获取帖子总数任务
+            post_count_sql = """
+            SELECT COUNT(*) as total FROM wxapp_post
+            WHERE status = 1 AND (title LIKE %s OR content LIKE %s)
+            """
+            count_tasks.append(
+                ("post", async_execute_custom_query(
+                    post_count_sql,
+                    [f"%{query}%", f"%{query}%"]
+                ))
+            )
+        
+        if search_type == "all" or search_type == "user":
+            # 搜索用户任务
+            user_sql = """
+            SELECT id, openid, nickname, avatar, bio
+            FROM wxapp_user
+            WHERE status = 1 AND (nickname LIKE %s OR bio LIKE %s)
+            ORDER BY update_time DESC
+            LIMIT %s OFFSET %s
+            """
+            search_tasks.append(
+                ("user", async_execute_custom_query(
+                    user_sql,
+                    [f"%{query}%", f"%{query}%", page_size, offset]
+                ))
+            )
+            
+            # 获取用户总数任务
+            user_count_sql = """
+            SELECT COUNT(*) as total FROM wxapp_user
+            WHERE status = 1 AND (nickname LIKE %s OR bio LIKE %s)
+            """
+            count_tasks.append(
+                ("user", async_execute_custom_query(
+                    user_count_sql,
+                    [f"%{query}%", f"%{query}%"]
+                ))
+            )
+        
+        # 并行执行所有查询任务
+        all_tasks = [task for _, task in search_tasks] + [task for _, task in count_tasks]
+        all_results = await asyncio.gather(*all_tasks)
+        
+        # 处理结果
+        search_results_map = {}
+        count_results_map = {}
+        
+        for i, (result_type, _) in enumerate(search_tasks):
+            search_results_map[result_type] = all_results[i]
+            
+        for i, (result_type, _) in enumerate(count_tasks):
+            count_results_map[result_type] = all_results[i + len(search_tasks)]
+        
+        # 构建搜索结果
+        if "post" in search_results_map:
+            for post in search_results_map["post"]:
+                search_results.append({
+                    "id": post["id"],
+                    "title": post["title"],
+                    "content": post["content"],
+                    "type": "post",
+                    "like_count": post["like_count"],
+                    "comment_count": post["comment_count"],
+                    "view_count": post["view_count"],
+                    "update_time": post["update_time"]
+                })
+            
+            post_total = count_results_map["post"][0]['total'] if count_results_map["post"] else 0
+            total += post_total
+        
+        if "user" in search_results_map:
+            for user in search_results_map["user"]:
+                search_results.append({
+                    "id": user["id"],
+                    "openid": user["openid"],
+                    "nickname": user["nickname"],
+                    "avatar": user["avatar"],
+                    "bio": user["bio"],
+                    "type": "user"
+                })
+            
+            user_total = count_results_map["user"][0]['total'] if count_results_map["user"] else 0
+            total += user_total
+        
+        # 异步记录搜索历史
+        asyncio.create_task(_record_search_history(query))
+        
+        # 计算分页
+        pagination = {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size if page_size > 0 else 1
+        }
+        
+        return Response.paged(
+            data=search_results,
+            pagination=pagination,
+            details={"query": query, "search_type": search_type}
+        )
+    except Exception as e:
+        logger.error(f"搜索失败: {str(e)}")
+        return Response.error(details={"message": f"搜索失败: {str(e)}"})
+
+async def _record_search_history(keyword, openid=None):
+    """记录搜索历史"""
+    try:
+        # 简化版本，只记录关键词
+        if not keyword or not keyword.strip():
+            return
+            
+        await async_execute_custom_query(
+            "INSERT INTO wxapp_search_history (keyword, search_time, openid) VALUES (%s, NOW(), %s)",
+            [keyword, openid or "anonymous"],
+            fetch=False
+        )
+    except Exception as e:
+        # 记录搜索历史失败不影响主流程
+        logger.debug(f"记录搜索历史失败: {e}")
+        pass
+
+@router.get("/history")
+async def get_search_history(
+    openid: str = Query(..., description="用户OpenID"),
+    page_size: int = Query(10, description="返回结果数量")
+):
+    """获取搜索历史"""
+    try:
+        logger.debug(f"获取搜索历史: openid={openid}, page_size={page_size}")
+        if not openid:
+            return Response.bad_request(details={"message": "缺少openid参数"})
+
+        # 直接使用SQL查询搜索历史并去重
+        history_sql = """
+        SELECT DISTINCT keyword, MAX(search_time) as search_time
+        FROM wxapp_search_history
+        WHERE openid = %s
+        GROUP BY keyword
+        ORDER BY MAX(search_time) DESC
+        LIMIT %s
+        """
+        
+        history = await async_execute_custom_query(history_sql, [openid, page_size])
+        
+        return Response.success(data=history or [])
+    except Exception as e:
+        logger.error(f"获取搜索历史失败: {str(e)}")
+        return Response.error(details={"message": f"获取搜索历史失败: {str(e)}"})
+
+@router.post("/history/clear")
+async def clear_search_history(request: Request):
+    """清空搜索历史"""
+    try:
+        # 参数验证
+        req_data = await request.json()
+        required_params = ["openid"]
+        error_response = validate_params(req_data, required_params)
+        if error_response:
+            return error_response
+            
+        openid = req_data.get("openid")
+        logger.debug(f"清空搜索历史: openid={openid}")
+        
+        # 删除历史记录
+        await async_execute_custom_query(
+            "DELETE FROM wxapp_search_history WHERE openid = %s",
+            [openid],
+            fetch=False
+        )
+        
+        return Response.success(details={"message": "清空搜索历史成功"})
+    except Exception as e:
+        logger.error(f"清空搜索历史失败: {str(e)}")
+        return Response.error(details={"message": f"清空搜索历史失败: {str(e)}"})
+
+@router.get("/hot")
+async def get_hot_searches(
+    page_size: int = Query(10, description="返回结果数量")
+):
+    """获取热门搜索"""
+    try:
+        logger.debug(f"获取热门搜索: page_size={page_size}")
+        hot_searches = await async_execute_custom_query(
+            """
+            SELECT keyword, COUNT(*) as count 
+            FROM wxapp_search_history 
+            WHERE search_time > DATE_SUB(NOW(), INTERVAL 7 DAY)
+            GROUP BY keyword 
+            ORDER BY count DESC 
+            LIMIT %s
+            """,
+            [page_size]
+        )
+        
+        return Response.success(data=hot_searches or [])
+    except Exception as e:
+        logger.error(f"获取热门搜索失败: {str(e)}")
+        return Response.error(details={"message": f"获取热门搜索失败: {str(e)}"}) 

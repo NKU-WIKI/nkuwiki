@@ -7,25 +7,26 @@ import json
 import random
 import hashlib
 import logging
+import traceback
 from functools import lru_cache
 from typing import List, Dict, Any, Optional, Union
-
-from fastapi import HTTPException, APIRouter
-from api.models.search import Source
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent.parent))
+from fastapi import HTTPException, APIRouter, Query
+from api.models.knowledge import Source
 from api.models.common import Response, Request, validate_params
 from core.agent.coze.coze_agent import CozeAgent
-from etl.load.db_core import async_query_records
+from etl.load.db_core import async_query_records, async_execute_custom_query
 from config import Config
 from fastapi.responses import StreamingResponse
+from core.utils.logger import register_logger
+from api.routes.knowledge.search import TABLE_MAPPING
+import re
 
+logger = register_logger("agent.rag")
 config = Config()
-TABLE_MAPPING = {
-    "wxapp_post": {"name": "小程序帖子", "content_field": "content", "title_field": "title", "author_field": "nickname"},
-    "wxapp_comment": {"name": "小程序评论", "content_field": "content", "title_field": "content", "author_field": "nickname"},
-    "wechat_nku": {"name": "微信公众号文章", "content_field": "content", "title_field": "title", "author_field": "account"},
-    "website_nku": {"name": "南开网站文章", "content_field": "content", "title_field": "title", "author_field": "author"},
-    "market_nku": {"name": "校园集市帖子", "content_field": "content", "title_field": "title", "author_field": "author"}
-}
+
 
 CACHE_ENABLED = config.get("core.agent.rag.cache_enabled", True)
 CACHE_TTL = config.get("core.agent.rag.cache_ttl", 3600)
@@ -34,7 +35,6 @@ _results_cache = {}
 
 _coze_agent_instances = {}
 router = APIRouter()
-logger = logging.getLogger("agent.rag")
 
 def get_coze_agent(tag: str) -> CozeAgent:
     """获取或创建CozeAgent实例（单例模式）"""
@@ -51,7 +51,6 @@ def get_coze_agent(tag: str) -> CozeAgent:
         logger.warning(f"knowledge_bot_id不是字符串类型，已转换为: {tag}")
     
     # 如果tag是纯数字ID字符串，则使用direct_tag模式，直接使用tag作为bot_id
-    import re
     is_direct_id = re.match(r'^\d+$', tag)
     if is_direct_id:
         tag_key = f"direct:{tag}"
@@ -265,7 +264,11 @@ def get_stream_generator(result: Dict[str, Any]):
 
     return stream_generator
 
-@router.post("")
+
+
+
+
+@router.post("/rag")
 async def rag_endpoint(request: Request):
     """coze rag 搜索接口"""
     try:
@@ -420,9 +423,11 @@ async def rag_endpoint(request: Request):
                 table_info = TABLE_MAPPING[table_name]
                 source = Source(
                     type=item.get("_type", "未知来源"),
-                    title=item.get(table_info["title_field"], ""),
-                    content=item.get(table_info["content_field"], ""),
-                    author=item.get(table_info["author_field"], "")
+                    title=item.get(table_info["title_field"], "") or "无标题",
+                    content=item.get(table_info["content_field"], "") or "",
+                    author=item.get(table_info["author_field"], "") or "未知作者",
+                    platform=item.get("platform", table_info["name"]),
+                    original_url=item.get("original_url", "")
                 )
                 sources.append(source)
 

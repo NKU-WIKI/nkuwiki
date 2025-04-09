@@ -18,11 +18,14 @@ async def get_notification_list(
     openid: str = Query(..., description="用户openid"),
     type: Optional[str] = Query(None, description="通知类型"),
     is_read: Optional[int] = Query(None, description="是否已读"),
-    offset: int = Query(0, description="分页偏移量"),
-    limit: int = Query(10, description="每页数量")
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量")
 ):
     """获取用户通知列表，并返回未读通知数量"""
     try:
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
         # 构建查询条件
         conditions = {"openid": openid, "status": 1}
         
@@ -40,7 +43,7 @@ async def get_notification_list(
             "wxapp_notification",
             conditions=conditions,
             fields=fields,
-            limit=limit,
+            limit=page_size,
             offset=offset,
             order_by="create_time DESC"
         )
@@ -75,12 +78,16 @@ async def get_notification_list(
             "unread_count": unread_count
         }
         
-        # 构建分页信息
+        # 计算总页数
+        total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 1
+        
+        # 构建标准分页信息
         pagination = {
             "total": total_count,
-            "limit": limit,
-            "offset": offset,
-            "has_more": total_count > (offset + limit)
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
         }
         
         return Response.paged(

@@ -200,11 +200,14 @@ async def update_user_info(
 @router.get("/user/favorites")
 async def get_user_favorites(
     openid: str = Query(..., description="用户openid"),
-    offset: int = Query(0, description="分页偏移量"),
-    limit: int = Query(10, description="每页数量")
+    page: int = Query(1, description="页码"), 
+    page_size: int = Query(10, description="每页数量")
 ):
     """获取用户收藏的帖子列表"""
     try:
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
         # 获取用户收藏的帖子ID列表，只查询必要字段
         favorites = await async_query_records(
             "wxapp_action",
@@ -214,13 +217,21 @@ async def get_user_favorites(
                 "target_type": "post"
             },
             fields=["target_id", "create_time"],
-            limit=limit,
+            limit=page_size,
             offset=offset,
             order_by="create_time DESC"
         )
         
         if not favorites or not favorites.get('data'):
-            return Response.success(data={"total": 0, "list": []})
+            # 返回空数据，但使用标准分页格式
+            pagination = {
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0,
+                "has_more": False
+            }
+            return Response.paged(data=[], pagination=pagination)
             
         # 获取帖子详情，只查询需要的字段
         post_ids = [item["target_id"] for item in favorites["data"]]
@@ -231,13 +242,23 @@ async def get_user_favorites(
             order_by="create_time DESC"
         )
         
+        # 计算总页数
+        total = favorites.get("total", 0)
+        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+        
+        # 构建标准分页信息
+        pagination = {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
+        }
+        
         return Response.paged(
             data=posts.get("data", []),
-            pagination={
-                "total": favorites.get("total", 0),
-                "offset": offset,
-                "limit": limit
-            }
+            pagination=pagination,
+            details={"message": "获取收藏列表成功"}
         )
     except Exception as e:
         return Response.error(details={"message": f"获取收藏列表失败: {str(e)}"})
@@ -245,11 +266,14 @@ async def get_user_favorites(
 @router.get("/user/like")
 async def get_user_likes(
     openid: str = Query(..., description="用户openid"),
-    offset: int = Query(0, description="分页偏移量"),
-    limit: int = Query(10, description="每页数量")
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量")
 ):
     """获取用户点赞的帖子列表"""
     try:
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
         # 获取用户点赞的帖子ID列表
         likes = await async_query_records(
             "wxapp_action",
@@ -258,13 +282,21 @@ async def get_user_likes(
                 "action_type": "like",
                 "target_type": "post"
             },
-            limit=limit,
+            limit=page_size,
             offset=offset,
             order_by="create_time DESC"
         )
         
         if not likes or not likes.get('data'):
-            return Response.success(data={"total": 0, "list": []})
+            # 返回空数据，但使用标准分页格式
+            pagination = {
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0,
+                "has_more": False
+            }
+            return Response.paged(data=[], pagination=pagination)
             
         # 获取帖子详情
         post_ids = [item["target_id"] for item in likes["data"]]
@@ -274,13 +306,23 @@ async def get_user_likes(
             order_by="create_time DESC"
         )
         
+        # 计算总页数
+        total = likes.get("total", 0)
+        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+        
+        # 构建标准分页信息
+        pagination = {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
+        }
+        
         return Response.paged(
             data=posts.get("data", []),
-            pagination={
-                "total": likes.get("total", 0),
-                "offset": offset,
-                "limit": limit
-            }
+            pagination=pagination,
+            details={"message": "获取点赞列表成功"}
         )
     except Exception as e:
         return Response.error(details={"message": f"获取点赞列表失败: {str(e)}"})
@@ -288,41 +330,90 @@ async def get_user_likes(
 @router.get("/user/comment")
 async def get_user_comments(
     openid: str = Query(..., description="用户openid"),
-    offset: int = Query(0, description="分页偏移量"),
-    limit: int = Query(10, description="每页数量")
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量")
 ):
     """获取用户的评论列表"""
     try:
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
         comments = await async_query_records(
             "wxapp_comment",
             conditions={"openid": openid},
-            limit=limit,
+            limit=page_size,
             offset=offset,
             order_by="create_time DESC"
         )
         
         if not comments or not comments.get('data'):
-            return Response.success(data={"total": 0, "list": []})
+            # 返回空数据，但使用标准分页格式
+            pagination = {
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0,
+                "has_more": False
+            }
+            return Response.paged(data=[], pagination=pagination)
+        
+        # 获取涉及的帖子ID
+        post_ids = [comment["post_id"] for comment in comments["data"] if "post_id" in comment]
+        
+        # 没有对应的帖子ID，直接返回评论列表
+        if not post_ids:
+            # 计算总页数
+            total = comments.get("total", 0)
+            total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
             
-        # 获取评论对应的帖子信息
-        post_ids = list(set([item["post_id"] for item in comments["data"]]))
+            # 构建标准分页信息
+            pagination = {
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+                "has_more": page < total_pages
+            }
+            
+            return Response.paged(
+                data=comments.get("data", []),
+                pagination=pagination,
+                details={"message": "获取评论列表成功"}
+            )
+        
+        # 查询帖子信息
         posts = await async_query_records(
             "wxapp_post",
-            conditions={"id": ["IN", post_ids]}
+            conditions={"id": ["IN", post_ids]},
+            fields=["id", "title", "content"]
         )
         
-        # 将帖子信息添加到评论中
-        post_map = {post["id"]: post for post in posts.get("data", [])}
+        # 构建帖子映射
+        post_map = {post["id"]: post for post in posts.get("data", [])} if posts.get("data") else {}
+        
+        # 为每个评论添加帖子信息
         for comment in comments["data"]:
-            comment["post"] = post_map.get(comment["post_id"])
-            
+            post_id = comment.get("post_id")
+            if post_id and post_id in post_map:
+                comment["post"] = post_map[post_id]
+        
+        # 计算总页数
+        total = comments.get("total", 0)
+        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+        
+        # 构建标准分页信息
+        pagination = {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
+        }
+        
         return Response.paged(
             data=comments.get("data", []),
-            pagination={
-                "total": comments.get("total", 0),
-                "offset": offset,
-                "limit": limit
-            }
+            pagination=pagination,
+            details={"message": "获取评论列表成功"}
         )
     except Exception as e:
         return Response.error(details={"message": f"获取评论列表失败: {str(e)}"})
@@ -330,51 +421,86 @@ async def get_user_comments(
 @router.get("/user/follower")
 async def get_user_followers(
     openid: str = Query(..., description="用户openid"),
-    offset: int = Query(0, description="分页偏移量"),
-    limit: int = Query(10, description="每页数量")
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量")
 ):
     """获取用户的粉丝列表"""
     try:
-        # 先获取用户的数字ID
-        user_query = "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1"
-        user_result = await async_execute_custom_query(user_query, [openid])
+        # 计算偏移量
+        offset = (page - 1) * page_size
         
-        if not user_result:
-            return Response.not_found(resource="用户")
-            
-        user_id = user_result[0]["id"]
-        
-        # 获取关注该用户的用户openid列表 - 使用数字ID查询
+        # 获取粉丝列表
         followers = await async_query_records(
             "wxapp_action",
             conditions={
+                "target_id": openid,
                 "action_type": "follow",
-                "target_type": "user",
-                "target_id": user_id  # 使用数字ID
+                "target_type": "user"
             },
-            limit=limit,
+            fields=["openid", "create_time"],
+            limit=page_size,
             offset=offset,
             order_by="create_time DESC"
         )
         
         if not followers or not followers.get('data'):
-            return Response.success(data={"total": 0, "list": []})
+            # 返回空数据，但使用标准分页格式
+            pagination = {
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0,
+                "has_more": False
+            }
+            return Response.paged(data=[], pagination=pagination)
             
-        # 获取粉丝用户信息
-        follower_ids = [item["openid"] for item in followers["data"]]
-        users = await async_query_records(
-            "wxapp_user",
-            conditions={"openid": ["IN", follower_ids]},
-            fields=["openid", "nickname", "avatar", "bio"]
-        )
+        # 获取粉丝用户的详细信息
+        follower_ids = [item.get("openid") for item in followers.get("data", [])]
+        
+        # 使用高效的单一SQL查询获取用户详情
+        if follower_ids:
+            query_fields = "openid, nickname, avatar, bio, post_count, follower_count, follow_count"
+            
+            user_info_dict = {}
+            for follower_id in follower_ids:
+                users = await async_query_records(
+                    "wxapp_user",
+                    conditions={"openid": follower_id},
+                    fields=query_fields.split(", ")
+                )
+                if users and users.get('data'):
+                    user_info_dict[follower_id] = users['data'][0]
+            
+            # 构建结果
+            result = []
+            for follow in followers.get("data", []):
+                follower_id = follow.get("openid")
+                if follower_id in user_info_dict:
+                    follower_user = user_info_dict[follower_id]
+                    result.append({
+                        **follower_user,
+                        "follow_time": follow.get("create_time")
+                    })
+        else:
+            result = []
+        
+        # 计算总页数
+        total = followers.get("total", 0)
+        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+        
+        # 构建标准分页信息
+        pagination = {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
+        }
         
         return Response.paged(
-            data=users.get("data", []),
-            pagination={
-                "total": followers.get("total", 0),
-                "offset": offset,
-                "limit": limit
-            }
+            data=result,
+            pagination=pagination,
+            details={"message": "获取粉丝列表成功"}
         )
     except Exception as e:
         return Response.error(details={"message": f"获取粉丝列表失败: {str(e)}"})
@@ -382,12 +508,15 @@ async def get_user_followers(
 @router.get("/user/following")
 async def get_user_followings(
     openid: str = Query(..., description="用户openid"),
-    offset: int = Query(0, description="分页偏移量"),
-    limit: int = Query(10, description="每页数量")
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量")
 ):
-    """获取用户关注的用户列表"""
+    """获取用户的关注列表"""
     try:
-        # 获取用户关注的用户ID列表
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
+        # 获取关注列表
         followings = await async_query_records(
             "wxapp_action",
             conditions={
@@ -395,35 +524,70 @@ async def get_user_followings(
                 "action_type": "follow",
                 "target_type": "user"
             },
-            limit=limit,
+            fields=["target_id", "create_time"],
+            limit=page_size,
             offset=offset,
             order_by="create_time DESC"
         )
         
         if not followings or not followings.get('data'):
-            return Response.success(data={"total": 0, "list": []})
-            
-        # 获取关注的用户信息 - 通过数字ID查询
-        following_ids = [item["target_id"] for item in followings["data"]]
-        users_query = """
-        SELECT openid, nickname, avatar, bio
-        FROM wxapp_user
-        WHERE id IN (%s)
-        """
-        placeholders = ', '.join(['%s'] * len(following_ids))
-        users_query = users_query.replace('%s', placeholders)
-        users_result = await async_execute_custom_query(users_query, following_ids)
+            # 返回空数据，但使用标准分页格式
+            pagination = {
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0,
+                "has_more": False
+            }
+            return Response.paged(data=[], pagination=pagination)
         
-        if not users_result:
-            users_result = []
+        # 获取被关注用户的信息
+        target_ids = [item.get("target_id") for item in followings.get("data", [])]
+        
+        # 使用高效的单一SQL查询获取用户详情
+        if target_ids:
+            query_fields = "openid, nickname, avatar, bio, post_count, follower_count, follow_count"
+            
+            user_info_dict = {}
+            for target_id in target_ids:
+                users = await async_query_records(
+                    "wxapp_user",
+                    conditions={"openid": target_id},
+                    fields=query_fields.split(", ")
+                )
+                if users and users.get('data'):
+                    user_info_dict[target_id] = users['data'][0]
+            
+            # 构建结果
+            result = []
+            for follow in followings.get("data", []):
+                target_id = follow.get("target_id")
+                if target_id in user_info_dict:
+                    target_user = user_info_dict[target_id]
+                    result.append({
+                        **target_user,
+                        "follow_time": follow.get("create_time")
+                    })
+        else:
+            result = []
+        
+        # 计算总页数
+        total = followings.get("total", 0)
+        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+        
+        # 构建标准分页信息
+        pagination = {
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": total_pages,
+            "has_more": page < total_pages
+        }
         
         return Response.paged(
-            data=users_result,
-            pagination={
-                "total": followings.get("total", 0),
-                "offset": offset,
-                "limit": limit
-            }
+            data=result,
+            pagination=pagination,
+            details={"message": "获取关注列表成功"}
         )
     except Exception as e:
         return Response.error(details={"message": f"获取关注列表失败: {str(e)}"})

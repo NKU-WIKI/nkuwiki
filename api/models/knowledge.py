@@ -17,6 +17,8 @@ class Source(BaseTimeStamp):
     image: Optional[List[str]] = Field(description="图片URL列表")
     publish_time: Optional[datetime] = Field(description="发布时间")
     scrape_time: Optional[datetime] = Field(description="爬取时间")
+    is_truncated: Optional[bool] = Field(default=False, description="内容是否被截断")
+    relevance: Optional[float] = Field(description="相关性")
 
 # 更新导出列表
 __all__ = [

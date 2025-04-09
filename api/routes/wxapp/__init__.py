@@ -12,11 +12,10 @@ from . import comment
 from . import notification
 from . import feedback
 from . import about
-from . import search
 from . import action
 
 # 导出子模块，供外部使用
 __all__ = [
     'user', 'post', 'comment', 'notification', 
-    'feedback', 'about', 'search', 'action'
+    'feedback', 'about', 'action'
 ]
