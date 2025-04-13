@@ -230,6 +230,8 @@ API接口的参数类型规范如下：
   "birthday": "2004-06-28",           // 可选，生日
   "wechatId": "微信号",                // 可选，微信号
   "qqId": "QQ号",                      // 可选，QQ号
+  "phone": "手机号",                   // 可选，手机号
+  "university": "大学",                // 可选，大学
   "extra": {                          // 可选，扩展字段
     "school": "南开大学"
   }
@@ -257,6 +259,8 @@ API接口的参数类型规范如下：
     "birthday": "2004-06-28",
     "wechatId": "微信号",
     "qqId": "QQ号",
+    "phone": "手机号",
+    "university": "大学",
     "token_count": 100,
     "like_count": 10,
     "favorite_count": 5,
@@ -296,6 +300,8 @@ API接口的参数类型规范如下：
     "birthday": null,
     "wechatId": null,
     "qqId": null,
+    "phone": null,
+    "university": null,
     "token_count": 0,
     "like_count": 0,
     "favorite_count": 0,
@@ -343,6 +349,8 @@ API接口的参数类型规范如下：
     "birthday": "2004-06-28",
     "wechatId": "微信号",
     "qqId": "QQ号",
+    "phone": "手机号",
+    "university": "大学",
     "token_count": 0,
     "like_count": 0,
     "favorite_count": 0,
@@ -392,6 +400,8 @@ API接口的参数类型规范如下：
       "birthday": "2004-06-28",
       "wechatId": "微信号",
       "qqId": "QQ号",
+      "phone": "手机号",
+      "university": "大学",
       "token_count": 0,
       "like_count": 0,
       "favorite_count": 0,
@@ -441,6 +451,8 @@ API接口的参数类型规范如下：
   "birthday": "2004-06-28",           // 可选，生日
   "wechatId": "微信号",               // 可选，微信号
   "qqId": "QQ号",                     // 可选，QQ号
+  "phone": "手机号",                  // 可选，手机号
+  "university": "大学",               // 可选，大学
   "status": 1,                        // 可选，用户状态：1-正常, 0-禁用
   "extra": {                          // 可选，扩展字段
     "school": "南开大学",
@@ -470,6 +482,8 @@ API接口的参数类型规范如下：
     "birthday": "2004-06-28",
     "wechatId": "微信号",
     "qqId": "QQ号",
+    "phone": "手机号",
+    "university": "大学",
     "token_count": 100,
     "like_count": 10,
     "favorite_count": 5,
@@ -506,18 +520,8 @@ API接口的参数类型规范如下：
 **响应**：
 
 ```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "status": "success",
-    "follow_count": 11,
-    "follower_count": 21,
-    "is_following": true
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
+{"code":200,"message":"success","data":{"success":true,"status":"followed","is_following":true},"details":{"message":"关注成功"},"timestamp":"2025-04-12T21:10:26.320996","pagination":null}
+{"code":200,"message":"success","data":{"success":true,"status":"unfollowed","is_following":false},"details":{"message":"取消关注成功"},"timestamp":"2025-04-12T21:10:01.431815","pagination":null}
 ```
 
 
@@ -545,7 +549,7 @@ API接口的参数类型规范如下：
 
 ### 1.7 获取用户关注列表
 
-**接口**：`GET /api/wxapp/user/followings`  
+**接口**：`GET /api/wxapp/user/following`  
 **描述**：获取用户关注的所有用户  
 **参数**：
 - `openid` - 查询参数，用户openid（必填）
@@ -588,7 +592,7 @@ API接口的参数类型规范如下：
 
 ### 1.8 获取用户粉丝列表
 
-**接口**：`GET /api/wxapp/user/followers`  
+**接口**：`GET /api/wxapp/user/follower`  
 **描述**：获取关注该用户的所有用户  
 **参数**：
 - `openid` - 查询参数，用户openid（必填）
@@ -642,8 +646,8 @@ API接口的参数类型规范如下：
   "openid": "发布用户openid", // 必填
   "title": "帖子标题", // 必填
   "content": "帖子内容", // 必填
-  "images": ["图片URL1", "图片URL2"], // 可选
-  "tags": ["标签1", "标签2"], // 可选
+  "image": ["图片URL1", "图片URL2"], // 可选
+  "tag": ["标签1", "标签2"], // 可选
   "category_id": 1, // 可选，默认为0
   "location": { // 可选
     "latitude": 39.12345,
@@ -651,6 +655,9 @@ API接口的参数类型规范如下：
     "name": "位置名称",
     "address": "详细地址"
   },
+  "phone": "手机号", // 可选
+  "wechatId": "微信号", // 可选
+  "qqId": "QQ号", // 可选
   "nickname": "用户昵称", // 可选，如不提供则从用户表获取
   "avatar": "用户头像URL" // 可选，如不提供则从用户表获取
 }
@@ -676,6 +683,9 @@ API接口的参数类型规范如下：
       "name": "位置名称",
       "address": "详细地址"
     },
+    "phone": "手机号",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
     "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "view_count": 0,
@@ -718,6 +728,9 @@ API接口的参数类型规范如下：
     "tag": ["标签1", "标签2"],
     "category_id": 1,
     "location": "位置信息",
+    "phone": "手机号",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
     "nickname": "用户昵称",
     "avatar": "用户头像URL",
     "view_count": 1,
@@ -821,7 +834,10 @@ API接口的参数类型规范如下：
   "title": "更新后的标题", // 可选，帖子标题
   "category_id": 2, // 可选，整数类型，分类ID
   "image": ["图片URL1","图片URL2"], // 可选，图片URL数组
-  "tag": ["标签1","标签2"] // 可选，标签数组
+  "tag": ["标签1","标签2"], // 可选，标签数组
+  "phone": "手机号", // 可选
+  "wechatId": "微信号", // 可选
+  "qqId": "QQ号" // 可选
 }
 ```
 
@@ -845,6 +861,9 @@ API接口的参数类型规范如下：
       "name": "位置名称",
       "address": "详细地址"
     },
+    "phone": "手机号",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
     "nickname": "用户昵称", 
     "avatar": "用户头像URL",
     "view_count": 10,
@@ -904,77 +923,12 @@ API接口的参数类型规范如下：
 **响应**：
 
 ```json
-{
-  "code": 200,
-  "message": "success",
-  "details": {
-    "like_count": 6,
-    "message": "点赞成功"
-  },
-  "data": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
+{"code":200,"message":"success","data":{"success":true,"status":"liked","like_count":1,"is_liked":true},"details":{"message":"点赞成功"},"timestamp":"2025-04-12T20:56:23.008762","pagination":null}
+{"code":200,"message":"success","data":{"success":true,"status":"unliked","like_count":0,"is_liked":false},"details":{"message":"取消点赞成功"},"timestamp":"2025-04-12T20:56:14.207527","pagination":null}
+
 ```
 
-**错误响应**：当已经点赞过该帖子时
-
-```json
-{
-  "code": 400,
-  "message": "Bad request",
-  "data": null,
-  "details": {
-    "message": "已经点赞，请勿重复点赞"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 2.7 取消点赞帖子
-
-**接口**：`POST /api/wxapp/post/unlike`  
-**描述**：取消对帖子的点赞  
-**请求体**：
-```json
-{
-  "post_id": 1,
-  "openid": "用户openid"
-}
-```
-
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "success": true,
-    "like_count": 5,
-    "is_liked": false
-  },
-  "details": {
-    "message": "取消点赞成功"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-**错误响应**：当未点赞该帖子时
-
-```json
-{
-  "code": 400,
-  "message": "Bad request",
-  "data": null,
-  "details": {
-    "message": "未点赞，无法取消点赞"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 2.8 收藏帖子
+### 2.7 收藏帖子
 
 **接口**：`POST /api/wxapp/post/favorite`  
 **描述**：收藏帖子或取消收藏（如果已收藏）  
@@ -990,49 +944,13 @@ API接口的参数类型规范如下：
 **响应**：
 
 ```json
-{
-  "code": 200,
-  "message": "success",
-  "details": {
-    "favorite_count": 3,
-    "is_favorited": true
-  },
-  "data": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
+{"code":200,"message":"success","data":{"success":true,"status":"favorited","favorite_count":1,"is_favorited":true},"details":{"message":"收藏成功"},"timestamp":"2025-04-12T20:54:08.462333","pagination":null}
 ```
-
-### 2.9 取消收藏帖子
-
-**接口**：`POST /api/wxapp/post/unfavorite`  
-**描述**：取消收藏帖子  
-**请求体**：
 ```json
-{
-  "post_id": 1,
-  "openid": "用户openid"
-}
-```
+{"code":200,"message":"success","data":{"success":true,"status":"unfavorited","favorite_count":0,"is_favorited":false},"details":{"message":"取消收藏成功"},"timestamp":"2025-04-12T20:54:22.807428","pagination":null}
+```    
 
-**响应**：
-
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "success": true,
-    "favorite_count": 2,
-    "is_favorited": false
-  },
-  "details": {
-    "message": "取消收藏成功"
-  },
-  "timestamp": "2023-01-01 12:00:00"
-}
-```
-
-### 4.5 获取帖子互动状态
+### 2.8 获取帖子互动状态
 
 **接口**：`GET /api/wxapp/post/status`  
 **描述**：获取用户与帖子的交互状态（是否点赞、收藏等）  
@@ -1043,20 +961,9 @@ API接口的参数类型规范如下：
 **响应**：
 
 ```json
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "is_liked": true,
-    "is_favorited": false,
-    "like_count": 5,
-    "favorite_count": 2,
-    "comment_count": 10
-  },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
-}
+{"code":200,"message":"success","data":{"20":{"exist":true,"is_liked":false,"is_favorited":false,"is_author":false,"is_following":false,"like_count":0,"favorite_count":0,"comment_count":0,"view_count":2}},"details":null,"timestamp":"2025-04-12T21:08:44.098526","pagination":null}
 ```
+
 
 ## 三、评论接口
 

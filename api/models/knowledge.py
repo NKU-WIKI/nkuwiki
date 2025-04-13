@@ -19,6 +19,7 @@ class Source(BaseTimeStamp):
     create_time: Optional[datetime] = Field(description="发布时间")
     scrape_time: Optional[datetime] = Field(description="爬取时间")
     is_truncated: Optional[bool] = Field(default=False, description="内容是否被截断")
+    is_official: Optional[bool] = Field(default=False, description="是否为官方信息")
     relevance: Optional[float] = Field(description="相关性")
 
 # 更新导出列表

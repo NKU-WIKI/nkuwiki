@@ -379,9 +379,37 @@ async def search_knowledge(
             platform_info = TABLE_MAPPING[platform_name]
             
             # 获取各字段值，不存在则使用空字符串
-            author = item.get(platform_info["author_field"], "") or "未知作者"
-            title = item.get(platform_info["title_field"], "") or "无标题"
-            content = item.get(platform_info["content_field"], "") or ""
+            # 修复wxapp平台的作者字段获取方式
+            author_field = ""
+            if platform_name == "wxapp":
+                if "post" in table_name:
+                    author_field = platform_info["post"]["author_field"]
+                elif "comment" in table_name:
+                    author_field = platform_info["comment"]["author_field"]
+                else:
+                    author_field = "nickname"  # 默认作者字段
+            else:
+                author_field = platform_info["author_field"]
+            
+            author = item.get(author_field, "") or "未知作者"
+            
+            # 获取标题和内容的字段名称
+            if platform_name == "wxapp":
+                if "post" in table_name:
+                    title_field = platform_info["post"]["title_field"]
+                    content_field = platform_info["post"]["content_field"]
+                elif "comment" in table_name:
+                    title_field = platform_info["comment"]["title_field"]
+                    content_field = platform_info["comment"]["content_field"]
+                else:
+                    title_field = "title"  # 默认标题字段
+                    content_field = "content"  # 默认内容字段
+            else:
+                title_field = platform_info["title_field"]
+                content_field = platform_info["content_field"]
+            
+            title = item.get(title_field, "") or "无标题"
+            content = item.get(content_field, "") or ""
             
             # 转换平台标识为简短形式
             platform_value = platform_name
@@ -428,7 +456,7 @@ async def search_knowledge(
 
             # 标记内容是否被截断
             is_truncated = item.get("_content_truncated", False)
-            
+            is_official = item.get("is_official", False)
             # 创建Source实例
             source = Source(
                 author=author,
@@ -442,13 +470,11 @@ async def search_knowledge(
                 scrape_time=scrape_time,
                 create_time=create_time,
                 update_time=update_time,
-                relevance=item.get("relevance", 0)
+                relevance=item.get("relevance", 0),
+                is_official=is_official,
+                is_truncated=is_truncated
             )
             
-            # 添加是否截断标记
-            if is_truncated:
-                source.is_truncated = True
-                
             sources.append(source)
     
     # 创建分页信息
@@ -506,6 +532,7 @@ async def search_endpoint(
                 "tag": "标签",
                 "title": "标题",
                 "content": "内容",
+                "is_official": "是否为官方信息",
                 "relevance": 0.85
             }
         ],

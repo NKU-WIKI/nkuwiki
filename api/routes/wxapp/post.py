@@ -27,44 +27,42 @@ async def create_post(
     """创建新帖子"""
     try:
         req_data = await request.json()
-        required_params = ["title", "content"]
+        required_params = ["title", "content", "openid"]
         error_response = validate_params(req_data, required_params)
         if(error_response):
             return error_response
 
         openid = req_data.get("openid")
         
-        # 使用单一SQL直接获取用户信息
-        user_data = await async_execute_custom_query(
-            "SELECT nickname, avatar, bio FROM wxapp_user WHERE openid = %s LIMIT 1",
-            [openid]
-        )
-        
-        nickname = ""
-        avatar = ""
-        bio = ""
-        if user_data:
-            nickname = user_data[0].get("nickname", "")
-            avatar = user_data[0].get("avatar", "")
-            bio = user_data[0].get("bio", "")
-        
         # 构造帖子数据
         db_post_data = {
             "openid": openid,
-            "nickname": nickname,
-            "avatar": avatar,
-            "bio": bio,
+            "nickname": req_data.get("nickname", ""),
+            "avatar": req_data.get("avatar", ""),
+            "bio": req_data.get("bio", ""),
             "category_id": req_data.get("category_id", 1),
             "title": req_data.get("title"),
             "content": req_data.get("content"),
-            "is_deleted": 0
+            "is_deleted": 0,
+            "allow_comment": req_data.get("allow_comment", 1),
+            "is_public": req_data.get("is_public", 1)
         }
         
-        # 可选字段
+        # 处理可选联系方式字段
+        if "phone" in req_data:
+            db_post_data["phone"] = req_data.get("phone")
+        if "wechatId" in req_data:
+            db_post_data["wechatId"] = req_data.get("wechatId")
+        if "qqId" in req_data:
+            db_post_data["qqId"] = req_data.get("qqId")
+        
+        # 处理其他可选字段
         if "image" in req_data:
             db_post_data["image"] = req_data.get("image")
         if "tag" in req_data:
             db_post_data["tag"] = req_data.get("tag")
+        if "location" in req_data:
+            db_post_data["location"] = req_data.get("location")
         
         # 创建帖子和更新用户发帖数并行执行
         post_insert = async_insert("wxapp_post", db_post_data)
@@ -93,47 +91,56 @@ async def get_post_detail(
     post_id: str = Query(..., description="帖子ID")
 ):
     """获取帖子详情"""
-    if(not post_id):
-        return Response.bad_request(details={"message": "缺少post_id参数"})
     try:
-        # 确保post_id是整数
-        post_id_int = int(post_id)
+        # 直接使用单一SQL查询帖子，包含所有字段
+        post_query = """
+        SELECT 
+            id, openid, title, content, image, tag, category_id, location, nickname, avatar,
+            phone, wechatId, qqId, view_count, like_count, comment_count, favorite_count,
+            allow_comment, is_public, create_time, update_time, status, is_deleted
+        FROM wxapp_post
+        WHERE id = %s AND status = 1 AND is_deleted = 0
+        LIMIT 1
+        """
         
-        # 使用单一SQL直接获取帖子详情，并行更新浏览次数
-        post_query = async_execute_custom_query(
-            "SELECT * FROM wxapp_post WHERE id = %s LIMIT 1",
-            [post_id_int]
-        )
+        post_data = await async_execute_custom_query(post_query, [post_id])
         
-        view_update = async_execute_custom_query(
-            "UPDATE wxapp_post SET view_count = view_count + 1 WHERE id = %s",
-            [post_id_int],
-            fetch=False
-        )
-        
-        # 并行执行查询和更新
-        post_result, _ = await asyncio.gather(post_query, view_update)
-        
-        if not post_result:
+        if not post_data:
             return Response.not_found(resource="帖子")
             
-        post = post_result[0]
-        
-        # 获取用户信息，只查询必要字段
-        user_info = None
-        if post.get("openid"):
-            user_data = await async_execute_custom_query(
-                "SELECT openid, nickname, avatar, bio FROM wxapp_user WHERE openid = %s LIMIT 1",
-                [post.get("openid")]
-            )
-            if user_data:
-                user_info = user_data[0]
+        # 增加浏览量
+        increment_views_query = """
+        UPDATE wxapp_post SET view_count = view_count + 1 WHERE id = %s
+        """
+        await async_execute_custom_query(increment_views_query, [post_id], fetch=False)
 
         # 构建详情响应
-        detail_response = {
-            **post,
-            "user": user_info
-        }
+        detail_response = post_data[0]
+        
+        # 只有公开帖子才查询用户详细信息
+        if detail_response.get("is_public", 1) == 1 and detail_response.get("openid"):
+            user_data = await async_execute_custom_query(
+                "SELECT openid, nickname, avatar, bio FROM wxapp_user WHERE openid = %s LIMIT 1",
+                [detail_response.get("openid")]
+            )
+            if user_data:
+                detail_response["user"] = user_data[0]
+        else:
+            # 非公开帖子提供匿名信息
+            detail_response["user"] = {
+                "openid": "",  # 不提供真实openid
+                "nickname": "匿名用户",
+                "avatar": ""  # 空头像
+            }
+            
+            # 清除可能泄露用户信息的字段
+            detail_response["nickname"] = "匿名用户"
+            detail_response["avatar"] = ""
+            detail_response["bio"] = ""
+            detail_response["phone"] = None
+            detail_response["wechatId"] = None
+            detail_response["qqId"] = None
+            detail_response["openid"] = ""  # 不暴露原始openid
 
         return Response.success(data=detail_response)
     except Exception as e:
@@ -160,12 +167,11 @@ async def get_posts(
         # 构建基础SQL查询和条件
         base_sql = """
         SELECT 
-            id, title, content, image, openid, nickname, avatar, bio, 
-            view_count, like_count, comment_count, favorite_count, 
-            create_time, update_time, tag, category_id, status,
-            is_deleted
+            id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
+            view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
+            create_time, update_time, tag, category_id, status, is_deleted
         FROM wxapp_post
-        WHERE status = 1
+        WHERE is_deleted = 0
         """
         
         # 构建查询参数和条件
@@ -187,7 +193,7 @@ async def get_posts(
         
         # 构建计数SQL
         count_sql = """
-        SELECT COUNT(*) as total FROM wxapp_post WHERE status = 1
+        SELECT COUNT(*) as total FROM wxapp_post WHERE is_deleted = 0
         """
         
         # 添加筛选条件到计数查询
@@ -268,6 +274,18 @@ async def update_post(
             update_data["category_id"] = req_data["category_id"]
         if "tag" in req_data:
             update_data["tag"] = req_data["tag"]
+        if "phone" in req_data:
+            update_data["phone"] = req_data["phone"]
+        if "wechatId" in req_data:
+            update_data["wechatId"] = req_data["wechatId"]
+        if "qqId" in req_data:
+            update_data["qqId"] = req_data["qqId"]
+        if "allow_comment" in req_data:
+            update_data["allow_comment"] = req_data["allow_comment"]
+        if "is_public" in req_data:
+            update_data["is_public"] = req_data["is_public"]
+        if "location" in req_data:
+            update_data["location"] = req_data["location"]
         
         if not update_data:
             return Response.bad_request(details={"message": "未提供任何更新数据"})
@@ -283,7 +301,7 @@ async def update_post(
             return Response.db_error(details={"message": "更新帖子失败"})
         
         # 直接使用SQL获取更新后的帖子
-        fields = "id, title, content, image, tag, category_id, update_time"
+        fields = "id, title, content, image, tag, category_id, phone, wechatId, qqId, allow_comment, is_public, location, update_time"
         updated_post = await async_execute_custom_query(
             f"SELECT {fields} FROM wxapp_post WHERE id = %s LIMIT 1",
             [post_id]
@@ -362,11 +380,11 @@ async def search_posts(
         # 构建基础SQL和条件
         base_sql = """
         SELECT 
-            id, title, content, image, openid, nickname, avatar, bio, 
-            view_count, like_count, comment_count, favorite_count, 
+            id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
+            view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
             create_time, update_time, tag, category_id, status
         FROM wxapp_post
-        WHERE status = 1
+        WHERE status = 1 AND is_deleted = 0 AND is_public = 1
         """
         
         params = []
