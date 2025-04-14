@@ -227,6 +227,61 @@ async def get_posts(
             "has_more": page < total_pages
         }
         
+        # 为公开帖子补充用户信息
+        if posts:
+            # 收集所有公开帖子的openid
+            public_post_openids = []
+            for post in posts:
+                if post.get("is_public", 1) == 1 and post.get("openid"):
+                    # 如果帖子公开且有openid，加入查询列表
+                    public_post_openids.append(post.get("openid"))
+            
+            # 如果有公开帖子，查询用户信息
+            if public_post_openids:
+                # 使用IN查询批量获取用户信息
+                user_query = """
+                SELECT openid, nickname, avatar, bio 
+                FROM wxapp_user 
+                WHERE openid IN %s
+                """
+                user_results = await async_execute_custom_query(
+                    user_query, 
+                    [tuple(public_post_openids)] if len(public_post_openids) > 1 else [(public_post_openids[0],)]
+                )
+                
+                # 构建用户信息映射
+                user_info_map = {}
+                if user_results:
+                    for user in user_results:
+                        user_info_map[user.get("openid")] = user
+                
+                # 更新帖子信息
+                for post in posts:
+                    # 对公开帖子，补充用户信息
+                    if post.get("is_public", 1) == 1 and post.get("openid") in user_info_map:
+                        user_info = user_info_map.get(post.get("openid"))
+                        # 如果数据库中的用户信息更新，覆盖帖子中的用户信息
+                        post["nickname"] = user_info.get("nickname") or post.get("nickname", "")
+                        post["avatar"] = user_info.get("avatar") or post.get("avatar", "")
+                        post["bio"] = user_info.get("bio") or post.get("bio", "")
+                        # 添加用户对象
+                        post["user"] = user_info
+                    elif post.get("is_public", 0) == 0:
+                        # 非公开帖子处理：清除可能泄露用户信息的字段
+                        post["nickname"] = "匿名用户"
+                        post["avatar"] = ""
+                        post["bio"] = ""
+                        post["phone"] = None
+                        post["wechatId"] = None
+                        post["qqId"] = None
+                        post["openid"] = ""  # 不暴露原始openid
+                        # 添加匿名用户对象
+                        post["user"] = {
+                            "openid": "",
+                            "nickname": "匿名用户",
+                            "avatar": ""
+                        }
+        
         # 返回标准分页响应
         return Response.paged(
             data=posts,

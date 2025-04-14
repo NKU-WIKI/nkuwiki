@@ -1214,15 +1214,13 @@
         "content": "通知内容",
         "type": "comment",
         "is_read": 0,
-        "sender_openid": "发送者openid",
         "sender": {
-          "id": 2,
           "openid": "发送者openid",
-          "nick_name": "发送者昵称",
-          "avatar": "发送者头像"
+          "avatar": "发送者头像URL",
+          "nickname": "发送者昵称"
         },
-        "related_id": "123",
-        "related_type": "post",
+        "target_id": "123",
+        "target_type": "post",
         "create_time": "2023-01-01 12:00:00",
         "update_time": "2023-01-01 12:00:00",
         "platform": "wxapp",
@@ -1259,9 +1257,13 @@
     "content": "通知内容",
     "type": "comment",
     "is_read": 0,
-    "sender_openid": "发送者openid",
-    "related_id": "123",
-    "related_type": "post",
+    "sender": {
+      "openid": "发送者openid",
+      "avatar": "发送者头像URL",
+      "nickname": "发送者昵称"
+    },
+    "target_id": "123",
+    "target_type": "post",
     "create_time": "2023-01-01 12:00:00",
     "update_time": "2023-01-01 12:00:00",
     "platform": "wxapp",
@@ -1301,9 +1303,13 @@
     "content": "通知内容",
     "type": "comment",
     "is_read": 1,
-    "sender_openid": "发送者openid",
-    "related_id": "123",
-    "related_type": "post",
+    "sender": {
+      "openid": "发送者openid",
+      "avatar": "发送者头像URL",
+      "nickname": "发送者昵称"
+    },
+    "target_id": "123",
+    "target_type": "post",
     "create_time": "2023-01-01 12:00:00",
     "update_time": "2023-01-01 12:30:00",
     "platform": "wxapp",

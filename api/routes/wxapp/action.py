@@ -140,6 +140,12 @@ async def create_comment(request: Request):
                     print(f"创建评论回复通知: post_id={post_id}, comment_id={comment_id}, parent_id={parent_id}")
                     print(f"creator_openid={openid}, parent_openid={parent_comment['openid']}")
                     
+                    # 获取发送者的头像
+                    sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+                    sender_info = await async_execute_custom_query(sender_info_sql, [openid])
+                    sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
+                    sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
+                    
                     # 使用直接执行SQL的方式插入通知
                     notification_sql = """
                     INSERT INTO wxapp_notification (
@@ -154,7 +160,7 @@ async def create_comment(request: Request):
                         f"用户回复了你的评论",
                         "comment",
                         0,
-                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储，添加avatar
                         int(comment_id),
                         "comment",
                         1
@@ -202,6 +208,12 @@ async def create_comment(request: Request):
                 print(f"creator_openid={openid}, post_owner_openid={post['openid']}")
                 print(f"条件判断: post['openid']({post['openid']}) != openid({openid}) = {post['openid'] != openid}")
                 
+                # 获取发送者的头像
+                sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+                sender_info = await async_execute_custom_query(sender_info_sql, [openid])
+                sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
+                sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
+                
                 # 使用async_execute_custom_query直接执行SQL
                 notification_sql = """
                 INSERT INTO wxapp_notification (
@@ -217,7 +229,7 @@ async def create_comment(request: Request):
                     f"用户评论了你的帖子「{safe_title}」",
                     "comment",
                     0,
-                    json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                    json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储
                     int(comment_id),
                     "comment",
                     1
@@ -244,7 +256,10 @@ async def create_comment(request: Request):
                         print("警告: 无法找到刚刚创建的通知记录，尝试直接使用mysql命令插入")
                         # 备用方案: 使用mysql命令直接插入
                         safe_title_escape = safe_title.replace("'", "\\'").replace('"', '\\"')
-                        sender_json = json.dumps({"openid": openid}).replace("'", "\\'")
+                        # 获取用户头像和昵称用于备用方案
+                        sender_avatar = sender_info[0].get("avatar", "").replace("'", "\\'").replace('"', '\\"') if sender_info else ""
+                        sender_nickname = sender_info[0].get("nickname", "").replace("'", "\\'").replace('"', '\\"') if sender_info else ""
+                        sender_json = json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}).replace("'", "\\'")
                         os_command = f"""
                         mysql -u root -p"root" -e "INSERT INTO nkuwiki.wxapp_notification (openid, title, content, type, is_read, sender, target_id, target_type, status, create_time, update_time) VALUES ('{post['openid']}', '收到新评论', '用户评论了你的帖子「{safe_title_escape}」', 'comment', 0, '{sender_json}', {int(comment_id)}, 'comment', 1, NOW(), NOW());"
                         """
@@ -359,13 +374,19 @@ async def like_comment(request: Request):
                 
                 # 只有在不存在通知时才创建
                 if not existing_notification:
+                    # 获取发送者的头像和昵称
+                    sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+                    sender_info = await async_execute_custom_query(sender_info_sql, [openid])
+                    sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
+                    sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
+                    
                     notification_data = {
                         "openid": comment["openid"],
                         "title": "收到点赞",
                         "content": "有用户点赞了你的评论",
                         "type": "like",
                         "is_read": False,
-                        "sender": json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        "sender": json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储
                         "target_id": comment_id,
                         "target_type": "comment",
                         "status": 1
@@ -507,6 +528,12 @@ async def like_post(request: Request):
                 
                 # 只有在不存在通知时才创建
                 if not existing_notification:
+                    # 获取发送者的头像和昵称
+                    sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+                    sender_info = await async_execute_custom_query(sender_info_sql, [openid])
+                    sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
+                    sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
+                    
                     notification_sql = """
                     INSERT INTO wxapp_notification (
                         openid, title, content, type, is_read, sender, target_id, 
@@ -520,7 +547,7 @@ async def like_post(request: Request):
                         f"有用户点赞了你的帖子「{post.get('title', '无标题')}」",
                         "like",
                         False,
-                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储
                         post_id,
                         "post",
                         1
@@ -630,6 +657,12 @@ async def favorite_post(request: Request):
                 
                 # 只有在不存在通知时才创建
                 if not existing_notification:
+                    # 获取发送者的头像和昵称
+                    sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+                    sender_info = await async_execute_custom_query(sender_info_sql, [openid])
+                    sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
+                    sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
+                    
                     notification_sql = """
                     INSERT INTO wxapp_notification (
                         openid, title, content, type, is_read, sender, target_id, 
@@ -643,7 +676,7 @@ async def favorite_post(request: Request):
                         f"您的帖子「{post.get('title', '无标题')}」被用户收藏了",
                         "favorite",
                         False,
-                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储
                         post_id,
                         "post",
                         1
@@ -775,6 +808,12 @@ async def follow_user(request: Request):
                 
                 # 只有在不存在通知时才创建
                 if not existing_notification:
+                    # 获取发送者的头像和昵称
+                    sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+                    sender_info = await async_execute_custom_query(sender_info_sql, [openid])
+                    sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
+                    sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
+                    
                     notification_sql = """
                     INSERT INTO wxapp_notification (
                         openid, title, content, type, is_read, sender, target_id, 
@@ -788,7 +827,7 @@ async def follow_user(request: Request):
                         "有用户关注了你",
                         "follow",
                         False,
-                        json.dumps({"openid": openid}),  # 将sender作为JSON对象存储
+                        json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储
                         current_user_id, # 使用关注者的数字ID作为target_id
                         "user",
                         1
