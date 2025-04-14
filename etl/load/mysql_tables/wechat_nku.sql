@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS `wechat_nku` (
     `platform` varchar(64) NOT NULL DEFAULT '' COMMENT '平台',
     `view_count` int(11) NOT NULL DEFAULT '0' COMMENT '阅读数',
     `like_count` int(11) NOT NULL DEFAULT '0' COMMENT '点赞数',
+    `is_official` tinyint(1) NULL DEFAULT '0' COMMENT '是否为官方信息',
     `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),

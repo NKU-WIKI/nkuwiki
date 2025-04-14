@@ -72,6 +72,8 @@ async def sync_user_info(
         avatar = req_data.get("avatar", default_avatar)
         nickname = req_data.get("nickname", f'用户_{openid[-6:]}')
         bio = req_data.get("bio", None)
+        phone = req_data.get("phone", None)
+        university = req_data.get("university", None)
 
         # 使用单一SQL直接查询用户，只查询必要字段
         existing_user = await async_execute_custom_query(
@@ -91,6 +93,12 @@ async def sync_user_info(
         # 如果提供了bio，添加到user_data
         if bio is not None:
             user_data['bio'] = bio
+        
+        # 添加phone和university字段
+        if phone is not None:
+            user_data['phone'] = phone
+        if university is not None:
+            user_data['university'] = university
         
         user_id = await async_insert("wxapp_user", user_data)
         
@@ -159,6 +167,10 @@ async def update_user_info(
             update_data["wechatId"] = req_data["wechatId"]
         if "qqId" in req_data:
             update_data["qqId"] = req_data["qqId"]
+        if "phone" in req_data:
+            update_data["phone"] = req_data["phone"]
+        if "university" in req_data:
+            update_data["university"] = req_data["university"]
         if "status" in req_data:
             update_data["status"] = req_data["status"]
             
@@ -509,7 +521,7 @@ async def get_user_followers(
 async def get_user_followings(
     openid: str = Query(..., description="用户openid"),
     page: int = Query(1, description="页码"),
-    page_size: int = Query(10, description="每页数量")
+    page_size: int = Query(10, description="每页记录数量")
 ):
     """获取用户的关注列表"""
     try:

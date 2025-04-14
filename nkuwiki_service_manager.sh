@@ -20,6 +20,10 @@ HTTPS_CONF="${NGINX_SITES_DIR}/nkuwiki-ssl.conf"
 UPSTREAM_CONF="${NGINX_CONF_DIR}/upstream.conf"
 SSL_CERT_PATH="/etc/ssl/certs/nkuwiki.com.crt"
 SSL_KEY_PATH="/etc/ssl/private/nkuwiki.com.key"
+# mihomo相关配置
+MIHOMO_SERVICE="mihomo.service"
+MIHOMO_CONFIG_DIR="/etc/mihomo"
+MIHOMO_API_PORT="9090"
 
 # 帮助信息
 function show_help {
@@ -36,6 +40,9 @@ function show_help {
     echo -e "  ${YELLOW}status${NC}                     - 查看所有nkuwiki服务状态"
     echo -e "  ${YELLOW}cleanup${NC}                    - 清理所有服务"
     echo -e "  ${YELLOW}help${NC}                       - 显示此帮助信息"
+    echo -e "${GREEN}== Mihomo服务命令 ==${NC}"
+    echo -e "  ${YELLOW}restart-mihomo${NC}             - 重启mihomo代理服务"
+    echo -e "  ${YELLOW}proxy-status${NC}               - 检查代理状态"
     echo ""
     echo -e "${GREEN}== 使用示例 ==${NC}"
     echo -e "  $0 deploy                  - 一键部署双服务配置"
@@ -43,6 +50,8 @@ function show_help {
     echo -e "  $0 restart                 - 重启所有服务"
     echo -e "  $0 status                  - 查看所有服务状态"
     echo -e "  $0 cleanup                 - 清理所有服务"
+    echo -e "  $0 restart-mihomo          - 重启mihomo代理服务"
+    echo -e "  $0 proxy-status            - 检查代理状态"
     echo ""
     echo -e "${BLUE}注意事项:${NC}"
     echo -e "  1. 本脚本需要root权限执行"
@@ -184,7 +193,7 @@ upstream nkuwiki_backend {
 }
 EOF
     
-    # 生成HTTP配置
+    # 生成HTTP配置，添加mihomo-api位置
     cat > "$HTTP_CONF" << 'EOF'
 server {
     listen 80;
@@ -207,6 +216,25 @@ server {
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options SAMEORIGIN;
     add_header X-XSS-Protection "1; mode=block";
+
+    # mihomo API专用配置
+    location ^~ /mihomo-api/ {
+        proxy_pass http://127.0.0.1:9090/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # CORS设置
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' '*' always;
+        
+        # 测试跟踪
+        error_log /var/log/nginx/mihomo-api.error.log debug;
+        access_log /var/log/nginx/mihomo-api.access.log;
+    }
 
     # 健康检查端点
     location /health {
@@ -320,6 +348,25 @@ server {
     add_header 'Access-Control-Allow-Origin' '*' always;
     add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
     add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range' always;
+
+    # mihomo API专用配置
+    location ^~ /mihomo-api/ {
+        proxy_pass http://127.0.0.1:9090/;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        
+        # CORS设置
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' '*' always;
+        
+        # 测试跟踪
+        error_log /var/log/nginx/mihomo-api-ssl.error.log debug;
+        access_log /var/log/nginx/mihomo-api-ssl.access.log;
+    }
 
     # 反向代理到负载均衡后端
     location / {
@@ -662,6 +709,158 @@ function check_service_status {
     echo -e "\n${BLUE}状态检查完成${NC}"
 }
 
+# 添加mihomo服务重启函数
+function restart_mihomo {
+    echo -e "${BLUE}重启mihomo代理服务...${NC}"
+    
+    # 检查mihomo服务是否存在
+    if ! systemctl list-unit-files | grep -q "$MIHOMO_SERVICE"; then
+        echo -e "${RED}错误: mihomo服务不存在${NC}"
+        return 1
+    fi
+    
+    # 重启mihomo服务
+    echo -e "${YELLOW}重启 $MIHOMO_SERVICE...${NC}"
+    systemctl restart $MIHOMO_SERVICE
+    
+    # 检查服务状态
+    if systemctl is-active $MIHOMO_SERVICE >/dev/null 2>&1; then
+        echo -e "${GREEN}mihomo服务已重启并运行${NC}"
+    else
+        echo -e "${RED}重启mihomo服务失败${NC}"
+        echo -e "${YELLOW}请检查日志: journalctl -u $MIHOMO_SERVICE${NC}"
+        return 1
+    fi
+    
+    # 检查API端口是否监听
+    if netstat -tuln | grep -q ":$MIHOMO_API_PORT "; then
+        echo -e "${GREEN}mihomo API端口 $MIHOMO_API_PORT 已在监听${NC}"
+    else
+        echo -e "${YELLOW}警告: 无法检测到mihomo API端口 $MIHOMO_API_PORT 监听${NC}"
+    fi
+    
+    # 检查代理端口
+    if netstat -tuln | grep -q ":7890 "; then
+        echo -e "${GREEN}mihomo代理端口 7890 已在监听${NC}"
+    else
+        echo -e "${YELLOW}警告: 无法检测到mihomo代理端口 7890 监听${NC}"
+    fi
+    
+    # 检查全局代理环境变量
+    if [ -f "/etc/profile.d/proxy.sh" ]; then
+        echo -e "${GREEN}全局代理环境变量脚本已存在${NC}"
+    else
+        echo -e "${YELLOW}警告: 全局代理环境变量脚本不存在${NC}"
+        echo -e "创建代理脚本..."
+        
+        if [ -f "/etc/profile.d/proxy.sh.disabled" ]; then
+            cp /etc/profile.d/proxy.sh.disabled /etc/profile.d/proxy.sh
+            chmod +x /etc/profile.d/proxy.sh
+            echo -e "${GREEN}已从模板创建代理脚本${NC}"
+        else
+            cat > /etc/profile.d/proxy.sh << EOF
+#!/bin/bash
+
+# Mihomo代理设置 - 系统全局代理
+export http_proxy="http://127.0.0.1:7890"
+export https_proxy="http://127.0.0.1:7890"
+export all_proxy="socks5://127.0.0.1:7890"
+export HTTP_PROXY="http://127.0.0.1:7890"
+export HTTPS_PROXY="http://127.0.0.1:7890"
+export ALL_PROXY="socks5://127.0.0.1:7890"
+export no_proxy="localhost,127.0.0.1,local,internal,192.168.*,10.*"
+export NO_PROXY="localhost,127.0.0.1,local,internal,192.168.*,10.*"
+
+# 测试代理是否生效
+proxy_status() {
+  echo "当前代理设置:"
+  echo "http_proxy=\$http_proxy"
+  echo "https_proxy=\$https_proxy"
+  echo "all_proxy=\$all_proxy"
+  echo "no_proxy=\$no_proxy"
+  
+  echo -e "\\n测试代理连接..."
+  curl -s -o /dev/null -w "HTTP状态码: %{http_code}\\n" google.com
+}
+
+# 显示状态信息（仅当终端是交互式的时候）
+if [[ \$- == *i* ]]; then
+  # 注释掉这两行，去掉启动时的日志输出
+  # echo "系统代理已启用 (http://127.0.0.1:7890)"
+  # echo "运行 'proxy_status' 命令检查代理状态"
+  :  # 使用空命令代替
+fi 
+EOF
+            chmod +x /etc/profile.d/proxy.sh
+            echo -e "${GREEN}已创建代理脚本${NC}"
+        fi
+    fi
+    
+    # 检查代理是否生效
+    echo -e "${YELLOW}测试代理连接...${NC}"
+    source /etc/profile.d/proxy.sh
+    proxy_status
+    
+    # 重载nginx
+    echo -e "${BLUE}重载Nginx配置...${NC}"
+    nginx -t && systemctl reload nginx
+    
+    echo -e "${GREEN}mihomo代理服务已成功重启${NC}"
+}
+
+# 检查代理状态
+function check_proxy_status {
+    echo -e "${BLUE}检查代理状态...${NC}"
+    
+    # 检查mihomo服务状态
+    echo -e "\n${GREEN}=== Mihomo服务状态 ===${NC}"
+    if systemctl is-active $MIHOMO_SERVICE >/dev/null 2>&1; then
+        echo -e "${GREEN}✓ $MIHOMO_SERVICE - 运行中${NC}"
+    else
+        echo -e "${RED}✗ $MIHOMO_SERVICE - 未运行${NC}"
+    fi
+    
+    # 检查端口状态
+    echo -e "\n${GREEN}=== 端口状态 ===${NC}"
+    for port in 7890 $MIHOMO_API_PORT; do
+        if netstat -tuln | grep -q ":$port "; then
+            local pid=$(netstat -tulnp 2>/dev/null | grep ":$port " | awk '{print $7}' | cut -d'/' -f1)
+            local process=$(ps -p $pid -o comm= 2>/dev/null || echo "未知")
+            echo -e "${GREEN}✓ 端口 $port - 已使用${NC} (进程: $process, PID: $pid)"
+        else
+            echo -e "${RED}✗ 端口 $port - 未使用${NC}"
+        fi
+    done
+    
+    # 检查环境变量
+    echo -e "\n${GREEN}=== 代理环境变量 ===${NC}"
+    if [ -f "/etc/profile.d/proxy.sh" ]; then
+        echo -e "${GREEN}✓ 代理环境变量脚本存在${NC}"
+        
+        # 加载代理环境变量并测试
+        source /etc/profile.d/proxy.sh
+        echo -e "http_proxy=$http_proxy"
+        echo -e "https_proxy=$https_proxy"
+        echo -e "all_proxy=$all_proxy"
+        
+        # 测试连接
+        echo -e "\n${YELLOW}测试代理连接...${NC}"
+        proxy_status
+    else
+        echo -e "${RED}✗ 代理环境变量脚本不存在${NC}"
+    fi
+    
+    # 检查nginx配置
+    echo -e "\n${GREEN}=== Mihomo API配置 ===${NC}"
+    if grep -q "location.*mihomo-api" "$HTTP_CONF" 2>/dev/null; then
+        echo -e "${GREEN}✓ Nginx中mihomo-api配置已存在${NC}"
+    else
+        echo -e "${RED}✗ Nginx中mihomo-api配置不存在${NC}"
+    fi
+    
+    echo -e "\n${BLUE}代理状态检查完成${NC}"
+}
+
 # 主函数
 function main {
     check_root
@@ -689,6 +888,12 @@ function main {
             ;;
         help)
             show_help
+            ;;
+        restart-mihomo)
+            restart_mihomo
+            ;;
+        proxy-status)
+            check_proxy_status
             ;;
         *)
             echo -e "${RED}错误: 未知命令 $1${NC}"

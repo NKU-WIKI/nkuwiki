@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS `website_nku` (
     `scrape_time` datetime DEFAULT NULL COMMENT '爬取时间',
     `platform` varchar(64) NOT NULL DEFAULT '' COMMENT '平台',
     `view_count` int(11) NOT NULL DEFAULT '0' COMMENT '浏览数',
+    `is_official` tinyint(1) NULL DEFAULT '0' COMMENT '是否为官方信息',
     `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
