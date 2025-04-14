@@ -28,7 +28,7 @@
 | 参数    | 类型               | 必填 | 说明               |
 |---------|--------------------|------|--------------------|
 | AppKey  | string             | ✓    | 应用 key           |
-| Inputs  | map<string,string> | ✗    | 变量输入           |
+| Inputs  | map(string,string) | ✗    | 变量输入           |
 | UserID  | string             | ✓    | 用户唯一标识       |
 
 **响应参数**：
@@ -99,7 +99,7 @@
 
 | 参数          | 类型                     | 说明           |
 |---------------|--------------------------|----------------|
-| Messages      | list<ChatMessageInfo>    | 历史消息列表   |
+| Messages      | list(ChatMessageInfo)    | 历史消息列表   |
 | BaseResp      | BaseResp                 | 状态响应       |
 
 ---
@@ -131,7 +131,7 @@
 |---------------|--------------------|----------------------|
 | QueryID       | string             | 询问 ID              |
 | AnswerInfo    | MessageAnswerInfo  | 主回答信息           |
-| OtherAnswers  | list<MessageAnswerInfo> | 其他备选回答       |
+| OtherAnswers  | list(MessageAnswerInfo) | 其他备选回答       |
 | QueryExtends  | QueryExtendsInfo   | 附件文件信息         |
 
 ### MessageAnswerInfo
@@ -175,5 +175,5 @@
 
 ---
 
-> 注：保留全部技术参数，优化表格展示和层级结构，修正格式问题，关键字段用**加粗**突出显示。
+注：保留全部技术参数，优化表格展示和层级结构，修正格式问题，关键字段用**加粗**突出显示。
 
