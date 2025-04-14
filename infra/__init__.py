@@ -21,6 +21,7 @@ from core.utils.logger import register_logger
 
 # 初始化基础设施模块日志
 infra_logger = register_logger("infra")
+infra_logger.debug("Infra模块日志初始化完成")
 
 # 版本信息
 __version__ = "1.0.0"

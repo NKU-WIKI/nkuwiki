@@ -68,10 +68,16 @@ async def get_notification_list(
                 notification["receiver"] = notification["openid"]
                 del notification["openid"]
             
-            # 确保sender字段符合API文档格式
-            if "sender" in notification and isinstance(notification["sender"], str):
-                notification["sender"] = {"openid": notification["sender"]}
-        
+            # 解析sender字段中的JSON字符串为JSON对象
+            if "sender" in notification:
+                try:
+                    import json
+                    if isinstance(notification["sender"], str):
+                        notification["sender"] = json.loads(notification["sender"])
+                except Exception as e:
+                    logger.warning(f"解析sender JSON失败: {str(e)}")
+                    # 保持原始数据不变
+
         # 添加未读通知数量到返回数据
         result_data = {
             "list": notifications_data,
@@ -123,9 +129,15 @@ async def get_notification_detail(
             notification_data["receiver"] = notification_data["openid"]
             del notification_data["openid"]
         
-        # 确保sender字段符合API文档格式
-        if "sender" in notification_data and isinstance(notification_data["sender"], str):
-            notification_data["sender"] = {"openid": notification_data["sender"]}
+        # 解析sender字段的JSON字符串为JSON对象
+        if "sender" in notification_data:
+            try:
+                import json
+                if isinstance(notification_data["sender"], str):
+                    notification_data["sender"] = json.loads(notification_data["sender"])
+            except Exception as e:
+                logger.warning(f"解析sender JSON失败: {str(e)}")
+                # 保持原始数据不变
             
         return Response.success(data=notification_data)
     except Exception as e:
@@ -190,23 +202,41 @@ async def mark_notification_read(
 ):
     """标记通知为已读"""
     try:
+        # 记录原始请求
+        logger.info(f"收到标记通知已读请求: {request.client.host}")
+        
         req_data = await request.json()
-        required_params = ["notification_id"]
+        logger.info(f"请求数据: {req_data}")
+        
+        required_params = ["notification_id", "openid"]
         error_response = validate_params(req_data, required_params)
         if error_response:
+            logger.warning(f"标记通知已读参数验证失败: {req_data}")
             return error_response
             
         notification_id = req_data.get("notification_id")
+        openid = req_data.get("openid")
+        
+        # 支持通过receiver字段接收参数
+        if not openid and "receiver" in req_data:
+            openid = req_data.get("receiver")
+            
+        if not openid:
+            logger.warning(f"标记通知已读缺少openid参数: {req_data}")
+            return Response.bad_request(details={"message": "缺少必要参数: openid"})
+        
+        logger.info(f"处理标记通知已读请求: notification_id={notification_id}, openid={openid}")
         
         # 使用单一原子操作实现检查和更新
         update_sql = """
         UPDATE wxapp_notification 
         SET is_read = 1 
-        WHERE id = %s AND status = 1 AND is_read = 0
+        WHERE id = %s AND openid = %s AND status = 1 AND is_read = 0
         """
         
-        await async_execute_custom_query(update_sql, [notification_id], fetch=False)
+        await async_execute_custom_query(update_sql, [notification_id, openid], fetch=False)
         
+        logger.info(f"通知标记已读成功: notification_id={notification_id}, openid={openid}")
         return Response.success(details={"message": "已标记通知为已读"})
     except Exception as e:
         logger.error(f"标记通知已读失败: {str(e)}")
@@ -311,13 +341,34 @@ async def create_notification(
             except Exception as e:
                 logger.warning(f"转换用户openid到id失败: {str(e)}")
                 target_id = 0
-            
+        
+        # 验证并获取sender信息
+        sender = req_data.get("sender", {})
+        if not isinstance(sender, dict):
+            # 如果sender不是字典，尝试将其当作openid获取用户信息
+            try:
+                sender_openid = str(sender)
+                user_query = "SELECT openid, nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+                user_result = await async_execute_custom_query(user_query, [sender_openid])
+                if user_result:
+                    sender = {
+                        "openid": user_result[0]["openid"],
+                        "nickname": user_result[0]["nickname"],
+                        "avatar": user_result[0]["avatar"]
+                    }
+                else:
+                    # 找不到用户，使用默认值
+                    sender = {"openid": sender_openid, "nickname": "", "avatar": ""}
+            except Exception as e:
+                logger.warning(f"获取sender用户信息失败: {str(e)}")
+                sender = {"openid": str(sender), "nickname": "", "avatar": ""}
+        
         # 构造通知数据
         notification_data = {
             "openid": openid,  # 存储到数据库使用openid字段
             "type": req_data.get("type"),
             "content": req_data.get("content"),
-            "sender": req_data.get("sender", {}),
+            "sender": sender,  # 已经是JSON对象
             "target_id": target_id,
             "target_type": target_type,
             "is_read": 0,

@@ -24,6 +24,8 @@ SSL_KEY_PATH="/etc/ssl/private/nkuwiki.com.key"
 MIHOMO_SERVICE="mihomo.service"
 MIHOMO_CONFIG_DIR="/etc/mihomo"
 MIHOMO_API_PORT="9090"
+# 代理配置 (默认禁用)
+ENABLE_PROXY=0
 
 # 帮助信息
 function show_help {
@@ -44,10 +46,15 @@ function show_help {
     echo -e "  ${YELLOW}restart-mihomo${NC}             - 重启mihomo代理服务"
     echo -e "  ${YELLOW}proxy-status${NC}               - 检查代理状态"
     echo ""
+    echo -e "${GREEN}== 参数 ==${NC}"
+    echo -e "  ${YELLOW}--proxy${NC}                    - 启用代理 (适用于deploy/start/restart)"
+    echo -e "  ${YELLOW}--no-proxy${NC}                 - 禁用代理 (适用于deploy/start/restart) [默认]"
+    echo ""
     echo -e "${GREEN}== 使用示例 ==${NC}"
-    echo -e "  $0 deploy                  - 一键部署双服务配置"
-    echo -e "  $0 start                   - 启动所有服务"
-    echo -e "  $0 restart                 - 重启所有服务"
+    echo -e "  $0 deploy                  - 一键部署双服务配置 (默认禁用代理)"
+    echo -e "  $0 deploy --proxy          - 一键部署双服务配置并启用代理"
+    echo -e "  $0 start --proxy           - 启动所有服务并启用代理"
+    echo -e "  $0 restart --no-proxy      - 重启所有服务并禁用代理"
     echo -e "  $0 status                  - 查看所有服务状态"
     echo -e "  $0 cleanup                 - 清理所有服务"
     echo -e "  $0 restart-mihomo          - 重启mihomo代理服务"
@@ -58,6 +65,7 @@ function show_help {
     echo -e "  2. 会创建两个服务：端口8000(1个worker)和端口8001(8个worker)"
     echo -e "  3. 服务配置默认使用最少连接负载均衡策略"
     echo -e "  4. 清理命令会停止所有服务并删除服务文件"
+    echo -e "  5. 默认禁用代理，如需启用代理，请使用 --proxy 参数"
 }
 
 # 检查是否是root用户
@@ -104,6 +112,15 @@ function create_dual_service {
         fi
     fi
     
+    # 配置代理环境变量
+    local proxy_env=""
+    if [ $ENABLE_PROXY -eq 1 ]; then
+        echo -e "${YELLOW}已启用代理环境变量${NC}"
+        proxy_env="Environment=\"http_proxy=http://127.0.0.1:7890\"\nEnvironment=\"https_proxy=http://127.0.0.1:7890\"\nEnvironment=\"all_proxy=socks5://127.0.0.1:7890\"\nEnvironment=\"no_proxy=localhost,127.0.0.1,192.168.*,10.*\""
+    else
+        echo -e "${YELLOW}代理环境变量已禁用${NC}"
+    fi
+    
     # 创建8000端口服务 - 1个worker
     local service_path="/etc/systemd/system/nkuwiki.service"
     cat > "$service_path" << EOF
@@ -114,10 +131,12 @@ After=network.target nginx.service mysql.service
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
+ExecStartPre=/bin/bash -c "unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY"
 ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8000 --workers 1
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+$(if [ $ENABLE_PROXY -eq 1 ]; then echo -e "Environment=\"http_proxy=http://127.0.0.1:7890\"\nEnvironment=\"https_proxy=http://127.0.0.1:7890\"\nEnvironment=\"all_proxy=socks5://127.0.0.1:7890\"\nEnvironment=\"no_proxy=localhost,127.0.0.1,192.168.*,10.*\""; fi)
 CPUQuota=30%
 MemoryLimit=2G
 TasksMax=64
@@ -142,10 +161,12 @@ After=network.target nginx.service mysql.service
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
+ExecStartPre=/bin/bash -c "unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY"
 ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8001 --workers 1
 Restart=always
 RestartSec=10
 Environment=PYTHONUNBUFFERED=1
+$(if [ $ENABLE_PROXY -eq 1 ]; then echo -e "Environment=\"http_proxy=http://127.0.0.1:7890\"\nEnvironment=\"https_proxy=http://127.0.0.1:7890\"\nEnvironment=\"all_proxy=socks5://127.0.0.1:7890\"\nEnvironment=\"no_proxy=localhost,127.0.0.1,192.168.*,10.*\""; fi)
 CPUQuota=70%
 MemoryLimit=4G
 TasksMax=128
@@ -453,12 +474,17 @@ function get_all_services {
     ls /etc/systemd/system/nkuwiki*.service 2>/dev/null | xargs -n1 basename 2>/dev/null || echo ""
 }
 
-# 清空logs目录
+# 清空所有日志文件
 function clean_logs_directory {
-    echo -e "${YELLOW}清空logs目录...${NC}"
+    echo -e "${YELLOW}清空所有日志文件...${NC}"
     if [ -d "/home/nkuwiki/nkuwiki-shell/nkuwiki/logs" ]; then
-        rm -rf /home/nkuwiki/nkuwiki-shell/nkuwiki/logs/*
-        echo -e "${GREEN}logs目录已清空${NC}"
+        # 清空所有日志文件但保留目录结构
+        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs -type f -name "*.log" -exec truncate -s 0 {} \;
+        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs -type f -name "*.log.*" -delete
+        # 清空子目录中的日志
+        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs/*/  -type f -name "*.log" -exec truncate -s 0 {} \; 2>/dev/null || true
+        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs/*/  -type f -name "*.log.*" -delete 2>/dev/null || true
+        echo -e "${GREEN}所有日志文件已清空${NC}"
     else
         mkdir -p /home/nkuwiki/nkuwiki-shell/nkuwiki/logs
         echo -e "${GREEN}logs目录已创建${NC}"
@@ -870,7 +896,29 @@ function main {
         exit 0
     fi
     
-    case "$1" in
+    # 解析命令
+    local command="$1"
+    shift
+    
+    # 解析参数
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --proxy)
+                ENABLE_PROXY=1
+                echo -e "${GREEN}已启用代理${NC}"
+                ;;
+            --no-proxy)
+                ENABLE_PROXY=0
+                echo -e "${GREEN}已禁用代理${NC}"
+                ;;
+            *)
+                echo -e "${RED}警告: 未知参数 $1${NC}"
+                ;;
+        esac
+        shift
+    done
+    
+    case "$command" in
         deploy)
             deploy_dual
             ;;
@@ -896,7 +944,7 @@ function main {
             check_proxy_status
             ;;
         *)
-            echo -e "${RED}错误: 未知命令 $1${NC}"
+            echo -e "${RED}错误: 未知命令 $command${NC}"
             show_help
             exit 1
             ;;

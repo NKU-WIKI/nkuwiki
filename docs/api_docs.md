@@ -2189,3 +2189,66 @@ data: {"timestamp": 1717027452.123456}
 - `show_tables` - 显示所有表
 - `describe_table` - 显示表结构
 - `query_table` - 查询表数据
+
+### 13.3 标记通知为已读
+
+**接口**：`POST /api/wxapp/notification/read`  
+**描述**：标记通知为已读  
+**请求体**：
+
+```json
+{
+  "notification_id": 123,
+  "openid": "微信用户唯一标识"  // 必填，用户的openid
+}
+```
+
+**参数说明**：
+- `notification_id` - 整数，必填，通知ID
+- `openid` - 字符串，必填，当前用户的openid
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": null,
+  "details": {
+    "message": "已标记通知为已读"
+  },
+  "timestamp": "2023-01-01 12:00:00",
+  "pagination": null
+}
+```
+
+### 13.4 批量标记通知为已读
+
+**接口**：`PUT /api/wxapp/users/{openid}/notifications/read`  
+**描述**：标记用户所有或指定通知为已读  
+**参数**：
+- `openid` - 路径参数，用户openid
+
+**请求体**：
+
+```json
+{
+  "notification_ids": [1, 2, 3]
+}
+```
+
+**响应**：
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "success": true,
+    "message": "已将5条通知标记为已读",
+    "count": 5
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```

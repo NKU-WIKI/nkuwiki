@@ -105,7 +105,7 @@ def cleanup_resources():
 # 创建FastAPI应用
 # =============================================================================
 
-DEBUG = True
+DEBUG = False
 # 创建FastAPI应用
 app = FastAPI(
     title="NKUWiki API",
@@ -144,15 +144,60 @@ app.add_middleware(
 async def log_requests(request: Request, call_next):
     """记录所有HTTP请求的中间件"""
     # 生成请求ID
-    request_id = str(uuid.uuid4())
+    request_id = str(uuid.uuid4())[:8]  # 只使用UUID的前8位，更简洁
     request.state.request_id = request_id
     
     # 获取请求信息
     client_host = request.client.host if request.client else "unknown"
     start_time = time.time()
     
-    # 记录请求开始
-    logger.debug(f"Request started: {request.method} {request.url.path} [ID: {request_id}]")
+    # 检查是否需要记录此请求
+    # 不记录静态资源、健康检查和其他不重要的请求
+    path = request.url.path
+    skip_logging = (
+        path.startswith("/static/") or
+        path.startswith("/assets/") or
+        path.startswith("/img/") or
+        path == "/api/health" or
+        path.startswith("/favicon") or
+        "__pycache__" in path
+    )
+    
+    # 是否为API请求
+    is_api_request = path.startswith("/api/") and not path == "/api/health"
+    
+    # 记录查询参数
+    query_params = str(request.query_params) if request.query_params else ""
+    
+    if not skip_logging:
+        if is_api_request:
+            # 使用api_logger记录API请求
+            from api import api_logger
+            log_msg = f"API请求: {request.method} {path}"
+            if query_params:
+                log_msg += f" 参数: {query_params}"
+            log_msg += f" [{request_id}] 来自 {client_host}"
+            api_logger.info(log_msg)
+            
+            # 记录请求体内容 (仅POST/PUT请求)
+            if request.method in ["POST", "PUT"] and "application/json" in request.headers.get("content-type", ""):
+                try:
+                    # 保存当前请求体位置
+                    body_position = await request.body()
+                    # 重置请求体位置，以便后续处理仍然可以读取
+                    await request.body()
+                    
+                    if len(body_position) > 0:
+                        # 只记录前500个字符，防止超长日志
+                        body_str = body_position.decode('utf-8')
+                        if len(body_str) > 500:
+                            body_str = body_str[:500] + "... [截断]"
+                        api_logger.debug(f"请求体: [{request_id}] {body_str}")
+                except Exception as e:
+                    api_logger.warning(f"无法记录请求体: [{request_id}] {str(e)}")
+        else:
+            # 使用普通logger记录其他请求
+            logger.info(f"Request: {request.method} {path} [{request_id}]")
     
     try:
         # 调用下一个中间件或路由处理函数
@@ -161,12 +206,21 @@ async def log_requests(request: Request, call_next):
         # 计算处理时间
         process_time = (time.time() - start_time) * 1000
         
-        # 记录请求结束
-        logger.debug(
-            f"Request completed: {request.method} {request.url.path} "
-            f"[ID: {request_id}] - Status: {response.status_code} "
-            f"- Duration: {process_time:.2f}ms - Client: {client_host}"
-        )
+        # 记录请求结束 - 记录所有API请求和耗时信息
+        if not skip_logging:
+            if is_api_request:
+                from api import api_logger
+                status_code = response.status_code
+                status_emoji = "✅" if 200 <= status_code < 300 else "❌"
+                api_logger.info(
+                    f"API响应: {request.method} {path} "
+                    f"[{request_id}] {status_emoji} {status_code} 耗时: {process_time:.1f}ms"
+                )
+            else:
+                logger.info(
+                    f"Response: {request.method} {path} "
+                    f"[{request_id}] {response.status_code} {process_time:.1f}ms"
+                )
         
         # 添加处理时间到响应头
         response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
@@ -174,11 +228,21 @@ async def log_requests(request: Request, call_next):
         
         return response
     except Exception as e:
-        # 记录请求异常
-        logger.error(
-            f"Request failed: {request.method} {request.url.path} "
-            f"[ID: {request_id}] - Error: {str(e)}"
-        )
+        # 计算处理时间
+        process_time = (time.time() - start_time) * 1000
+        
+        # 记录请求异常 - 异常总是要记录
+        if is_api_request:
+            from api import api_logger
+            api_logger.error(
+                f"API错误: {request.method} {path} "
+                f"[{request_id}] {str(e)} {process_time:.0f}ms"
+            )
+        else:
+            logger.error(
+                f"Error: {request.method} {path} "
+                f"[{request_id}] {str(e)} {process_time:.0f}ms"
+            )
         # 重新抛出异常，让全局异常处理器处理
         raise
 
@@ -260,16 +324,37 @@ def run_api_service(port, workers=1):
     host = "127.0.0.1"  # 只监听本地接口，由Nginx转发请求
     
     try:
+        # 配置日志
+        log_level = "info"  # 设置为info级别确保请求被记录
+        
+        # 设置环境变量，启用uvicorn的访问日志
+        import os
+        os.environ["UVICORN_ACCESS_LOG"] = "1"
+        os.environ["UVICORN_LOG_LEVEL"] = "info"
+        
+        # 将workers转为整数确保类型一致
+        if isinstance(workers, str):
+            workers = int(workers)
+
+        # 确保port是整数类型
+        if isinstance(port, str):
+            port = int(port)
+        
         common_params = {
             "reload": False,
             "workers": workers,           
-            "log_level": "info",
+            "log_level": log_level,
+            "access_log": True,  # 启用访问日志
             "limit_concurrency": 500, 
             "timeout_keep_alive": 30, 
             "backlog": 1024,        
             "proxy_headers": True,
-            "forwarded_allow_ips": "*"
+            "forwarded_allow_ips": "*",
+            "log_config": None  # 让uvicorn使用默认配置，不覆盖
         }
+        
+        # 添加详细日志
+        logger.debug(f"启动参数 - host: {host}({type(host).__name__}), port: {port}({type(port).__name__}), workers: {workers}({type(workers).__name__})")
         
         # 启动HTTP服务
         logger.debug(f"以多进程模式启动 ({host}:{port})，worker数量: {workers}")
@@ -280,7 +365,9 @@ def run_api_service(port, workers=1):
             **common_params
         )
     except Exception as e:
-        logger.error(f"服务启动失败: {str(e)}", exc_info=True)
+        import traceback
+        logger.error(f"服务启动失败: {str(e)}")
+        logger.error(f"错误详情: {traceback.format_exc()}")
     finally:
         # 清理资源
         cleanup_resources()

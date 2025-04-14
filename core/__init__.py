@@ -32,8 +32,9 @@ for path in [LOG_PATH]:
 
 # 初始化核心日志
 from core.utils.logger import register_logger, logger
-# 注册core模块的日志记录器
+# 注册core模块的日志记录器 - 使用DEBUG级别
 core_logger = register_logger("core")
+core_logger.debug("Core模块日志初始化完成")
 
 # 在初始化日志后再导入Config，避免循环导入
 from config import Config
