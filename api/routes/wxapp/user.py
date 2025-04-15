@@ -35,181 +35,198 @@ async def get_user_info(
 
 @router.get("/user/list")
 async def get_user_list(
-    limit: int = Query(10, description="每页数量")
+    type: Optional[str] = Query(None, description="列表类型：all(所有用户)、follower(粉丝)、following(关注)"),
+    openid: Optional[str] = Query(None, description="用户openid，当type为follower或following时必填"),
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(10, description="每页数量")
 ):
-    """获取用户列表"""
+    """获取用户列表
+    
+    根据type参数返回不同类型的用户列表：
+    - type=all或未指定：返回所有用户
+    - type=follower：返回指定用户的粉丝列表
+    - type=following：返回指定用户的关注列表
+    """
     try:
-        # 只返回需要的字段
-        fields = ["id", "openid", "nickname", "avatar", "bio", "create_time", "update_time"]
-        users = await async_query_records(
-            table_name="wxapp_user",
-            fields=fields,
-            limit=limit,
-            order_by="create_time DESC"
-        )
+        # 计算偏移量
+        offset = (page - 1) * page_size
+        
+        # 如果type为follower或following，但未提供openid，返回错误
+        if type in ["follower", "following"] and not openid:
+            return Response.bad_request(details={"message": "当type为follower或following时，openid参数为必填"})
+            
+        # 根据type参数返回不同的用户列表
+        if type == "follower":
+            # 首先获取当前用户的数字ID
+            user_id_query = "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1"
+            user_id_result = await async_execute_custom_query(user_id_query, [openid])
+            
+            if not user_id_result:
+                return Response.not_found(resource="用户")
+                
+            user_id = user_id_result[0]["id"]
+            
+            # 获取粉丝列表 - 使用用户的数字ID作为target_id查询
+            followers = await async_query_records(
+                "wxapp_action",
+                conditions={
+                    "target_id": user_id,
+                    "action_type": "follow",
+                    "target_type": "user"
+                },
+                fields=["openid", "create_time"],
+                limit=page_size,
+                offset=offset,
+                order_by="create_time DESC"
+            )
+            
+            if not followers or not followers.get('data'):
+                # 返回空数据，但使用标准分页格式
+                pagination = {
+                    "total": 0,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": 0,
+                    "has_more": False
+                }
+                return Response.paged(data=[], pagination=pagination)
+                
+            # 获取粉丝用户的详细信息
+            follower_ids = [item.get("openid") for item in followers.get("data", [])]
+            
+            # 使用高效的单一SQL查询获取用户详情
+            if follower_ids:
+                query_fields = "openid, nickname, avatar, bio, post_count, follower_count, following_count"
+                
+                user_info_dict = {}
+                for follower_id in follower_ids:
+                    # 这里follower_id已经是openid，可以直接用于查询
+                    user_query = "SELECT openid, nickname, avatar, bio, post_count, follower_count, following_count FROM wxapp_user WHERE openid = %s LIMIT 1"
+                    user_results = await async_execute_custom_query(user_query, [follower_id])
+                    if user_results:
+                        user_info_dict[follower_id] = user_results[0]
+                
+                # 构建结果
+                result = []
+                for follow in followers.get("data", []):
+                    follower_id = follow.get("openid")
+                    if follower_id in user_info_dict:
+                        follower_user = user_info_dict[follower_id]
+                        result.append({
+                            **follower_user,
+                            "follow_time": follow.get("create_time")
+                        })
+            else:
+                result = []
+            
+            # 计算总页数
+            total = followers.get("total", 0)
+            total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+            
+            # 构建标准分页信息
+            pagination = {
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+                "has_more": page < total_pages
+            }
+            
+            return Response.paged(
+                data=result,
+                pagination=pagination,
+                details={"message": "获取粉丝列表成功"}
+            )
+            
+        elif type == "following":
+            # 获取关注列表
+            followings = await async_query_records(
+                "wxapp_action",
+                conditions={
+                    "openid": openid,
+                    "action_type": "follow",
+                    "target_type": "user"
+                },
+                fields=["target_id", "create_time"],
+                limit=page_size,
+                offset=offset,
+                order_by="create_time DESC"
+            )
+            
+            if not followings or not followings.get('data'):
+                # 返回空数据，但使用标准分页格式
+                pagination = {
+                    "total": 0,
+                    "page": page,
+                    "page_size": page_size,
+                    "total_pages": 0,
+                    "has_more": False
+                }
+                return Response.paged(data=[], pagination=pagination)
+            
+            # 获取被关注用户的信息
+            target_ids = [item.get("target_id") for item in followings.get("data", [])]
+            
+            # 使用高效的单一SQL查询获取用户详情
+            if target_ids:
+                query_fields = "openid, nickname, avatar, bio, post_count, follower_count, following_count"
+                
+                user_info_dict = {}
+                for target_id in target_ids:
+                    # 注意：target_id是用户的数字ID，需要先通过ID查询用户
+                    user_query = "SELECT openid, nickname, avatar, bio, post_count, follower_count, following_count FROM wxapp_user WHERE id = %s LIMIT 1"
+                    user_results = await async_execute_custom_query(user_query, [target_id])
+                    if user_results:
+                        user_info_dict[target_id] = user_results[0]
+                
+                # 构建结果
+                result = []
+                for follow in followings.get("data", []):
+                    target_id = follow.get("target_id")
+                    if target_id in user_info_dict:
+                        target_user = user_info_dict[target_id]
+                        result.append({
+                            **target_user,
+                            "follow_time": follow.get("create_time")
+                        })
+            else:
+                result = []
+            
+            # 计算总页数
+            total = followings.get("total", 0)
+            total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
+            
+            # 构建标准分页信息
+            pagination = {
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": total_pages,
+                "has_more": page < total_pages
+            }
+            
+            return Response.paged(
+                data=result,
+                pagination=pagination,
+                details={"message": "获取关注列表成功"}
+            )
+        else:
+            # 默认返回所有用户列表
+            # 只返回需要的字段
+            fields = ["id", "openid", "nickname", "avatar", "bio", "create_time", "update_time"]
+            users = await async_query_records(
+                table_name="wxapp_user",
+                fields=fields,
+                    limit=page_size,
+                    offset=offset,
+                order_by="create_time DESC"
+            )
 
         return Response.paged(data=users['data'],pagination=users['pagination'],details={"message":"获取用户列表成功"})
     except Exception as e:
         return Response.error(details={"message": f"获取用户列表失败: {str(e)}"})
 
-@router.post("/user/sync")
-async def sync_user_info(
-    request: Request
-):
-    """同步用户信息"""
-    try:
-        req_data = await request.json()
-        required_params = ["openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
-
-        openid = req_data.get("openid")
-
-        if not openid:
-            return Response.bad_request(details={"message": "缺少openid参数"})
-
-        avatar = req_data.get("avatar", default_avatar)
-        nickname = req_data.get("nickname", f'用户_{openid[-6:]}')
-        bio = req_data.get("bio", None)
-        phone = req_data.get("phone", None)
-        university = req_data.get("university", None)
-
-        # 使用单一SQL直接查询用户，只查询必要字段
-        existing_user = await async_execute_custom_query(
-            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1",
-            [openid]
-        )
-        
-        if existing_user:
-            return Response.success(data=existing_user[0], details={"message":"用户已存在", "user_id": existing_user[0]['id']})
-        
-        user_data = {
-            'openid': openid,
-            'nickname': nickname,
-            'avatar': avatar,
-        }
-        
-        # 如果提供了bio，添加到user_data
-        if bio is not None:
-            user_data['bio'] = bio
-        
-        # 添加phone和university字段
-        if phone is not None:
-            user_data['phone'] = phone
-        if university is not None:
-            user_data['university'] = university
-        
-        user_id = await async_insert("wxapp_user", user_data)
-        
-        if not user_id:
-            return Response.db_error(details={"message": "用户创建失败"})
-            
-        # 直接使用单一查询获取新创建的用户
-        new_user = await async_execute_custom_query(
-            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE id = %s LIMIT 1",
-            [user_id]
-        )
-        
-        if not new_user:
-            return Response.success(details={"message": "新用户创建成功", "user_id": user_id})
-        return Response.success(data=new_user[0], details={"message":"新用户创建成功", "user_id": user_id})
-    except Exception as e:
-        return Response.error(details={"message": f"同步用户信息失败: {str(e)}"})
-
-@router.post("/user/update")
-async def update_user_info(
-    request: Request,
-):
-    """更新用户信息"""
-    try:
-        req_data = await request.json()
-        required_params = ["openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
-
-        openid = req_data.get("openid")
-        
-        # 使用单一SQL获取用户ID
-        user_result = await async_execute_custom_query(
-            "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1",
-            [openid]
-        )
-        
-        if not user_result:
-            return Response.not_found(resource="用户")
-        
-        user_id = user_result[0]['id']
-        
-        # 提取请求中的更新字段
-        update_data = {}
-        # 基本信息
-        if "nickname" in req_data:
-            update_data["nickname"] = req_data["nickname"]
-        if "avatar" in req_data:
-            update_data["avatar"] = req_data["avatar"] if req_data["avatar"] else default_avatar
-        if "gender" in req_data:
-            update_data["gender"] = req_data["gender"]
-        if "bio" in req_data:
-            update_data["bio"] = req_data["bio"]
-        if "country" in req_data:
-            update_data["country"] = req_data["country"]
-        if "province" in req_data:
-            update_data["province"] = req_data["province"]
-        if "city" in req_data:
-            update_data["city"] = req_data["city"]
-        if "language" in req_data:
-            update_data["language"] = req_data["language"]
-        if "birthday" in req_data:
-            update_data["birthday"] = req_data["birthday"]
-        if "wechatId" in req_data:
-            update_data["wechatId"] = req_data["wechatId"]
-        if "qqId" in req_data:
-            update_data["qqId"] = req_data["qqId"]
-        if "phone" in req_data:
-            update_data["phone"] = req_data["phone"]
-        if "university" in req_data:
-            update_data["university"] = req_data["university"]
-        if "status" in req_data:
-            update_data["status"] = req_data["status"]
-            
-        if not update_data:
-            return Response.bad_request(details={"message": "未提供任何更新数据"})
-
-        try:
-            update_success = await async_update(
-                table_name="wxapp_user",
-                record_id=user_id,
-                data=update_data
-            )
-            
-            # 此处修改判断逻辑，只有当明确返回False时才认为失败
-            # 当数据无变化时，MySQL不会更新行，返回的affected rows为0
-            # 但这种情况不应视为错误
-            if update_success is False:  # 只有明确返回False时才视为失败
-                return Response.db_error(details={"message": "用户信息更新失败"})
-        except Exception as err:
-            # 添加详细的错误日志
-            import logging
-            logging.error(f"用户信息更新SQL执行错误: {str(err)}")
-            return Response.db_error(details={"message": f"用户信息更新失败: {str(err)}"})
-            
-        # 获取更新后的用户信息，直接使用SQL查询
-        query_fields = "id, openid, nickname, avatar, bio, gender, country, province, city"
-        updated_user = await async_execute_custom_query(
-            f"SELECT {query_fields} FROM wxapp_user WHERE id = %s LIMIT 1",
-            [user_id]
-        )
-        
-        if updated_user:
-            return Response.success(data=updated_user[0], details={"message":"用户信息更新成功"})
-        else:
-            return Response.success(details={"message":"用户信息更新成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"更新用户信息失败: {str(e)}"})
-
-@router.get("/user/favorites")
+@router.get("/user/favorite")
 async def get_user_favorites(
     openid: str = Query(..., description="用户openid"),
     page: int = Query(1, description="页码"), 
@@ -430,180 +447,6 @@ async def get_user_comments(
     except Exception as e:
         return Response.error(details={"message": f"获取评论列表失败: {str(e)}"})
 
-@router.get("/user/follower")
-async def get_user_followers(
-    openid: str = Query(..., description="用户openid"),
-    page: int = Query(1, description="页码"),
-    page_size: int = Query(10, description="每页数量")
-):
-    """获取用户的粉丝列表"""
-    try:
-        # 计算偏移量
-        offset = (page - 1) * page_size
-        
-        # 获取粉丝列表
-        followers = await async_query_records(
-            "wxapp_action",
-            conditions={
-                "target_id": openid,
-                "action_type": "follow",
-                "target_type": "user"
-            },
-            fields=["openid", "create_time"],
-            limit=page_size,
-            offset=offset,
-            order_by="create_time DESC"
-        )
-        
-        if not followers or not followers.get('data'):
-            # 返回空数据，但使用标准分页格式
-            pagination = {
-                "total": 0,
-                "page": page,
-                "page_size": page_size,
-                "total_pages": 0,
-                "has_more": False
-            }
-            return Response.paged(data=[], pagination=pagination)
-            
-        # 获取粉丝用户的详细信息
-        follower_ids = [item.get("openid") for item in followers.get("data", [])]
-        
-        # 使用高效的单一SQL查询获取用户详情
-        if follower_ids:
-            query_fields = "openid, nickname, avatar, bio, post_count, follower_count, follow_count"
-            
-            user_info_dict = {}
-            for follower_id in follower_ids:
-                users = await async_query_records(
-                    "wxapp_user",
-                    conditions={"openid": follower_id},
-                    fields=query_fields.split(", ")
-                )
-                if users and users.get('data'):
-                    user_info_dict[follower_id] = users['data'][0]
-            
-            # 构建结果
-            result = []
-            for follow in followers.get("data", []):
-                follower_id = follow.get("openid")
-                if follower_id in user_info_dict:
-                    follower_user = user_info_dict[follower_id]
-                    result.append({
-                        **follower_user,
-                        "follow_time": follow.get("create_time")
-                    })
-        else:
-            result = []
-        
-        # 计算总页数
-        total = followers.get("total", 0)
-        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
-        
-        # 构建标准分页信息
-        pagination = {
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": total_pages,
-            "has_more": page < total_pages
-        }
-        
-        return Response.paged(
-            data=result,
-            pagination=pagination,
-            details={"message": "获取粉丝列表成功"}
-        )
-    except Exception as e:
-        return Response.error(details={"message": f"获取粉丝列表失败: {str(e)}"})
-
-@router.get("/user/following")
-async def get_user_followings(
-    openid: str = Query(..., description="用户openid"),
-    page: int = Query(1, description="页码"),
-    page_size: int = Query(10, description="每页记录数量")
-):
-    """获取用户的关注列表"""
-    try:
-        # 计算偏移量
-        offset = (page - 1) * page_size
-        
-        # 获取关注列表
-        followings = await async_query_records(
-            "wxapp_action",
-            conditions={
-                "openid": openid,
-                "action_type": "follow",
-                "target_type": "user"
-            },
-            fields=["target_id", "create_time"],
-            limit=page_size,
-            offset=offset,
-            order_by="create_time DESC"
-        )
-        
-        if not followings or not followings.get('data'):
-            # 返回空数据，但使用标准分页格式
-            pagination = {
-                "total": 0,
-                "page": page,
-                "page_size": page_size,
-                "total_pages": 0,
-                "has_more": False
-            }
-            return Response.paged(data=[], pagination=pagination)
-        
-        # 获取被关注用户的信息
-        target_ids = [item.get("target_id") for item in followings.get("data", [])]
-        
-        # 使用高效的单一SQL查询获取用户详情
-        if target_ids:
-            query_fields = "openid, nickname, avatar, bio, post_count, follower_count, follow_count"
-            
-            user_info_dict = {}
-            for target_id in target_ids:
-                users = await async_query_records(
-                    "wxapp_user",
-                    conditions={"openid": target_id},
-                    fields=query_fields.split(", ")
-                )
-                if users and users.get('data'):
-                    user_info_dict[target_id] = users['data'][0]
-            
-            # 构建结果
-            result = []
-            for follow in followings.get("data", []):
-                target_id = follow.get("target_id")
-                if target_id in user_info_dict:
-                    target_user = user_info_dict[target_id]
-                    result.append({
-                        **target_user,
-                        "follow_time": follow.get("create_time")
-                    })
-        else:
-            result = []
-        
-        # 计算总页数
-        total = followings.get("total", 0)
-        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 1
-        
-        # 构建标准分页信息
-        pagination = {
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": total_pages,
-            "has_more": page < total_pages
-        }
-        
-        return Response.paged(
-            data=result,
-            pagination=pagination,
-            details={"message": "获取关注列表成功"}
-        )
-    except Exception as e:
-        return Response.error(details={"message": f"获取关注列表失败: {str(e)}"})
-
 @router.get("/user/status")
 async def get_user_status(
     openid: str = Query(..., description="当前用户openid"),
@@ -657,3 +500,162 @@ async def get_user_status(
         return Response.success(data=status)
     except Exception as e:
         return Response.error(details={"message": f"获取用户状态失败: {str(e)}"})
+
+
+@router.post("/user/sync")
+async def sync_user_info(
+    request: Request
+):
+    """同步用户信息"""
+    try:
+        req_data = await request.json()
+        required_params = ["openid"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
+
+        openid = req_data.get("openid")
+
+        if not openid:
+            return Response.bad_request(details={"message": "缺少openid参数"})
+
+        avatar = req_data.get("avatar", default_avatar)
+        nickname = req_data.get("nickname", f'用户_{openid[-6:]}')
+        bio = req_data.get("bio", None)
+        phone = req_data.get("phone", None)
+        university = req_data.get("university", None)
+
+        # 使用单一SQL直接查询用户，只查询必要字段
+        existing_user = await async_execute_custom_query(
+            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1",
+            [openid]
+        )
+        
+        if existing_user:
+            return Response.success(data=existing_user[0], details={"message":"用户已存在", "user_id": existing_user[0]['id']})
+        
+        user_data = {
+            'openid': openid,
+            'nickname': nickname,
+            'avatar': avatar,
+        }
+        
+        # 如果提供了bio，添加到user_data
+        if bio is not None:
+            user_data['bio'] = bio
+        
+        # 添加phone和university字段
+        if phone is not None:
+            user_data['phone'] = phone
+        if university is not None:
+            user_data['university'] = university
+        
+        user_id = await async_insert("wxapp_user", user_data)
+        
+        if not user_id:
+            return Response.db_error(details={"message": "用户创建失败"})
+            
+        # 直接使用单一查询获取新创建的用户
+        new_user = await async_execute_custom_query(
+            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE id = %s LIMIT 1",
+            [user_id]
+        )
+        
+        if not new_user:
+            return Response.success(details={"message": "新用户创建成功", "user_id": user_id})
+        return Response.success(data=new_user[0], details={"message":"新用户创建成功", "user_id": user_id})
+    except Exception as e:
+        return Response.error(details={"message": f"同步用户信息失败: {str(e)}"})
+
+@router.post("/user/update")
+async def update_user_info(
+    request: Request,
+):
+    """更新用户信息"""
+    try:
+        req_data = await request.json()
+        required_params = ["openid"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
+
+        openid = req_data.get("openid")
+        
+        # 使用单一SQL获取用户ID
+        user_result = await async_execute_custom_query(
+            "SELECT id FROM wxapp_user WHERE openid = %s LIMIT 1",
+            [openid]
+        )
+        
+        if not user_result:
+            return Response.not_found(resource="用户")
+        
+        user_id = user_result[0]['id']
+        
+        # 提取请求中的更新字段
+        update_data = {}
+        # 基本信息
+        if "nickname" in req_data:
+            update_data["nickname"] = req_data["nickname"]
+        if "avatar" in req_data:
+            update_data["avatar"] = req_data["avatar"] if req_data["avatar"] else default_avatar
+        if "gender" in req_data:
+            update_data["gender"] = req_data["gender"]
+        if "bio" in req_data:
+            update_data["bio"] = req_data["bio"]
+        if "country" in req_data:
+            update_data["country"] = req_data["country"]
+        if "province" in req_data:
+            update_data["province"] = req_data["province"]
+        if "city" in req_data:
+            update_data["city"] = req_data["city"]
+        if "language" in req_data:
+            update_data["language"] = req_data["language"]
+        if "birthday" in req_data:
+            update_data["birthday"] = req_data["birthday"]
+        if "wechatId" in req_data:
+            update_data["wechatId"] = req_data["wechatId"]
+        if "qqId" in req_data:
+            update_data["qqId"] = req_data["qqId"]
+        if "phone" in req_data:
+            update_data["phone"] = req_data["phone"]
+        if "university" in req_data:
+            update_data["university"] = req_data["university"]
+        if "status" in req_data:
+            update_data["status"] = req_data["status"]
+            
+        if not update_data:
+            return Response.bad_request(details={"message": "未提供任何更新数据"})
+
+        try:
+            update_success = await async_update(
+                table_name="wxapp_user",
+                record_id=user_id,
+                data=update_data
+            )
+            
+            # 此处修改判断逻辑，只有当明确返回False时才认为失败
+            # 当数据无变化时，MySQL不会更新行，返回的affected rows为0
+            # 但这种情况不应视为错误
+            if update_success is False:  # 只有明确返回False时才视为失败
+                return Response.db_error(details={"message": "用户信息更新失败"})
+        except Exception as err:
+            # 添加详细的错误日志
+            import logging
+            logging.error(f"用户信息更新SQL执行错误: {str(err)}")
+            return Response.db_error(details={"message": f"用户信息更新失败: {str(err)}"})
+            
+        # 获取更新后的用户信息，直接使用SQL查询
+        query_fields = "id, openid, nickname, avatar, bio, gender, country, province, city"
+        updated_user = await async_execute_custom_query(
+            f"SELECT {query_fields} FROM wxapp_user WHERE id = %s LIMIT 1",
+            [user_id]
+        )
+        
+        if updated_user:
+            return Response.success(data=updated_user[0], details={"message":"用户信息更新成功"})
+        else:
+            return Response.success(details={"message":"用户信息更新成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"更新用户信息失败: {str(e)}"})
+

@@ -17,6 +17,60 @@ logger = register_logger('api.routes.wxapp.comment')
 
 router = APIRouter()
 
+# 递归获取子评论的函数
+async def get_child_comments(comment_id, openid=None):
+    """递归获取评论的所有子评论，直到叶子节点"""
+    # 获取当前层级的子评论
+    logger.debug(f"正在获取评论ID {comment_id} 的子评论")
+    replies_sql = """
+    SELECT 
+        id, post_id, parent_id, openid, 
+        content, image, like_count, reply_count, status, is_deleted, 
+        create_time, update_time
+    FROM wxapp_comment 
+    WHERE parent_id = %s AND status = 1
+    ORDER BY create_time ASC
+    """
+    replies = await async_execute_custom_query(replies_sql, [comment_id])
+    
+    logger.debug(f"评论ID {comment_id} 找到 {len(replies) if replies else 0} 条子评论")
+    
+    if not replies:
+        return []
+    
+    # 为每个回复添加用户信息和递归获取其子评论
+    for reply in replies:
+        # 获取用户信息
+        user_sql = "SELECT nickname, avatar, bio FROM wxapp_user WHERE openid = %s LIMIT 1"
+        user_info = await async_execute_custom_query(user_sql, [reply.get("openid")])
+        if user_info and len(user_info) > 0:
+            reply["nickname"] = user_info[0].get("nickname")
+            reply["avatar"] = user_info[0].get("avatar")
+            reply["bio"] = user_info[0].get("bio")
+        
+        # 如果提供了openid，检查用户是否点赞
+        if openid:
+            like_sql = "SELECT id FROM wxapp_action WHERE action_type = 'like' AND target_id = %s AND openid = %s LIMIT 1"
+            like_result = await async_execute_custom_query(like_sql, [reply.get("id"), openid])
+            reply["is_liked"] = bool(like_result and len(like_result) > 0)
+        
+        # 计算父评论数量
+        parent_comment_sql = """
+        SELECT COUNT(*) as count 
+        FROM wxapp_comment 
+        WHERE id < %s AND parent_id = %s AND status = 1
+        """
+        parent_comment_count_result = await async_execute_custom_query(parent_comment_sql, [reply.get("id"), reply.get("parent_id")])
+        parent_comment_count = parent_comment_count_result[0]['count'] if parent_comment_count_result else 0
+        reply["parent_comment_count"] = parent_comment_count
+        
+        # 递归获取子评论，不依赖reply_count字段
+        children = await get_child_comments(reply.get("id"), openid)
+        if children:
+            reply["children"] = children
+    
+    return replies
+
 @router.get("/comment/detail")
 async def get_comment_detail(
     openid: str = Query(..., description="用户OpenID"),
@@ -40,16 +94,7 @@ async def get_comment_detail(
             
         comment = comment_result[0]
 
-        # 使用单一查询并行获取回复和点赞状态
-        replies_query = async_execute_custom_query(
-            """
-            SELECT * FROM wxapp_comment 
-            WHERE parent_id = %s AND status = 1
-            ORDER BY create_time
-            """, 
-            [comment_id]
-        )
-        
+        # 使用单一查询获取点赞状态
         like_query = async_execute_custom_query(
             """
             SELECT 1 FROM wxapp_action 
@@ -59,17 +104,36 @@ async def get_comment_detail(
             [openid, comment_id]
         )
         
+        # 获取用户信息
+        user_query = async_execute_custom_query(
+            """
+            SELECT nickname, avatar, bio FROM wxapp_user 
+            WHERE openid = %s 
+            LIMIT 1
+            """, 
+            [comment.get("openid")]
+        )
+        
         # 并行执行查询
-        replies, like_record = await asyncio.gather(replies_query, like_query)
+        like_record, user_info = await asyncio.gather(like_query, user_query)
         
         # 判断是否已点赞
         liked = bool(like_record)
+        
+        # 添加用户信息
+        if user_info and len(user_info) > 0:
+            comment["nickname"] = user_info[0].get("nickname")
+            comment["avatar"] = user_info[0].get("avatar")
+            comment["bio"] = user_info[0].get("bio")
+        
+        # 递归获取所有子评论
+        children = await get_child_comments(comment_id, openid)
 
         result = {
             **comment,
-            "replies": replies or [],
             "liked": liked,
-            "like_count": comment.get("like_count", 0)
+            "like_count": comment.get("like_count", 0),
+            "children": children
         }
 
         return Response.success(data=result)
@@ -309,63 +373,59 @@ async def get_comment_list(
         if not post:
             return Response.not_found(resource="帖子")
         
-        # 计算偏移量
-        offset = (page - 1) * page_size
-        
-        # 使用直接SQL查询获取评论总数
-        count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE post_id = %s AND parent_id IS NULL AND status = 1"
-        count_result = await async_execute_custom_query(count_sql, [post_id_int])
-        total_count = count_result[0]['total'] if count_result else 0
-
-        # 使用直接SQL查询获取评论列表
-        comments_sql = """
+        # 使用单一SQL查询获取所有评论（包括父评论和子评论）
+        all_comments_sql = """
         SELECT 
             id, post_id, parent_id, openid, 
             content, image, like_count, reply_count, status, is_deleted, 
             create_time, update_time
         FROM wxapp_comment
-        WHERE post_id = %s AND parent_id IS NULL AND status = 1
-        ORDER BY create_time DESC
-        LIMIT %s OFFSET %s
+        WHERE post_id = %s AND status = 1
+        ORDER BY 
+            CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END,
+            create_time DESC
         """
-        logger.debug(f"评论查询参数: [post_id={post_id_int}, page_size={page_size}, offset={offset}]")
+        logger.debug(f"评论查询参数: [post_id={post_id_int}]")
         
-        comments = await async_execute_custom_query(comments_sql, [post_id_int, page_size, offset])
+        all_comments = await async_execute_custom_query(all_comments_sql, [post_id_int])
+        logger.debug(f"找到 {len(all_comments) if all_comments else 0} 条评论")
         
-        # 处理每个评论的点赞状态和回复预览
-        for comment in comments:
-            # 手动获取用户昵称和头像
-            user_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
+        # 计算顶层评论的数量，用于分页
+        count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE post_id = %s AND parent_id IS NULL AND status = 1"
+        count_result = await async_execute_custom_query(count_sql, [post_id_int])
+        total_count = count_result[0]['total'] if count_result else 0
+        
+        # 处理每个评论的用户信息和点赞状态
+        for comment in all_comments:
+            # 获取用户信息
+            user_sql = "SELECT nickname, avatar, bio FROM wxapp_user WHERE openid = %s LIMIT 1"
             user_info = await async_execute_custom_query(user_sql, [comment.get("openid")])
             if user_info and len(user_info) > 0:
                 comment["nickname"] = user_info[0].get("nickname")
                 comment["avatar"] = user_info[0].get("avatar")
+                comment["bio"] = user_info[0].get("bio")
             
             # 如果提供了openid，检查用户是否点赞
             if openid:
-                like_sql = "SELECT id FROM wxapp_action WHERE type = 'like' AND target_id = %s AND openid = %s LIMIT 1"
+                like_sql = "SELECT id FROM wxapp_action WHERE action_type = 'like' AND target_id = %s AND openid = %s LIMIT 1"
                 like_result = await async_execute_custom_query(like_sql, [comment.get("id"), openid])
                 comment["is_liked"] = bool(like_result and len(like_result) > 0)
             
-            # 获取回复预览
-            if comment.get("reply_count", 0) > 0:
-                replies_sql = """
-                SELECT id, openid, content, create_time FROM wxapp_comment 
-                WHERE parent_id = %s AND status = 1
-                ORDER BY create_time ASC
-                LIMIT 3
+            # 计算父评论数量
+            if comment.get("parent_id"):
+                parent_comment_sql = """
+                SELECT COUNT(*) as count 
+                FROM wxapp_comment 
+                WHERE id < %s AND parent_id = %s AND status = 1
                 """
-                replies = await async_execute_custom_query(replies_sql, [comment.get("id")])
-                
-                # 为每个回复添加用户信息
-                for reply in replies:
-                    reply_user_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
-                    reply_user_info = await async_execute_custom_query(reply_user_sql, [reply.get("openid")])
-                    if reply_user_info and len(reply_user_info) > 0:
-                        reply["nickname"] = reply_user_info[0].get("nickname")
-                        reply["avatar"] = reply_user_info[0].get("avatar")
-                
-                comment["replies_preview"] = replies
+                parent_comment_count_result = await async_execute_custom_query(
+                    parent_comment_sql, 
+                    [comment.get("id"), comment.get("parent_id")]
+                )
+                parent_comment_count = parent_comment_count_result[0]['count'] if parent_comment_count_result else 0
+                comment["parent_comment_count"] = parent_comment_count
+            else:
+                comment["parent_comment_count"] = 0
         
         # 计算总页数
         total_pages = (total_count + page_size - 1) // page_size if page_size > 0 else 1
@@ -381,7 +441,7 @@ async def get_comment_list(
         
         # 返回标准分页响应
         return Response.paged(
-            data=comments,
+            data=all_comments,
             pagination=pagination,
             details={"message": "获取评论列表成功", "post_id": post_id}
         )

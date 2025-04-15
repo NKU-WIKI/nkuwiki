@@ -148,11 +148,12 @@ async def get_post_detail(
 
 @router.get("/post/list")
 async def get_posts(
-    request: Request,
     page: int = Query(1, description="页码"),
     limit: int = Query(10, description="每页数量"),
     category_id: Optional[int] = Query(None, description="分类ID"),
     tag: Optional[str] = Query(None, description="标签"),
+    openid: Optional[str] = Query(None, description="用户openid，查询该用户的帖子或收藏的帖子"),
+    favorite: bool = Query(False, description="是否查询用户收藏的帖子，为true时使用openid参数查询用户收藏的帖子"),
     order_by: str = Query("create_time DESC", description="排序字段")
 ):
     """查询帖子列表"""
@@ -164,47 +165,123 @@ async def get_posts(
         if len(order_by_parts) != 2 or order_by_parts[0] not in ALLOWED_ORDERS or order_by_parts[1].upper() not in {"ASC", "DESC"}:
             order_by = "create_time DESC"
         
-        # 构建基础SQL查询和条件
-        base_sql = """
-        SELECT 
-            id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
-            view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
-            create_time, update_time, tag, category_id, status, is_deleted
-        FROM wxapp_post
-        WHERE is_deleted = 0
-        """
-        
-        # 构建查询参数和条件
-        params = []
-        
-        # 添加分类筛选
-        if category_id:
-            base_sql += " AND category_id = %s"
-            params.append(category_id)
-        
-        # 添加标签筛选
-        if tag:
-            base_sql += " AND tag LIKE %s"
-            params.append(f"%{tag}%")
-        
-        # 添加排序和分页
-        base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
-        params.extend([limit, (page - 1) * limit])
-        
-        # 构建计数SQL
-        count_sql = """
-        SELECT COUNT(*) as total FROM wxapp_post WHERE is_deleted = 0
-        """
-        
-        # 添加筛选条件到计数查询
-        count_params = []
-        if category_id:
-            count_sql += " AND category_id = %s"
-            count_params.append(category_id)
-        
-        if tag:
-            count_sql += " AND tag LIKE %s"
-            count_params.append(f"%{tag}%")
+        # 处理收藏查询
+        if favorite and openid:
+            # 先查询用户收藏的帖子ID
+            favorite_sql = """
+            SELECT target_id FROM wxapp_action 
+            WHERE openid = %s AND action_type = 'favorite' AND target_type = 'post'
+            """
+            favorite_results = await async_execute_custom_query(favorite_sql, [openid])
+            
+            if not favorite_results:
+                # 用户没有收藏帖子，直接返回空结果
+                pagination = {
+                    "total": 0,
+                    "page": page,
+                    "page_size": limit,
+                    "total_pages": 0,
+                    "has_more": False
+                }
+                return Response.paged(data=[], pagination=pagination)
+            
+            # 提取收藏的帖子ID
+            favorite_post_ids = [item['target_id'] for item in favorite_results]
+            
+            # 构建基础SQL查询，加入收藏条件
+            base_sql = """
+            SELECT 
+                id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
+                view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
+                create_time, update_time, tag, category_id, status, is_deleted
+            FROM wxapp_post
+            WHERE is_deleted = 0 AND id IN %s
+            """
+            params = [tuple(favorite_post_ids) if len(favorite_post_ids) > 1 else f"({favorite_post_ids[0]})"]
+            
+            # 添加分类筛选
+            if category_id:
+                base_sql += " AND category_id = %s"
+                params.append(category_id)
+            
+            # 添加标签筛选
+            if tag:
+                base_sql += " AND tag LIKE %s"
+                params.append(f"%{tag}%")
+            
+            # 添加排序和分页
+            base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
+            params.extend([limit, (page - 1) * limit])
+            
+            # 构建计数SQL
+            count_sql = """
+            SELECT COUNT(*) as total FROM wxapp_post 
+            WHERE is_deleted = 0 AND id IN %s
+            """
+            count_params = [tuple(favorite_post_ids) if len(favorite_post_ids) > 1 else f"({favorite_post_ids[0]})"]
+            
+            # 添加分类筛选到计数查询
+            if category_id:
+                count_sql += " AND category_id = %s"
+                count_params.append(category_id)
+            
+            # 添加标签筛选到计数查询
+            if tag:
+                count_sql += " AND tag LIKE %s"
+                count_params.append(f"%{tag}%")
+        else:
+            # 常规查询流程（非收藏查询）
+            # 构建基础SQL查询和条件
+            base_sql = """
+            SELECT 
+                id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
+                view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
+                create_time, update_time, tag, category_id, status, is_deleted
+            FROM wxapp_post
+            WHERE is_deleted = 0
+            """
+            
+            # 构建查询参数和条件
+            params = []
+            
+            # 添加分类筛选
+            if category_id:
+                base_sql += " AND category_id = %s"
+                params.append(category_id)
+            
+            # 添加标签筛选
+            if tag:
+                base_sql += " AND tag LIKE %s"
+                params.append(f"%{tag}%")
+                
+            # 添加作者筛选
+            if openid and not favorite:  # 只有在非收藏模式下，openid才用作作者筛选
+                base_sql += " AND openid = %s"
+                params.append(openid)
+            
+            # 添加排序和分页
+            base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
+            params.extend([limit, (page - 1) * limit])
+            
+            # 构建计数SQL
+            count_sql = """
+            SELECT COUNT(*) as total FROM wxapp_post WHERE is_deleted = 0
+            """
+            
+            # 添加筛选条件到计数查询
+            count_params = []
+            if category_id:
+                count_sql += " AND category_id = %s"
+                count_params.append(category_id)
+            
+            if tag:
+                count_sql += " AND tag LIKE %s"
+                count_params.append(f"%{tag}%")
+                
+            # 添加作者筛选到计数查询
+            if openid and not favorite:  # 只有在非收藏模式下，openid才用作作者筛选
+                count_sql += " AND openid = %s"
+                count_params.append(openid)
         
         # 并行执行帖子查询和总数查询
         post_query = async_execute_custom_query(base_sql, params)
@@ -281,6 +358,11 @@ async def get_posts(
                             "nickname": "匿名用户",
                             "avatar": ""
                         }
+            
+            # 如果是收藏查询，添加收藏标记
+            if favorite and openid:
+                for post in posts:
+                    post["is_favorited"] = True
         
         # 返回标准分页响应
         return Response.paged(
@@ -568,14 +650,20 @@ async def get_post_status(
         
         # 查询当前用户关注的用户列表
         following_sql = """
-        SELECT target_id FROM wxapp_action 
-        WHERE openid = %s AND action_type = 'follow' AND target_type = 'user'
+        SELECT 
+            u.openid as author_openid 
+        FROM 
+            wxapp_action a
+        JOIN 
+            wxapp_user u ON a.target_id = u.id
+        WHERE 
+            a.openid = %s AND a.action_type = 'follow' AND a.target_type = 'user'
         """
         
         following_result = await async_execute_custom_query(following_sql, [openid])
         following_openids = set()
         if following_result:
-            following_openids = {item['target_id'] for item in following_result}
+            following_openids = {item['author_openid'] for item in following_result}
         
         # 构建状态响应
         status_map = {}

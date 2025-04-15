@@ -72,6 +72,17 @@ async def create_comment(request: Request):
                 return Response.not_found(resource="回复的评论")
                 
             print(f"找到父评论: parent_id={parent_id}")
+            
+            # 更新父评论的回复计数
+            try:
+                await async_update(
+                    table_name="wxapp_comment",
+                    record_id=parent_id,
+                    data={"reply_count": parent_comment.get("reply_count", 0) + 1}
+                )
+                print(f"更新父评论回复计数: parent_id={parent_id}, reply_count={parent_comment.get('reply_count', 0) + 1}")
+            except Exception as e:
+                print(f"更新父评论回复计数失败: {str(e)}")
 
         user = await async_query_records(
             table_name="wxapp_user",
