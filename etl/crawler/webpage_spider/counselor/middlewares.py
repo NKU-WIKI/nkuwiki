@@ -1,8 +1,8 @@
 from scrapy.exceptions import IgnoreRequest
-from parse_different_college import forgot_urls, forgot_netlocs, url_maps_urls
+from parse_different_college import forgot_netlocs, url_maps_urls
 import re
 from urllib.parse import urlparse
-
+from filter_url import filter_url
 
 def check_url_end(url):
     pattern = r'\d+\.html$'
@@ -68,7 +68,7 @@ class URLFilterMiddleware:
             raise IgnoreRequest(f"URL {request.url} 被筛选出去。")
         elif 'page.psp' in url:
             raise IgnoreRequest(f"URL {request.url} 被筛选出去。")
-        elif url in forgot_urls:
+        elif url in filter_url:
             raise IgnoreRequest(f"URL {request.url} 被筛选出去。")
         elif netloc in forgot_netlocs:
             raise IgnoreRequest(f"URL {request.url} 被筛选出去。")

@@ -1,19 +1,25 @@
 # -*- coding: utf-8 -*-
 import scrapy
-from mysql.connector import ClientFlag
 from scrapy.selector import Selector
 from items import ContentItem
 from parse_different_college import parse_function,url_maps
 import sqlite3
 import re
 import os
-import mysql.connector
 from datetime import date
 def check_url_end(url):
     pattern = r'\d+\.(html|shtml|chtml|htm)$|/post/\d+$|/article/\d+$'
     return bool(re.search(pattern, url))
 
 def check_content(url):
+    if 'https://career.nankai.edu.cn/company/index/id' in url:
+        return True
+    elif 
+    if url in [
+        'https://career.nankai.edu.cn/download/index/type/2.html',
+        'https://career.nankai.edu.cn/download/index/type/1.html',
+    ]: # 伪装为文章的列表链接。
+        return True
     if '/list' in url:
         return False
     l = ['page.htm','news/news-detail','/info/','mp.weixin.qq.com']
@@ -33,39 +39,7 @@ def is_valid_url(url):
     except ValueError:
         return False
 
-def get_conn(use_database=True) -> mysql.connector.MySQLConnection:
-    """获取MySQL数据库连接
 
-    Args:
-        use_database: 是否连接指定数据库，默认为True
-
-    Returns:
-        MySQLConnection: 数据库连接对象
-    """
-    import os
-    import sys
-    # 获取当前文件的绝对路径
-    current_file = os.path.abspath(__file__)
-    # 获取上级目录路径
-    parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(current_file))))))
-    # 将上级目录添加到 sys.path
-    sys.path.append(parent_dir)
-    from config import Config
-    config = {
-        "host": Config().get("db_host"),
-        "port": Config().get("db_port"),
-        "user": Config().get("db_user"),
-        "password": Config().get("db_password"),
-        "charset": 'utf8mb4',
-        "unix_socket": '/var/run/mysqld/mysqld.sock',
-        "client_flags": [ClientFlag.MULTI_STATEMENTS]  # 使用新的标志名称
-    }
-    # 如果是远程连接服务器数据库host改成服务器ip，
-    # config["host"] = {服务器ip}
-    # 或者在config.json中修改
-    if use_database:
-        config["database"] = Config().get("db_name")
-    return mysql.connector.connect(**config)
 
 class WiKiSpider(scrapy.Spider):
     name = 'wikipieda_spider'
@@ -76,22 +50,19 @@ class WiKiSpider(scrapy.Spider):
         'LOG_FILE': f'./log/{date.today().strftime("%Y-%m-%d")}.txt'
 
     }
-
-
-
-    conn = get_conn()
+    path1 = 'nk_database.db'
+    if 'counselor' not in os.getcwd():
+        path1 = './counselor/'+path1
+    conn = sqlite3.connect(path1, check_same_thread=False)
     cursor = conn.cursor()
     # 查询所有 url 字段的值
-    cursor.execute("SELECT original_url FROM web_articles")
+    cursor.execute("SELECT url FROM entries")
     rows = cursor.fetchall()
     # 将查询结果存储到一个集合中
     url_set = set(row[0] for row in rows)
     # 关闭数据库连接
     cursor.close()
     conn.close()
-
-
-
     path1 = 'nk_2_update.db'
     if 'counselor' not in os.getcwd():
         path1 = './counselor/'+path1
@@ -139,12 +110,15 @@ class WiKiSpider(scrapy.Spider):
         :param response:
         :return:
         '''
+        if response.status not in range(200, 300):
+            self.logger.error(f'访问{response.url}返回状态码{response.status},响应的内容为{response.content.decode()}')
+            return
         sel = Selector(response)
         this_url = response.url
         parsed_url = urlparse(this_url)
         base = f"{parsed_url.scheme}://{parsed_url.netloc}"
         self.logger.info(f'本次访问URL:{this_url}')
-        # print('当前队列长度：',len(self.crawler.engine.slot.scheduler))
+        print('当前队列长度：',len(self.crawler.engine.slot.scheduler))
         # 完成两件事：找新的页面，记录新的页面
         a_tags = sel.xpath('//a')
         urls = [tag.xpath('@href').get() for tag in a_tags]
@@ -207,13 +181,15 @@ class WiKiSpider(scrapy.Spider):
         :param response:
         :return:
         '''
-
+        if response.status not in range(200, 300):
+            self.logger.error(f'访问{response.url}返回状态码{response.status},响应的内容为{response.content.decode()}')
+            return
         this_url = response.url
         parsed_url = urlparse(this_url)
         self.logger.info(f'本次访问URL:{this_url},进入到了文章解析函数。')
         base = parsed_url.netloc
         college = ''
-        # print('当前队列长度：', len(self.crawler.engine.slot.scheduler))
+        print('当前队列长度：', len(self.crawler.engine.slot.scheduler))
         for key, value in url_maps.items():
             if base in value:
                 college = key
