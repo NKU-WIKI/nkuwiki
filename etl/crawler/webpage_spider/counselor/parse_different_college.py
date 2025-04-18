@@ -1,3 +1,5 @@
+import re
+
 from bs4 import BeautifulSoup
 import lxml.etree as etree
 
@@ -3769,8 +3771,7 @@ def parse_function(ans, url: str):
 
 
 # 被遗弃的netlocs们
-
-['old.lib.nankai.edu.cn',
+forgot_netlocs = ['old.lib.nankai.edu.cn',
  'bbs.nankai.edu.cn',
  'less.nankai.edu.cn',
  'mem.nankai.edu.cn',

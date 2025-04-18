@@ -14,7 +14,6 @@ def check_url_end(url):
 def check_content(url):
     if 'https://career.nankai.edu.cn/company/index/id' in url:
         return True
-    elif 
     if url in [
         'https://career.nankai.edu.cn/download/index/type/2.html',
         'https://career.nankai.edu.cn/download/index/type/1.html',
