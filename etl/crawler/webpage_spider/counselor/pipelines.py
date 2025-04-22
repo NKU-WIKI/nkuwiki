@@ -122,7 +122,7 @@ class WikiPipeline(object):
         if obj['source'] is None:
             spider.logger.warning(f'source未赋值。url={url}')
         if obj['content'] =='' and obj['file_url'] is None:
-            spider.logger.error(f'content和file_url未赋值。url={url}')
+            # spider.logger.error(f'content和file_url未赋值。url={url}')
             return
         try:
             self.add_entry(obj['title'],obj['push_time'],url,obj['content'],obj['file_url'],obj['source'])
