@@ -273,7 +273,8 @@ API接口的参数类型规范如下：
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0,
-    "extra": {"school": "南开大学"}
+    "extra": {"school": "南开大学"},
+    "role": "admin"
   },
   "details": {"message": "用户已存在"},
   "timestamp": "2023-01-01 12:00:00"
@@ -314,7 +315,8 @@ API接口的参数类型规范如下：
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0,
-    "extra": null
+    "extra": null,
+    "role": "admin"
   },
   "details": {"message": "新用户创建成功"},
   "timestamp": "2023-01-01 12:00:00"
@@ -363,7 +365,8 @@ API接口的参数类型规范如下：
     "platform": "wxapp",
     "status": 1,
     "is_deleted": 0,
-    "extra": {}
+    "extra": {},
+    "role": "admin"
   },
   "details": null,
   "timestamp": "2023-01-01 12:00:00"
@@ -542,7 +545,8 @@ API接口的参数类型规范如下：
     "extra": {
       "school": "南开大学",
       "major": "计算机科学与技术"
-    }
+    },
+    "role": "admin"
   },
   "details": {
     "message": "用户信息更新成功"
@@ -932,7 +936,8 @@ API接口的参数类型规范如下：
 ```json
 {
   "openid": "评论用户openid", // 必填
-  "post_id": 1, // 必填，整数类型
+  "resource_id": 1, // 必填，整数类型
+  "resource_type": "post", // 必填，资源类型：post-帖子, knowledge-知识
   "content": "评论内容", // 必填
   "parent_id": null, // 可选，父评论ID，整数类型
   "image": [] // 可选，评论图片
@@ -947,7 +952,8 @@ API接口的参数类型规范如下：
   "message": "success",
   "data": {
     "id": 5,
-    "post_id": 1,
+    "resource_id": 1,
+    "resource_type": "post",
     "parent_id": null,
     "openid": "评论用户openid",
     "nickname": null,
@@ -967,7 +973,7 @@ API接口的参数类型规范如下：
 }
 ```
 
-> **注意**：创建评论时，如果评论的是帖子（parent_id为null），并且评论者不是帖子作者，则会自动向帖子作者发送通知；如果评论的是评论（提供parent_id），并且评论者不是父评论作者，则会自动向父评论作者发送通知。
+> **注意**：创建评论时，如果评论的是资源（parent_id为null），并且评论者不是资源作者，则会自动向资源作者发送通知；如果评论的是评论（提供parent_id），并且评论者不是父评论作者，则会自动向父评论作者发送通知。
 
 ### 3.2 获取评论详情
 
@@ -986,7 +992,8 @@ API接口的参数类型规范如下：
   "data": {
     "id": 1,
     "openid": "评论用户openid",
-    "post_id": 1,
+    "resource_id": 1,
+    "resource_type": "post",
     "content": "评论内容",
     "parent_id": null,
     "nickname": "用户昵称",
@@ -1005,12 +1012,13 @@ API接口的参数类型规范如下：
 }
 ```
 
-### 3.3 获取帖子评论列表
+### 3.3 获取评论列表
 
 **接口**：`GET /api/wxapp/comment/list`  
-**描述**：获取指定帖子的评论列表  
+**描述**：获取指定资源的评论列表  
 **参数**：
-- `post_id` - 查询参数，帖子ID（必填，整数类型）
+- `resource_id` - 查询参数，资源ID（必填，整数类型）
+- `resource_type` - 查询参数，资源类型：post-帖子, knowledge-知识（必填，字符串类型）
 - `parent_id` - 查询参数，父评论ID，可选（整数类型，为null时获取一级评论）
 - `page_size` - 查询参数，每页记录数量，默认20，最大100
 - `page` - 查询参数，页码，从1开始，默认1
@@ -1025,7 +1033,8 @@ API接口的参数类型规范如下：
   "data": [
     {
       "id": 2,
-      "post_id": 3,
+      "resource_id": 3,
+      "resource_type": "post",
       "parent_id": null,
       "openid": "用户openid",
       "nickname": "用户昵称",
@@ -1586,12 +1595,13 @@ GET /api/agent/search?query=南开&openid=test&page=2&page_size=20
 ### 6.3 小程序搜索
 
 **接口**：`GET /api/knowledge/search-wxapp`  
-**描述**：专为小程序优化的搜索接口  
+**描述**：专为小程序优化的搜索接口，支持帖子和用户的综合搜索  
 **参数**：
 - `query` - 查询参数，搜索关键词（必填）
-- `openid` - 查询参数，用户openid（必填）
+- `search_type` - 查询参数，搜索类型：all(全部)、post(帖子)、user(用户)，默认all
 - `page` - 查询参数，页码，默认1
-- `page_size` - 查询参数，每页条数，默认10
+- `page_size` - 查询参数，每页记录数量，默认10
+- `sort_by` - 查询参数，排序方式：time(时间)、relevance(相关度)，默认time
 
 **响应**：
 
@@ -1599,30 +1609,103 @@ GET /api/agent/search?query=南开&openid=test&page=2&page_size=20
 {
   "code": 200,
   "message": "success",
-  "data": {
-    "results": [
-      {
-        "id": 1,
-        "title": "帖子标题",
-        "content": "帖子内容摘要...",
-        "author": "用户昵称",
-        "create_time": "2023-01-01 12:00:00",
-        "like_count": 5,
-        "comment_count": 2,
-        "view_count": 100,
-        "image": ["图片URL"]
+  "data": [
+    {
+      // 帖子类型结果
+      "id": 1,
+      "title": "帖子标题",
+      "content": "帖子内容",
+      "type": "post",
+      "like_count": 10,
+      "comment_count": 5,
+      "view_count": 100,
+      "update_time": "2023-01-01 12:00:00",
+      "openid": "发布者openid",
+      "relevance": 0.85,
+      "user": {
+        "openid": "作者openid",
+        "nickname": "作者昵称",
+        "avatar": "作者头像URL",
+        "bio": "作者简介"
       }
-    ],
-    "pagination": {
-      "total": 50,
-      "page": 1,
-      "page_size": 10,
-      "total_pages": 5
+    },
+    {
+      // 用户类型结果
+      "id": 2,
+      "openid": "用户openid",
+      "nickname": "用户昵称",
+      "avatar": "用户头像URL",
+      "bio": "用户简介",
+      "type": "user",
+      "relevance": 0.75
     }
+  ],
+  "pagination": {
+    "total": 100,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 10,
+    "has_more": true
   },
-  "details": null,
-  "timestamp": "2023-01-01 12:00:00"
+  "details": {
+    "query": "搜索关键词",
+    "search_type": "all",
+    "sort_by": "time"
+  }
 }
+```
+
+**响应字段说明**：
+
+1. 帖子类型结果字段：
+- `id` - 帖子ID
+- `title` - 帖子标题
+- `content` - 帖子内容
+- `type` - 结果类型，固定为"post"
+- `like_count` - 点赞数
+- `comment_count` - 评论数
+- `view_count` - 浏览数
+- `update_time` - 更新时间
+- `openid` - 发布者openid
+- `relevance` - 相关度分数（当sort_by=relevance时）
+- `user` - 作者信息对象
+
+2. 用户类型结果字段：
+- `id` - 用户ID
+- `openid` - 用户openid
+- `nickname` - 用户昵称
+- `avatar` - 用户头像URL
+- `bio` - 用户简介
+- `type` - 结果类型，固定为"user"
+- `relevance` - 相关度分数（当sort_by=relevance时）
+
+**排序说明**：
+- `time`：按更新时间降序排序
+- `relevance`：按相关度分数降序排序，相关度基于以下因素计算：
+  - 标题/昵称匹配度
+  - 内容/简介匹配度
+  - 更新时间权重（仅对帖子有效）
+
+**示例**：
+
+1. 搜索所有内容：
+```
+GET /api/knowledge/search-wxapp?query=南开大学&search_type=all
+```
+
+2. 仅搜索帖子：
+```
+GET /api/knowledge/search-wxapp?query=南开大学&search_type=post
+```
+
+3. 仅搜索用户：
+```
+GET /api/knowledge/search-wxapp?query=南开大学&search_type=user
+```
+
+4. 按相关度排序：
+```
+GET /api/knowledge/search-wxapp?query=南开大学&sort_by=relevance
 ```
 
 ### 6.4 搜索历史

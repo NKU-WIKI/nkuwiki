@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS `wxapp_comment` (
     `id` bigint(20) NOT NULL AUTO_INCREMENT,
-    `post_id` bigint(20) DEFAULT NULL COMMENT '帖子ID',
+    `resource_id` bigint(20) DEFAULT NULL COMMENT '资源ID',
+    `resource_type` varchar(20) DEFAULT NULL COMMENT '资源类型：post-帖子, knowledge-知识',
     `parent_id` bigint(20) DEFAULT NULL COMMENT '父评论ID',
     `openid` varchar(64) NOT NULL COMMENT '用户openid',
     `nickname` varchar(64) DEFAULT NULL COMMENT '用户昵称',
@@ -14,7 +15,8 @@ CREATE TABLE IF NOT EXISTS `wxapp_comment` (
     `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    KEY `idx_post_id` (`post_id`),
+    KEY `idx_resource_id` (`resource_id`),
+    KEY `idx_resource_type` (`resource_type`),
     KEY `idx_parent_id` (`parent_id`),
     KEY `idx_openid` (`openid`),
     KEY `idx_create_time` (`create_time`),

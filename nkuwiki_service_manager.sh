@@ -20,6 +20,8 @@ HTTPS_CONF="${NGINX_SITES_DIR}/nkuwiki-ssl.conf"
 UPSTREAM_CONF="${NGINX_CONF_DIR}/upstream.conf"
 SSL_CERT_PATH="/etc/ssl/certs/nkuwiki.com.crt"
 SSL_KEY_PATH="/etc/ssl/private/nkuwiki.com.key"
+# 项目根目录
+PROJECT_ROOT="/home/nkuwiki/nkuwiki-shell/nkuwiki"
 # mihomo相关配置
 MIHOMO_SERVICE="mihomo.service"
 MIHOMO_CONFIG_DIR="/etc/mihomo"
@@ -113,12 +115,12 @@ function create_dual_service {
     fi
     
     # 配置代理环境变量
-    local proxy_env=""
-    if [ $ENABLE_PROXY -eq 1 ]; then
-        echo -e "${YELLOW}已启用代理环境变量${NC}"
-        proxy_env="Environment=\"http_proxy=http://127.0.0.1:7890\"\nEnvironment=\"https_proxy=http://127.0.0.1:7890\"\nEnvironment=\"all_proxy=socks5://127.0.0.1:7890\"\nEnvironment=\"no_proxy=localhost,127.0.0.1,192.168.*,10.*\""
+    if [ $ENABLE_PROXY -eq 0 ]; then
+        echo -e "${YELLOW}禁用代理环境变量${NC}"
+        exec_start_pre='ExecStartPre=/bin/bash -c "unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY"'
     else
-        echo -e "${YELLOW}代理环境变量已禁用${NC}"
+        echo -e "${YELLOW}已启用代理环境变量${NC}"
+        exec_start_pre='# 代理已启用，保留环境变量'
     fi
     
     # 创建8000端口服务 - 1个worker
@@ -131,7 +133,7 @@ After=network.target nginx.service mysql.service
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
-ExecStartPre=/bin/bash -c "unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY"
+$exec_start_pre
 ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8000 --workers 1
 Restart=always
 RestartSec=10
@@ -161,7 +163,7 @@ After=network.target nginx.service mysql.service
 [Service]
 User=root
 WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
-ExecStartPre=/bin/bash -c "unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY"
+$exec_start_pre
 ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8001 --workers 1
 Restart=always
 RestartSec=10
@@ -498,6 +500,14 @@ function start_services {
     # 清空logs目录
     clean_logs_directory
     
+    # 设置无标题帖子清理定时任务
+    echo -e "${BLUE}设置无标题帖子清理定时任务...${NC}"
+    if [ -f "${PROJECT_ROOT}/infra/deploy/setup_cleanup_cron.sh" ]; then
+        bash "${PROJECT_ROOT}/infra/deploy/setup_cleanup_cron.sh"
+    else
+        echo -e "${YELLOW}清理脚本不存在: ${PROJECT_ROOT}/infra/deploy/setup_cleanup_cron.sh${NC}"
+    fi
+    
     # 检查并启动主服务
     if systemctl is-active nkuwiki.service >/dev/null 2>&1; then
         echo -e "${GREEN}主服务 nkuwiki.service 已在运行${NC}"
@@ -558,7 +568,7 @@ function deploy_dual {
     # 2. 生成Nginx配置
     generate_nginx_config
     
-    # 3. 启动所有服务
+    # 3. 启动所有服务（此处函数会自动设置清理定时任务）
     start_services
     
     # 4. 设置开机自启
@@ -577,6 +587,10 @@ function deploy_dual {
 
 # 重启所有服务
 function restart_services {
+    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+    export no_proxy="*"
+    export NO_PROXY="*"
+    echo -e "${GREEN}已禁用所有代理环境变量${NC}"
     echo -e "${BLUE}重启所有nkuwiki服务实例...${NC}"
     
     # 清空logs目录

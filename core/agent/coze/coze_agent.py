@@ -38,7 +38,7 @@ config = Config()
 class CozeAgent(Agent):
     """CozeAgent类，使用官方 coze-py SDK 的精简实现"""
     
-    def __init__(self, tag="default"):
+    def __init__(self, tag="default", index=0):
         """初始化Coze智能体"""
         super().__init__()
         self.sessions = SessionManager(ChatGPTSession, model=config.get("model") or "coze")
@@ -52,7 +52,7 @@ class CozeAgent(Agent):
         bot_id_list = config.get(f"core.agent.coze.{tag}_bot_id")
         
         if(isinstance(bot_id_list, list)):
-            self.bot_id = bot_id_list[0]
+            self.bot_id = bot_id_list[index]
         else:
             self.bot_id = bot_id_list
 
@@ -421,8 +421,19 @@ class CozeAgent(Agent):
             logger.error(f"获取对话消息失败: {str(e)}")
             return []
     
-    def chat_with_new_conversation(self, query, stream=True, openid="default_user"):
-        """创建新对话并发送消息"""
+    def chat_with_new_conversation(self, query, stream=True, openid="default_user", meta_data=None):
+        """创建新对话并发送消息
+        
+        Args:
+            query: 用户问题
+            stream: 是否使用流式响应，默认True
+            openid: 用户唯一标识，默认"default_user"
+            meta_data: 元数据，默认None
+            
+        Returns:
+            如果stream=True，返回一个生成器，用于流式输出
+            如果stream=False，返回一个字典: {"response": 回复内容, "suggested_questions": 推荐问题列表}
+        """
         try:
             # 流式响应
             if stream:
@@ -431,7 +442,7 @@ class CozeAgent(Agent):
                     bot_id=self.bot_id,
                     user_id=openid,
                     additional_messages=[
-                        Message.build_user_question_text(query)
+                        Message.build_user_question_text(query, meta_data=meta_data)
                     ]
                 )
                 
@@ -449,16 +460,60 @@ class CozeAgent(Agent):
                     bot_id=self.bot_id,
                     user_id=openid,
                     additional_messages=[
-                        Message.build_user_question_text(query)
+                        Message.build_user_question_text(query, meta_data=meta_data)
                     ]
                 )
                 
                 # 提取回复内容
+                response = None
                 for message in chat_poll.messages:
                     if message.role == "assistant" and message.type == "answer":
-                        return message.content
+                        response = message.content
+                        break
                 
-                return None
+                # 从消息中查找类型为FOLLOW_UP的消息，提取推荐问题
+                suggested_questions = []
+                for message in chat_poll.messages:
+                    if message.type == "follow_up":
+                        logger.debug(f"找到follow_up类型消息: {message.content[:50]}...")
+                        
+                        # 尝试解析内容，FOLLOW_UP通常是JSON格式
+                        try:
+                            import json
+                            content = json.loads(message.content)
+                            
+                            # 处理各种可能的格式
+                            if isinstance(content, list):
+                                # 如果是一个列表，直接添加所有元素
+                                suggested_questions.extend(content)
+                            elif isinstance(content, dict):
+                                # 如果是一个字典，查找可能的问题字段
+                                if "questions" in content:
+                                    suggested_questions.extend(content["questions"])
+                                elif "follow_ups" in content:
+                                    suggested_questions.extend(content["follow_ups"])
+                                elif "suggestions" in content:
+                                    suggested_questions.extend(content["suggestions"])
+                                else:
+                                    # 如果没有找到特定字段，尝试使用所有值
+                                    for key, value in content.items():
+                                        if isinstance(value, str) and len(value) > 5:
+                                            suggested_questions.append(value)
+                            else:
+                                # 其他情况，直接添加内容
+                                suggested_questions.append(message.content)
+                        except json.JSONDecodeError:
+                            # 如果不是JSON格式，直接添加内容
+                            suggested_questions.append(message.content)
+                
+                logger.debug(f"找到 {len(suggested_questions)} 个建议问题")
+                
+                # 返回响应和推荐问题
+                return {
+                    "response": response,
+                    "suggested_questions": suggested_questions
+                }
+                
         except Exception as e:
             logger.error(f"创建新对话并发送消息失败: {str(e)}")
             if stream:
@@ -466,7 +521,80 @@ class CozeAgent(Agent):
                     yield f"请求失败: {str(e)}"
                 return error_generator()
             else:
-                return f"请求失败: {str(e)}"
+                return {
+                    "response": f"请求失败: {str(e)}",
+                    "suggested_questions": []
+                }
+                
+    def get_suggested_questions(self, query, openid="default_user", meta_data=None):
+        """使用Coze原生API获取后续建议问题
+        
+        此函数依赖于Coze平台上是否为Bot开启了"提问建议"功能。
+        如果开启了，Coze会自动在回复中包含类型为FOLLOW_UP的消息。
+        
+        Args:
+            query: 用户提问
+            openid: 用户唯一标识
+            meta_data: 元数据，可选
+            
+        Returns:
+            List[str]: 建议问题列表，如果没有则为空列表
+        """
+        try:
+            logger.debug(f"获取原生建议问题: query={query[:30]}...")
+            
+            # 创建非流式对话，这样可以获取完整的消息列表
+            chat_poll = self.client.chat.create_and_poll(
+                bot_id=self.bot_id,
+                user_id=openid,
+                additional_messages=[
+                    Message.build_user_question_text(query, meta_data=meta_data)
+                ]
+            )
+            
+            # 从消息中查找类型为FOLLOW_UP的消息
+            suggested_questions = []
+            
+            for message in chat_poll.messages:
+                # 查看消息类型是否为 FOLLOW_UP
+                if message.type == "follow_up":
+                    logger.debug(f"找到follow_up类型消息: {message.content[:50]}...")
+                    
+                    # 尝试解析内容，FOLLOW_UP通常是JSON格式
+                    try:
+                        import json
+                        content = json.loads(message.content)
+                        
+                        # 处理各种可能的格式
+                        if isinstance(content, list):
+                            # 如果是一个列表，直接添加所有元素
+                            suggested_questions.extend(content)
+                        elif isinstance(content, dict):
+                            # 如果是一个字典，查找可能的问题字段
+                            if "questions" in content:
+                                suggested_questions.extend(content["questions"])
+                            elif "follow_ups" in content:
+                                suggested_questions.extend(content["follow_ups"])
+                            elif "suggestions" in content:
+                                suggested_questions.extend(content["suggestions"])
+                            else:
+                                # 如果没有找到特定字段，尝试使用所有值
+                                for key, value in content.items():
+                                    if isinstance(value, str) and len(value) > 5:
+                                        suggested_questions.append(value)
+                        else:
+                            # 其他情况，直接添加内容
+                            suggested_questions.append(message.content)
+                    except json.JSONDecodeError:
+                        # 如果不是JSON格式，直接添加内容
+                        suggested_questions.append(message.content)
+            
+            logger.debug(f"找到 {len(suggested_questions)} 个建议问题")
+            return suggested_questions
+            
+        except Exception as e:
+            logger.error(f"获取建议问题失败: {str(e)}")
+            return []
 
 def remove_markdown(text):
     """移除Markdown格式"""

@@ -29,7 +29,11 @@ async def get_user_info(
         if not user_data:
             return Response.not_found(resource="用户")
 
-        return Response.success(data=user_data[0])
+        # 确保返回包含role字段
+        user = user_data[0]
+        if "role" not in user:
+            user["role"] = None
+        return Response.success(data=user)
     except Exception as e:
         return Response.error(details={"message": f"获取用户信息失败: {str(e)}"})
 
@@ -213,7 +217,7 @@ async def get_user_list(
         else:
             # 默认返回所有用户列表
             # 只返回需要的字段
-            fields = ["id", "openid", "nickname", "avatar", "bio", "create_time", "update_time"]
+            fields = ["id", "openid", "nickname", "avatar", "bio", "create_time", "update_time", "role"]
             users = await async_query_records(
                 table_name="wxapp_user",
                 fields=fields,
@@ -527,7 +531,7 @@ async def sync_user_info(
 
         # 使用单一SQL直接查询用户，只查询必要字段
         existing_user = await async_execute_custom_query(
-            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1",
+            "SELECT id, openid, nickname, avatar, role FROM wxapp_user WHERE openid = %s LIMIT 1",
             [openid]
         )
         
@@ -538,6 +542,7 @@ async def sync_user_info(
             'openid': openid,
             'nickname': nickname,
             'avatar': avatar,
+            'role': req_data.get("role", None)
         }
         
         # 如果提供了bio，添加到user_data
@@ -557,7 +562,7 @@ async def sync_user_info(
             
         # 直接使用单一查询获取新创建的用户
         new_user = await async_execute_custom_query(
-            "SELECT id, openid, nickname, avatar FROM wxapp_user WHERE id = %s LIMIT 1",
+            "SELECT id, openid, nickname, avatar, role FROM wxapp_user WHERE id = %s LIMIT 1",
             [user_id]
         )
         
@@ -646,7 +651,7 @@ async def update_user_info(
             return Response.db_error(details={"message": f"用户信息更新失败: {str(err)}"})
             
         # 获取更新后的用户信息，直接使用SQL查询
-        query_fields = "id, openid, nickname, avatar, bio, gender, country, province, city"
+        query_fields = "id, openid, nickname, avatar, bio, gender, country, province, city, role"
         updated_user = await async_execute_custom_query(
             f"SELECT {query_fields} FROM wxapp_user WHERE id = %s LIMIT 1",
             [user_id]

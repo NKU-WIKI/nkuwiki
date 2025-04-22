@@ -4,17 +4,17 @@ import asyncio
 from datetime import datetime
 from fastapi import Query, APIRouter, Body
 from typing import Optional, List, Dict, Any
-from api.models.knowledge import Source
 
 from api.models.common import Response, Request, validate_params
 from etl.load.db_core import (
     async_query_records,async_execute_custom_query
 )
 from core.utils.logger import register_logger
+from api.routes.wxapp.post import batch_enrich_posts_with_user_info
 
 router = APIRouter()
 
-logger = register_logger('api.routes.knowledge.search')
+logger = register_logger('api')
 
 TABLE_MAPPING = {
     # 微信小程序平台
@@ -177,7 +177,7 @@ async def search_knowledge(
     Returns:
         Dict: 搜索结果，包含分页信息和数据列表
         {
-            "data": [...], // Source对象列表
+            "data": [...], // 字典对象列表
             "pagination": {...} // 分页信息
         }
     """
@@ -370,53 +370,49 @@ async def search_knowledge(
     # 分页
     paged_results = all_results[offset:offset+page_size] if all_results else []
     
-    # 转换为Source模型格式
+    # 转换为字典格式
     sources = []
+    
+    # 收集所有来自wxapp_post的项目，用于批量查询用户信息
+    wxapp_post_items = []
+    
     for item in paged_results:
+        # 对所有平台都先复制原始项目的所有字段
+        source = item.copy()
+        
+        # 获取表名和平台名
         table_name = item.get("_table", "")
         platform_name = table_name.split("_")[0]
-        if platform_name in TABLE_MAPPING:
+        
+        # 确保有is_truncated字段
+        source["is_truncated"] = item.get("_content_truncated", False)
+        
+        # 添加平台信息
+        source["platform"] = platform_name
+        
+        # 如果是wxapp_post表的数据，收集起来待会批量处理
+        if platform_name == "wxapp" and "post" in table_name and "openid" in source:
+            wxapp_post_items.append(source)
+            
+        # 对于非wxapp平台，需要进行额外字段处理
+        if platform_name != "wxapp" and platform_name in TABLE_MAPPING:
             platform_info = TABLE_MAPPING[platform_name]
             
-            # 获取各字段值，不存在则使用空字符串
-            # 修复wxapp平台的作者字段获取方式
-            author_field = ""
-            if platform_name == "wxapp":
-                if "post" in table_name:
-                    author_field = platform_info["post"]["author_field"]
-                elif "comment" in table_name:
-                    author_field = platform_info["comment"]["author_field"]
-                else:
-                    author_field = "nickname"  # 默认作者字段
-            else:
-                author_field = platform_info["author_field"]
-            
+            # 获取作者字段名和值
+            author_field = platform_info.get("author_field", "author")
             author = item.get(author_field, "") or "未知作者"
             
-            # 获取标题和内容的字段名称
-            if platform_name == "wxapp":
-                if "post" in table_name:
-                    title_field = platform_info["post"]["title_field"]
-                    content_field = platform_info["post"]["content_field"]
-                elif "comment" in table_name:
-                    title_field = platform_info["comment"]["title_field"]
-                    content_field = platform_info["comment"]["content_field"]
-                else:
-                    title_field = "title"  # 默认标题字段
-                    content_field = "content"  # 默认内容字段
-            else:
-                title_field = platform_info["title_field"]
-                content_field = platform_info["content_field"]
-            
+            # 获取标题和内容的字段名和值
+            title_field = platform_info.get("title_field", "title")
+            content_field = platform_info.get("content_field", "content")
             title = item.get(title_field, "") or "无标题"
             content = item.get(content_field, "") or ""
             
-            # 转换平台标识为简短形式
-            platform_value = platform_name
-            
+            # 获取其他值
             original_url = item.get("original_url", "")
+            is_official = item.get("is_official", False)
             
-            # 提取标签，如果存在
+            # 处理标签，如果存在
             tag = None
             if "tag" in item and item["tag"]:
                 try:
@@ -427,8 +423,8 @@ async def search_knowledge(
                         tag = item["tag"]
                 except:
                     tag = None
-            
-            # 提取图片，如果存在
+                    
+            # 处理图片，如果存在
             image = None
             if "image" in item and item["image"]:
                 try:
@@ -439,43 +435,42 @@ async def search_knowledge(
                         image = item["image"]
                 except:
                     image = None
-            
+                    
             # 处理时间字段
-            if platform_name == "wxapp":
-                # wxapp表使用原始的update_time和create_time
-                create_time = item.get("create_time")
-                update_time = item.get("update_time")
-                publish_time = None
-                scrape_time = None
-            else:
-                # 非wxapp表使用publish_time作为create_time和update_time
-                publish_time = item.get("publish_time")
-                scrape_time = item.get("scrape_time")
-                create_time = publish_time 
-                update_time = publish_time 
-
-            # 标记内容是否被截断
-            is_truncated = item.get("_content_truncated", False)
-            is_official = item.get("is_official", False)
-            # 创建Source实例
-            source = Source(
-                author=author,
-                platform=platform_value,
-                original_url=original_url,
-                tag=tag,
-                title=title,
-                content=content,
-                image=image,
-                publish_time=publish_time,
-                scrape_time=scrape_time,
-                create_time=create_time,
-                update_time=update_time,
-                relevance=item.get("relevance", 0),
-                is_official=is_official,
-                is_truncated=is_truncated
-            )
+            publish_time = item.get("publish_time")
+            scrape_time = item.get("scrape_time")
+            create_time = publish_time
+            update_time = publish_time
             
-            sources.append(source)
+            # 添加或覆盖处理后的字段
+            source.update({
+                "author": author,
+                "title": title,
+                "content": content,
+                "original_url": original_url,
+                "tag": tag,
+                "image": image,
+                "publish_time": publish_time,
+                "scrape_time": scrape_time,
+                "create_time": create_time,
+                "update_time": update_time,
+                "is_official": is_official
+            })
+        
+        # 删除内部使用的临时字段
+        if "_table" in source:
+            del source["_table"]
+        if "_type" in source:
+            del source["_type"]
+        if "_content_truncated" in source:
+            del source["_content_truncated"]
+        
+        sources.append(source)
+    
+    # 如果有wxapp_post的帖子，批量查询用户信息
+    if wxapp_post_items:
+        # 使用通用函数批量补充用户信息
+        await batch_enrich_posts_with_user_info(wxapp_post_items)
     
     # 创建分页信息
     pagination = {
@@ -642,14 +637,15 @@ async def search(
     query: str = Query(..., description="搜索关键词"),
     search_type: str = Query("all", description="搜索类型: all, post, user"),
     page: int = Query(1, description="页码"),
-    page_size: int = Query(10, description="每页记录数量")
+    page_size: int = Query(10, description="每页记录数量"),
+    sort_by: str = Query("time", description="排序方式: time(时间), relevance(相关度)")
 ):
     """综合搜索"""
     try:
         if not query.strip():
             return Response.bad_request(details={"message": "搜索关键词不能为空"})
             
-        logger.debug(f"执行搜索: query={query}, search_type={search_type}, page={page}, page_size={page_size}")
+        logger.debug(f"执行搜索: query={query}, search_type={search_type}, page={page}, page_size={page_size}, sort_by={sort_by}")
         offset = (page - 1) * page_size
         search_results = []
         total = 0
@@ -665,9 +661,15 @@ async def search(
                    comment_count, favorite_count, create_time, update_time
             FROM wxapp_post
             WHERE status = 1 AND (title LIKE %s OR content LIKE %s)
-            ORDER BY update_time DESC
-            LIMIT %s OFFSET %s
             """
+            
+            # 默认按时间排序
+            if sort_by == "time":
+                post_sql += " ORDER BY update_time DESC"
+            # 如果不是时间排序，暂不排序，后面会根据相关度计算排序
+            
+            post_sql += " LIMIT %s OFFSET %s"
+            
             search_tasks.append(
                 ("post", async_execute_custom_query(
                     post_sql, 
@@ -688,14 +690,22 @@ async def search(
             )
         
         if search_type == "all" or search_type == "user":
-            # 搜索用户任务
+            # 搜索用户任务 - 增加更多用户字段
             user_sql = """
-            SELECT id, openid, nickname, avatar, bio
+            SELECT id, openid, nickname, avatar, bio, gender, province, city, 
+                   post_count, follower_count, following_count, like_count, favorite_count, 
+                   status, create_time, update_time
             FROM wxapp_user
             WHERE status = 1 AND (nickname LIKE %s OR bio LIKE %s)
-            ORDER BY update_time DESC
-            LIMIT %s OFFSET %s
             """
+            
+            # 默认按时间排序
+            if sort_by == "time":
+                user_sql += " ORDER BY update_time DESC"
+            # 如果不是时间排序，暂不排序，后面会根据相关度计算排序
+            
+            user_sql += " LIMIT %s OFFSET %s"
+            
             search_tasks.append(
                 ("user", async_execute_custom_query(
                     user_sql,
@@ -731,8 +741,20 @@ async def search(
         
         # 构建搜索结果
         if "post" in search_results_map:
+            post_results = []
             for post in search_results_map["post"]:
-                search_results.append({
+                # 如果是按相关度排序，计算相关度分数
+                if sort_by == "relevance":
+                    relevance = calculate_relevance(
+                        query,
+                        post.get("title", ""),
+                        post.get("content", ""),
+                        "",  # 不考虑作者
+                        post.get("update_time")
+                    )
+                    post["relevance"] = relevance
+                
+                post_results.append({
                     "id": post["id"],
                     "title": post["title"],
                     "content": post["content"],
@@ -740,25 +762,77 @@ async def search(
                     "like_count": post["like_count"],
                     "comment_count": post["comment_count"],
                     "view_count": post["view_count"],
-                    "update_time": post["update_time"]
+                    "update_time": post["update_time"],
+                    "create_time": post.get("create_time"),
+                    "openid": post.get("openid", ""),  # 确保有openid字段
+                    "relevance": post.get("relevance", 0) if sort_by == "relevance" else 0
                 })
             
+            # 如果是按相关度排序，对结果进行排序
+            if sort_by == "relevance":
+                post_results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+            
+            # 补充用户信息
+            if post_results:
+                await batch_enrich_posts_with_user_info(post_results)
+                
+            search_results.extend(post_results)
             post_total = count_results_map["post"][0]['total'] if count_results_map["post"] else 0
             total += post_total
         
         if "user" in search_results_map:
+            user_results = []
             for user in search_results_map["user"]:
-                search_results.append({
+                # 如果是按相关度排序，计算相关度分数
+                if sort_by == "relevance":
+                    relevance = calculate_relevance(
+                        query,
+                        user.get("nickname", ""),
+                        user.get("bio", ""),
+                        "",  # 不考虑作者
+                        None  # 不考虑时间
+                    )
+                    user["relevance"] = relevance
+                
+                # 增强用户数据，返回更多字段
+                user_result = {
                     "id": user["id"],
                     "openid": user["openid"],
                     "nickname": user["nickname"],
                     "avatar": user["avatar"],
                     "bio": user["bio"],
-                    "type": "user"
-                })
+                    "type": "user",
+                    "relevance": user.get("relevance", 0) if sort_by == "relevance" else 0,
+                    # 添加更多字段
+                    "gender": user.get("gender", 0),
+                    "province": user.get("province", ""),
+                    "city": user.get("city", ""),
+                    "post_count": user.get("post_count", 0),
+                    "follower_count": user.get("follower_count", 0),
+                    "following_count": user.get("following_count", 0),
+                    "like_count": user.get("like_count", 0),
+                    "favorite_count": user.get("favorite_count", 0),
+                    "create_time": user.get("create_time"),
+                    "update_time": user.get("update_time"),
+                    "status": user.get("status", 1)
+                }
+                user_results.append(user_result)
             
+            # 如果是按相关度排序，对结果进行排序
+            if sort_by == "relevance":
+                user_results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+            
+            search_results.extend(user_results)
             user_total = count_results_map["user"][0]['total'] if count_results_map["user"] else 0
             total += user_total
+        
+        # 如果是按相关度排序，需要对所有结果再次排序
+        if sort_by == "relevance" and len(search_results) > 0:
+            search_results.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+            # 页面分割
+            start_idx = (page - 1) * page_size
+            end_idx = min(start_idx + page_size, len(search_results))
+            search_results = search_results[start_idx:end_idx]
         
         # 异步记录搜索历史
         asyncio.create_task(_record_search_history(query))
@@ -774,7 +848,7 @@ async def search(
         return Response.paged(
             data=search_results,
             pagination=pagination,
-            details={"query": query, "search_type": search_type}
+            details={"query": query, "search_type": search_type, "sort_by": sort_by}
         )
     except Exception as e:
         logger.error(f"搜索失败: {str(e)}")

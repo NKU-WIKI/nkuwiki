@@ -39,28 +39,44 @@ async def create_comment(request: Request):
     try:
         print("开始创建评论...")
         req_data = await request.json()
-        required_params = ["post_id", "content", "openid"]
+        required_params = ["resource_id", "resource_type", "content", "openid"]
         error_response = validate_params(req_data, required_params)
         if(error_response):
             return error_response
 
         openid = req_data.get("openid")
-        post_id = req_data.get("post_id")
+        resource_id = req_data.get("resource_id")
+        resource_type = req_data.get("resource_type")
         content = req_data.get("content")
         parent_id = req_data.get("parent_id")
         image = req_data.get("image", [])
         
-        print(f"参数校验通过: openid={openid}, post_id={post_id}, content={content}")
+        print(f"参数校验通过: openid={openid}, resource_id={resource_id}, resource_type={resource_type}, content={content}")
 
-        post = await async_get_by_id(
-            table_name="wxapp_post",
-            record_id=post_id
-        )
-        if not post:
-            print(f"帖子不存在: post_id={post_id}")
-            return Response.not_found(resource="帖子")
+        # 验证资源类型
+        if resource_type not in ['post', 'knowledge']:
+            return Response.bad_request(details={"message": "resource_type必须是post或knowledge"})
+
+        # 检查资源是否存在
+        resource_exists = False
+        if resource_type == 'post':
+            resource = await async_get_by_id(
+                table_name="wxapp_post",
+                record_id=resource_id
+            )
+            resource_exists = resource is not None
+        elif resource_type == 'knowledge':
+            resource = await async_get_by_id(
+                table_name="wxapp_knowledge",
+                record_id=resource_id
+            )
+            resource_exists = resource is not None
+
+        if not resource_exists:
+            print(f"资源不存在: resource_id={resource_id}, resource_type={resource_type}")
+            return Response.not_found(resource=f"资源({resource_type})")
             
-        print(f"找到帖子: post_id={post_id}")
+        print(f"找到资源: resource_id={resource_id}, resource_type={resource_type}")
 
         if parent_id:
             parent_comment = await async_get_by_id(
@@ -96,7 +112,8 @@ async def create_comment(request: Request):
         print(f"找到用户: openid={openid}")
 
         comment_data = {
-            "post_id": post_id,
+            "resource_id": resource_id,
+            "resource_type": resource_type,
             "openid": openid,
             "content": content,
             "parent_id": parent_id,
@@ -126,14 +143,23 @@ async def create_comment(request: Request):
             table_name="wxapp_comment",
             record_id=comment_id
         )
+        
+        # 根据资源类型更新对应表的评论计数
         try:
-            await async_update(
-                table_name="wxapp_post",
-                record_id=post_id,
-                data={"comment_count": post.get("comment_count", 0) + 1}
-            )
+            if resource_type == 'post':
+                await async_update(
+                    table_name="wxapp_post",
+                    record_id=resource_id,
+                    data={"comment_count": resource.get("comment_count", 0) + 1}
+                )
+            elif resource_type == 'knowledge':
+                await async_update(
+                    table_name="wxapp_knowledge",
+                    record_id=resource_id,
+                    data={"comment_count": resource.get("comment_count", 0) + 1}
+                )
         except Exception as e:
-            return Response.db_error(details={"message": f"帖子评论数更新失败: {str(e)}"})
+            return Response.db_error(details={"message": f"资源评论数更新失败: {str(e)}"})
 
         if parent_id:
             try:
@@ -145,10 +171,10 @@ async def create_comment(request: Request):
                 
                 if parent_comment and parent_comment["openid"] != openid:
                     # 对评论的回复应该每次都产生通知
-                    logger.debug(f"创建评论回复通知前检查: post={post}, comment_id={comment_id}, parent_openid={parent_comment['openid']}")
+                    logger.debug(f"创建评论回复通知前检查: resource_id={resource_id}, comment_id={comment_id}, parent_openid={parent_comment['openid']}")
                     
                     # 输出到终端方便调试
-                    print(f"创建评论回复通知: post_id={post_id}, comment_id={comment_id}, parent_id={parent_id}")
+                    print(f"创建评论回复通知: resource_id={resource_id}, resource_type={resource_type}, comment_id={comment_id}, parent_id={parent_id}")
                     print(f"creator_openid={openid}, parent_openid={parent_comment['openid']}")
                     
                     # 获取发送者的头像
@@ -209,15 +235,15 @@ async def create_comment(request: Request):
                 logger.exception(f"获取父评论异常: {str(pe)}")
                 logger.error(traceback.format_exc())
                 print(f"获取父评论异常: {str(pe)}")
-        elif post["openid"] != openid:
+        elif resource["openid"] != openid:
             try:
                 # 对帖子的评论应该每次都产生通知
-                logger.debug(f"创建帖子评论通知前检查: post={post}, comment_id={comment_id}")
+                logger.debug(f"创建帖子评论通知前检查: resource_id={resource_id}, comment_id={comment_id}")
                 
                 # 输出到终端方便调试
-                print(f"创建帖子评论通知: post_id={post_id}, comment_id={comment_id}")
-                print(f"creator_openid={openid}, post_owner_openid={post['openid']}")
-                print(f"条件判断: post['openid']({post['openid']}) != openid({openid}) = {post['openid'] != openid}")
+                print(f"创建帖子评论通知: resource_id={resource_id}, resource_type={resource_type}, comment_id={comment_id}")
+                print(f"creator_openid={openid}, resource_owner_openid={resource['openid']}")
+                print(f"条件判断: resource['openid']({resource['openid']}) != openid({openid}) = {resource['openid'] != openid}")
                 
                 # 获取发送者的头像
                 sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
@@ -233,9 +259,9 @@ async def create_comment(request: Request):
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                 """
-                safe_title = post.get('title', '无标题')
+                safe_title = resource.get('title', '无标题')
                 notification_params = [
-                    post["openid"],
+                    resource["openid"],
                     "收到新评论",
                     f"用户评论了你的帖子「{safe_title}」",
                     "comment",
@@ -272,7 +298,7 @@ async def create_comment(request: Request):
                         sender_nickname = sender_info[0].get("nickname", "").replace("'", "\\'").replace('"', '\\"') if sender_info else ""
                         sender_json = json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}).replace("'", "\\'")
                         os_command = f"""
-                        mysql -u root -p"root" -e "INSERT INTO nkuwiki.wxapp_notification (openid, title, content, type, is_read, sender, target_id, target_type, status, create_time, update_time) VALUES ('{post['openid']}', '收到新评论', '用户评论了你的帖子「{safe_title_escape}」', 'comment', 0, '{sender_json}', {int(comment_id)}, 'comment', 1, NOW(), NOW());"
+                        mysql -u root -p"root" -e "INSERT INTO nkuwiki.wxapp_notification (openid, title, content, type, is_read, sender, target_id, target_type, status, create_time, update_time) VALUES ('{resource['openid']}', '收到新评论', '用户评论了你的帖子「{safe_title_escape}」', 'comment', 0, '{sender_json}', {int(comment_id)}, 'comment', 1, NOW(), NOW());"
                         """
                         print(f"执行备用命令: {os_command}")
                         os.system(os_command)
@@ -293,26 +319,31 @@ async def create_comment(request: Request):
 
 @router.post("/comment/like")
 async def like_comment(request: Request):
-    """点赞/取消点赞评论"""
+    """点赞评论"""
     try:
         req_data = await request.json()
-        required_params = ["comment_id", "openid"]
+        required_params = ["comment_id", "openid", "action"]
         error_response = validate_params(req_data, required_params)
-        if(error_response):
+        if error_response:
             return error_response
 
         openid = req_data.get("openid")
         comment_id = req_data.get("comment_id")
+        action = req_data.get("action")  # 'like' or 'unlike'
 
         comment = await async_get_by_id(
             table_name="wxapp_comment",
             record_id=comment_id
         )
+
         if not comment:
             return Response.not_found(resource="评论")
 
-        # 查询是否已点赞
-        like_record = await async_query_records(
+        resource_id = comment.get("resource_id")
+        resource_type = comment.get("resource_type", "post")
+
+        # 查找现有点赞记录
+        existing_like = await async_query_records(
             table_name="wxapp_action",
             conditions={
                 "openid": openid,
@@ -323,98 +354,111 @@ async def like_comment(request: Request):
             limit=1
         )
 
-        already_liked = like_record and len(like_record.get('data', [])) > 0
-
-        if already_liked:
-            # 取消点赞
-            try:
-                execute_query(
-                    "DELETE FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s",
-                    [openid, "like", comment_id, "comment"]
-                )
-            except Exception as e:
-                return Response.db_error(details={"message": f"取消点赞失败: {str(e)}"})
-            
-            new_like_count = max(0, comment.get("like_count", 0) - 1)
-            await async_update(
-                table_name="wxapp_comment",
-                record_id=comment_id,
-                data={"like_count": new_like_count}
-            )
-
-            return Response.success(data={
-                "success": True,
-                "status": "unliked",
-                "like_count": new_like_count,
-                "is_liked": False
-            }, details={"message": "取消点赞成功"})
-        else:
-            # 创建点赞
-            try:
-                like_id = await async_insert(
+        if action == "like":
+            # 点赞操作
+            if not existing_like or not existing_like.get('data'):
+                # 添加点赞记录
+                await async_insert(
                     table_name="wxapp_action",
                     data={
                         "openid": openid,
                         "action_type": "like",
                         "target_id": comment_id,
-                        "target_type": "comment"
+                        "target_type": "comment",
+                        "status": 1
                     }
                 )
-            except Exception as e:
-                return Response.db_error(details={"message": f"点赞操作失败: {str(e)}"})
 
-            new_like_count = comment.get("like_count", 0) + 1
-            await async_update(
-                table_name="wxapp_comment",
-                record_id=comment_id,
-                data={"like_count": new_like_count}
-            )
-
-            if openid != comment["openid"]:
-                # 先检查是否已存在此类通知
-                check_notification_sql = """
-                SELECT id FROM wxapp_notification 
-                WHERE openid = %s AND type = 'like' AND target_id = %s AND target_type = 'comment'
-                AND sender LIKE %s
-                LIMIT 1
-                """
-                existing_notification = await async_execute_custom_query(
-                    check_notification_sql, 
-                    [comment["openid"], comment_id, f'%{openid}%']
+                # 更新评论点赞计数
+                like_count = comment.get("like_count", 0) + 1
+                await async_update(
+                    table_name="wxapp_comment",
+                    record_id=comment_id,
+                    data={"like_count": like_count}
                 )
-                
-                # 只有在不存在通知时才创建
-                if not existing_notification:
-                    # 获取发送者的头像和昵称
+
+                # 如果不是自己的评论，创建通知
+                if comment["openid"] != openid:
+                    # 获取点赞的帖子标题
+                    resource_title = "内容"
+                    if resource_type == "post":
+                        post = await async_get_by_id(
+                            table_name="wxapp_post",
+                            record_id=resource_id
+                        )
+                        if post:
+                            resource_title = post.get("title", "帖子")
+                    elif resource_type == "knowledge":
+                        knowledge = await async_get_by_id(
+                            table_name="wxapp_knowledge",
+                            record_id=resource_id
+                        )
+                        if knowledge:
+                            resource_title = knowledge.get("title", "知识")
+
+                    # 获取发送者的头像
                     sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
                     sender_info = await async_execute_custom_query(sender_info_sql, [openid])
                     sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
                     sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
-                    
-                    notification_data = {
-                        "openid": comment["openid"],
-                        "title": "收到点赞",
-                        "content": "有用户点赞了你的评论",
-                        "type": "like",
-                        "is_read": False,
-                        "sender": json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储
-                        "target_id": comment_id,
-                        "target_type": "comment",
-                        "status": 1
-                    }
 
+                    # 创建通知
                     await async_insert(
                         table_name="wxapp_notification",
-                        data=notification_data
+                        data={
+                            "openid": comment["openid"],
+                            "title": "评论获得点赞",
+                            "content": f"有人对你在「{resource_title}」下的评论点了赞",
+                            "type": "like",
+                            "is_read": 0,
+                            "sender": json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),
+                            "target_id": comment_id,
+                            "target_type": "comment",
+                            "status": 1
+                        }
                     )
 
-            return Response.success(data={
-                "success": True,
-                "status": "liked",
-                "like_count": new_like_count,
-                "is_liked": True
-            }, details={"message": "点赞成功"})
+                return Response.success(
+                    data={"liked": True, "like_count": like_count},
+                    details={"message": "评论点赞成功"}
+                )
+            else:
+                # 已经点过赞了
+                return Response.success(
+                    data={"liked": True, "like_count": comment.get("like_count", 0)},
+                    details={"message": "已经点过赞了"}
+                )
+        elif action == "unlike":
+            # 取消点赞操作
+            if existing_like and existing_like.get('data'):
+                # 删除点赞记录
+                like_id = existing_like['data'][0]['id']
+                await async_update(
+                    table_name="wxapp_action",
+                    record_id=like_id,
+                    data={"status": 0}
+                )
 
+                # 更新评论点赞计数
+                like_count = max(0, comment.get("like_count", 0) - 1)
+                await async_update(
+                    table_name="wxapp_comment",
+                    record_id=comment_id,
+                    data={"like_count": like_count}
+                )
+
+                return Response.success(
+                    data={"liked": False, "like_count": like_count},
+                    details={"message": "取消点赞成功"}
+                )
+            else:
+                # 没有点过赞
+                return Response.success(
+                    data={"liked": False, "like_count": comment.get("like_count", 0)},
+                    details={"message": "没有点过赞"}
+                )
+        else:
+            return Response.bad_request(details={"message": "不支持的操作类型，只能是like或unlike"})
     except Exception as e:
         return Response.error(details={"message": f"操作失败: {str(e)}"})
 
