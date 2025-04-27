@@ -9,7 +9,6 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 # 明确导入
-from etl.embedding import embedding_logger
 from etl import DATA_PATH, BASE_PATH
 
 from llama_index.core.bridge.pydantic import Field

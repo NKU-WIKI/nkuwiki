@@ -137,9 +137,11 @@ logger.add(
     enqueue=True
 )
 
+_added_log_handlers = set()
+
 def register_logger(module_name: str):
     """
-    为指定模块注册专用的日志记录器
+    为指定模块注册专用的日志记录器，仅etl相关模块会创建独立日志文件
     
     Args:
         module_name: 模块名称，例如'api.wxapp'，'core.agent'等
@@ -147,8 +149,28 @@ def register_logger(module_name: str):
     Returns:
         专用的日志记录器实例
     """
+    # 只保留前两级模块名
+    parts = module_name.split('.')
+    short_name = '.'.join(parts[:2]) if len(parts) > 1 else parts[0]
+    # 日志文件名
+    file_name = short_name + ".log"
+    # 日志文件路径始终在项目根目录 logs/
+    file_path = Path("logs") / file_name
     # 创建绑定了模块名的日志记录器
     module_logger = logger.bind(name=module_name)
+    # 只为etl相关模块添加文件handler
+    key = (module_name, str(file_path))
+    if "etl" in module_name and key not in _added_log_handlers:
+        module_logger.add(
+            file_path,
+            rotation="10 MB",
+            retention="7 days",
+            level="DEBUG",
+            format=LOG_FORMAT,
+            enqueue=True,
+            filter=lambda record: record["extra"].get("name") == module_name
+        )
+        _added_log_handlers.add(key)
     return module_logger
 
 # 为了兼容使用标准logging的第三方库，使用loguru的拦截器

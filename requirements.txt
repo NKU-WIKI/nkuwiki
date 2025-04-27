@@ -33,6 +33,7 @@ bm25s
 rank_bm25
 llmlingua
 llama-index-embeddings-huggingface
+jsonlines
 
 # ========================================
 # 数据存储 (Data Storage)

@@ -6,7 +6,8 @@
 import json
 import os
 
-from loguru import logger
+from core.utils.logger import register_logger
+logger = register_logger("core.plugins.group_assistant")
 from core.utils.plugins import register
 from core.bridge.context import ContextType
 from core.bridge.reply import Reply, ReplyType

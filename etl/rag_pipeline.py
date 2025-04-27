@@ -1,26 +1,17 @@
-from __init__ import *
-from etl.embedding import *
-from etl.retrieval import *
-from llama_index.core import Settings
+import os
+import re
+import sys
+import nest_asyncio
+import asyncio
+from datetime import datetime
+from pathlib import Path
+
+from llama_index.core import Settings, StorageContext, QueryBundle, PromptTemplate
 from llama_index.core.callbacks import CallbackManager, LlamaDebugHandler, TokenCountingHandler
-from llama_index.core import StorageContext, QueryBundle, PromptTemplate
 from llama_index.core.retrievers import AutoMergingRetriever
 from llama_index.core.storage.docstore import SimpleDocumentStore
-from core.utils.logger import register_logger
-import nest_asyncio
-# 初始化回调管理器和全局设置
-callback_manager = CallbackManager([
-    LlamaDebugHandler(),
-    TokenCountingHandler()
-])
-
-Settings.callback_manager = callback_manager
-Settings.num_output = 512
-Settings.chunk_size = CHUNK_SIZE
-Settings.chunk_overlap = CHUNK_OVERLAP
-
 from qdrant_client import models
-from etl.embedding.hf_embeddings import HuggingFaceEmbedding
+sys.path.append(str(Path(__file__).resolve().parent.parent))
 from etl.embedding.ingestion import (
     read_data, 
     build_pipeline, 
@@ -31,11 +22,27 @@ from etl.embedding.ingestion import (
 )
 from etl.retrieval.rerankers import SentenceTransformerRerank
 from etl.retrieval.retrievers import QdrantRetriever, BM25Retriever, HybridRetriever
-from etl.embedding.hierarchical import get_leaf_nodes
-from etl.utils.template import QA_TEMPLATE, MERGE_TEMPLATE
+from etl.embedding.hierarchical import HierarchicalNodeParser, get_leaf_nodes
+from etl.utils.text import QA_TEMPLATE, MERGE_TEMPLATE, generation as _generation
 from etl.embedding.compressors import ContextCompressor
-from etl.utils.llm_utils import local_llm_generate as _local_llm_generate
-from etl.utils.rag import generation as _generation
+from etl.utils.model import local_llm_generate as _local_llm_generate
+from config import Config
+
+# 初始化回调管理器和全局设置
+callback_manager = CallbackManager([
+    LlamaDebugHandler(),
+    TokenCountingHandler()
+])
+
+config = Config()
+
+CHUNK_SIZE = config.get("etl.embedding.chunking.chunk_size", 512)
+CHUNK_OVERLAP = config.get("etl.embedding.chunking.chunk_overlap", 200)
+
+Settings.callback_manager = callback_manager
+Settings.num_output = 512
+Settings.chunk_size = CHUNK_SIZE
+Settings.chunk_overlap = CHUNK_OVERLAP
 
 def load_stopwords(path):
     with open(path, 'r', encoding='utf-8') as file:
@@ -68,60 +75,49 @@ class EasyRAGPipeline:
         return pipeline
 
     def __init__(self):
-        # 使用__init__.py中的配置
         self.logger = register_logger("etl.rag_pipeline")
-        self.re_only = RE_ONLY
-        self.rerank_fusion_type = RERANK_FUSION_TYPE
-        self.ans_refine_type = ANS_REFINE_TYPE
-      
-        self.reindex = REINDEX
-        self.retrieval_type = RETRIEVAL_TYPE
-        self.f_topk = F_TOPK
-        self.f_topk_1 = F_TOPK_1
-        self.f_topk_2 = F_TOPK_2
-        self.f_topk_3 = F_TOPK_3
-        self.bm25_type = BM25_TYPE
-        self.embedding_name = EMBEDDING_NAME
+        self.config = Config()
 
-        self.r_topk = R_TOPK
-        self.r_topk_1 = R_TOPK_1
-        self.r_embed_bs = R_EMBED_BS
-        self.reranker_name = RERANKER_NAME
-        self.r_use_efficient = R_USE_EFFICIENT
+        self.re_only = self.config.get("etl.retrieval.re_only", 0)
+        self.rerank_fusion_type = self.config.get("etl.retrieval.rerank_fusion_type", 1)
+        self.ans_refine_type = self.config.get("etl.retrieval.ans_refine_type", 1)
+        self.reindex = self.config.get("etl.retrieval.reindex", False)
+        self.retrieval_type = self.config.get("etl.retrieval.type", 1)
+        self.f_topk = self.config.get("etl.retrieval.f_topk", 10)
+        self.f_topk_1 = self.config.get("etl.retrieval.f_topk_1", 10)
+        self.f_topk_2 = self.config.get("etl.retrieval.f_topk_2", 10)
+        self.f_topk_3 = self.config.get("etl.retrieval.f_topk_3", 0)
+        self.bm25_type = self.config.get("etl.retrieval.bm25_type", 0)
+        self.embedding_name = self.config.get("etl.embedding.embedding_name", "m3e-base")
+        self.r_topk = self.config.get("etl.retrieval.r_topk", 5)
+        self.r_topk_1 = self.config.get("etl.retrieval.r_topk_1", 5)
+        self.r_embed_bs = self.config.get("etl.retrieval.r_embed_bs", 128)
+        self.reranker_name = self.config.get("etl.retrieval.reranker_name", "")
+        self.r_use_efficient = self.config.get("etl.retrieval.r_use_efficient", False)
+        self.f_embed_type_1 = self.config.get("etl.embedding.f_embed_type_1", 0)
+        self.f_embed_type_2 = self.config.get("etl.embedding.f_embed_type_2", 0)
+        self.r_embed_type = self.config.get("etl.embedding.r_embed_type", 0)
+        self.llm_embed_type = self.config.get("etl.embedding.llm_embed_type", 0)
+        self.split_type = self.config.get("etl.embedding.split_type", 0)
+        self.chunk_size = self.config.get("etl.embedding.chunking.chunk_size", 512)
+        self.chunk_overlap = self.config.get("etl.embedding.chunking.chunk_overlap", 200)
+        base_path = Path(self.config.get("etl.data.base_path", "/data"))
+        self.raw_dir = base_path / 'test'
+        self.index_dir = base_path / self.config.get("etl.data.index.path", "/index")
+        self.qdrant_dir = base_path / self.config.get("etl.data.qdrant.path", "/qdrant")
+        self.qdrant_url = self.config.get("etl.qdrant.url", "http://localhost:6333")
+        self.collection_name = self.config.get("etl.qdrant.collection_name", "nkuwiki")
+        self.vector_size = self.config.get("etl.qdrant.vector_size", 768)
+        self.compress_method = self.config.get("etl.compress.method", None)
+        self.compress_rate = self.config.get("etl.compress.rate", 0.5)
+        self.hyde_enabled = self.config.get("etl.hyde.enabled", False)
+        self.hyde_merging = self.config.get("etl.hyde.merging", False)
 
-        self.f_embed_type_1 = F_EMBED_TYPE_1
-        self.f_embed_type_2 = F_EMBED_TYPE_2
-        self.r_embed_type = R_EMBED_TYPE
-        self.llm_embed_type = LLM_EMBED_TYPE
-        
         # 全局的索引检查操作锁
         self.lock = asyncio.Lock()
-        
         # 初始化问答模板
         self.qa_template = QA_TEMPLATE
         self.merge_template = MERGE_TEMPLATE
-
-        self.split_type = SPLIT_TYPE
-        self.chunk_size = CHUNK_SIZE
-        self.chunk_overlap = CHUNK_OVERLAP
-          
-        
-        self.raw_dir = RAW_PATH
-        self.index_dir = INDEX_PATH
-        self.qdrant_dir = QDRANT_PATH
-        
-        self.qdrant_url = QDRANT_URL
-        self.collection_name = COLLECTION_NAME
-        self.vector_size = VECTOR_SIZE
-
-        self.compress_method = COMPRESS_METHOD
-        self.compress_rate = COMPRESS_RATE
-
-        self.hyde_enabled = HYDE_ENABLED
-        self.hyde_merging = HYDE_MERGING
-
-        self.qdrant_client = None
-
         # 添加缺少的属性
         self.use_embeddings = True  # 默认启用embeddings
         self.embeddings = None

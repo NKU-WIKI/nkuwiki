@@ -1,8 +1,6 @@
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from etl import *
-from etl.crawler import *
+import asyncio
+from datetime import datetime
+from etl import RAW_PATH
 from etl.crawler.wechat import Wechat
 from etl.transform.summarize_md import summarize_md
 requerment_keywords=[]

@@ -9,9 +9,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))))
 
 try:
-    from core.utils.logger import logger, register_logger
+    from core.utils.logger import register_logger
     # 创建cozepy专用日志记录器
-    logger = register_logger("cozepy")
+    logger = register_logger("core.agent.coze")
 except ImportError:
     # 如果无法导入自定义日志系统，则回退到简单的控制台输出
     import logging

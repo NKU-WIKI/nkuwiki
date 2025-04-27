@@ -1,11 +1,11 @@
 import os
 import json
 from config import Config
-from loguru import logger
+from core.utils.logger import register_logger
 
 class Plugin:
     def __init__(self):
-        self.logger = logger
+        self.logger = register_logger(f"core.plugins.{self.__class__.__name__}")
         self.handlers = {}
         self.name = "BasePlugin"  # 添加默认名称属性
         # ...其他属性初始化...

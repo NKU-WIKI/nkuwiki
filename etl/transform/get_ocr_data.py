@@ -1,13 +1,10 @@
 import json
 import os.path
-
 import fire
 from paddleocr import PaddleOCR
 import re
-
 from tqdm import tqdm
-
-from etl.utils.mllm_utils import glm4v_generate
+from etl.utils.model import glm4v_generate
 
 
 def contains_chinese(s):

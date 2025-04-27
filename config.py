@@ -5,8 +5,6 @@ import copy
 from singleton_decorator import singleton
 from typing import Any, Dict, Optional
 
-# 将不再使用标准logging模块，初始化部分改为在__init__方法中使用core.utils.logger
-
 # 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
     # 核心配置 - 包含核心功能和智能体相关配置

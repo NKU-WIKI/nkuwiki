@@ -1,7 +1,6 @@
 import torch
 from llmlingua import PromptCompressor
-from etl.utils.rag import cut_sent
-from __init__ import *
+from etl.utils.text import cut_sent
 
 class ContextCompressor:
     def __init__(

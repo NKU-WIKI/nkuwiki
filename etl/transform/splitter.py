@@ -2,8 +2,6 @@
 from dataclasses import dataclass
 from typing import Callable, List, Optional, Tuple, ClassVar, Any
 
-# 替换llama_index的pydantic桥接，直接使用pydantic v2
-# from llama_index.core.bridge.pydantic import Field, PrivateAttr
 from pydantic import Field, model_validator, PrivateAttr
 from llama_index.core.callbacks.base import CallbackManager
 from llama_index.core.callbacks.schema import CBEventType, EventPayload

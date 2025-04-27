@@ -1,6 +1,8 @@
-from typing import Any, List, Optional
-
+import time
 import torch
+import numpy as np
+from pydantic import model_validator
+from typing import Any, List, Optional
 from llama_index.core.bridge.pydantic import Field, PrivateAttr, ConfigDict
 from llama_index.core.callbacks import CBEventType, EventPayload
 from llama_index.core.postprocessor.types import BaseNodePostprocessor
@@ -8,9 +10,6 @@ from llama_index.core.schema import MetadataMode, NodeWithScore, QueryBundle
 from llama_index.core.utils import infer_torch_device
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from etl.embedding.ingestion import get_node_content
-import numpy as np
-import time
-from pydantic import model_validator
 
 DEFAULT_SENTENCE_TRANSFORMER_MAX_LENGTH = 512
 

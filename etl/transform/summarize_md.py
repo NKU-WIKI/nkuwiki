@@ -1,8 +1,6 @@
-from etl.transform import *
-from core.utils.logger import register_logger
+from etl.transform import logger
+from etl.utils import clean_filename
 
-transform_logger = register_logger("etl.transform")
-from etl.crawler import clean_filename
 def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 'summarize', header_text: str = '', requerment_keywords: list = None):
     """
     加载指定目录下的JSON文件并生一作者成markdown格式的总结，按块分割
@@ -15,7 +13,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         time_range: 可选的时间范围元组 (start_date, end_date)，例如 ('2025-01-01', '2025-03-01') 或 (datetime对象, datetime对象)
         title: 生成文件的标题基础名
         header_text: 在每个生成的文件顶部添加的文本
-        requerment_keywords: 可选的关键词列表，只包含含有这些关键词的文章
+        requerment_keywords: 可选的关键词列表，只包含含有这 些关键词的文章
     """
     # 处理标题中的路径分隔符，避免被当做目录路径
     file_name = clean_filename(title)
@@ -29,7 +27,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
     base_dir = Path(input_dir)
     all_dirs = []
     
-    transform_logger.debug("正在收集目录...")
+    logger.debug("正在收集目录...")
     # 如果指定了时间范围，首先过滤顶层目录
     if time_range:
         start_time, end_time = time_range
@@ -39,7 +37,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         if isinstance(end_time, datetime):
             end_time = end_time.strftime('%Y-%m-%d')
             
-        transform_logger.debug(f"时间范围过滤: {start_time} 到 {end_time}")
+        logger.debug(f"时间范围过滤: {start_time} 到 {end_time}")
         
         # 提取年月部分用于过滤顶级目录
         start_yyyymm = start_time.replace('-', '')[:6]
@@ -64,10 +62,10 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
     
     # 计算含有abstract.md的文件夹数量
     valid_dirs = [d for d in all_dirs if (d / "abstract.md").exists()]
-    transform_logger.debug(f"找到 {len(all_dirs)} 个嵌套目录，其中 {len(valid_dirs)} 个包含 abstract.md")
+    logger.debug(f"找到 {len(all_dirs)} 个嵌套目录，其中 {len(valid_dirs)} 个包含 abstract.md")
     
     # 遍历所有符合条件的目录
-    transform_logger.debug("正在加载文章数据...")
+    logger.debug("正在加载文章数据...")
     processed_urls = set()  # 用于去重的URL集合
     
     for dir_path in tqdm(valid_dirs, desc="处理数据目录"):
@@ -79,29 +77,29 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         
         if abstract_path.exists():
             try:
-                transform_logger.debug(f"开始处理目录: {dir_path}")
+                logger.debug(f"开始处理目录: {dir_path}")
                 # 首先检查同目录下是否有对应的json文件
                 json_files = list(dir_path.glob('*.json'))
-                transform_logger.debug(f"找到 {len(json_files)} 个JSON文件")
+                logger.debug(f"找到 {len(json_files)} 个JSON文件")
                 
                 # 读取abstract内容
                 with open(abstract_path, 'r', encoding='utf-8') as af:
                     abstract_content = af.read().strip()
                     has_abstract = bool(abstract_content)
-                    transform_logger.debug(f"读取abstract内容: {len(abstract_content)} 字符")
+                    logger.debug(f"读取abstract内容: {len(abstract_content)} 字符")
                     
                     # 检查关键词
                     if requerment_keywords and has_abstract:
                         has_keywords = any(keyword.lower() in abstract_content.lower() for keyword in requerment_keywords)
                         if not has_keywords:
-                            transform_logger.debug(f"跳过不包含关键词的文章: {abstract_path}")
+                            logger.debug(f"跳过不包含关键词的文章: {abstract_path}")
                             should_skip_dir = True  # 标记跳过整个目录
                             continue
                         else:
-                            transform_logger.debug(f"文章包含关键词: {abstract_path}")
+                            logger.debug(f"文章包含关键词: {abstract_path}")
                 
             except Exception as e:
-                transform_logger.error(f"读取abstract.md时出错: {e}, 路径: {abstract_path}")
+                logger.error(f"读取abstract.md时出错: {e}, 路径: {abstract_path}")
                 continue  # 如果读取abstract出错，跳过整个目录
         
         if should_skip_dir:
@@ -112,22 +110,22 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
             with open(file_path, 'r', encoding='utf-8') as f:
                 try:
                     data = json.load(f)
-                    transform_logger.debug(f"处理文章: {file_path}")
+                    logger.debug(f"处理文章: {file_path}")
                     
                     # 跳过没有publish_time字段的文章
                     if 'publish_time' not in data:
-                        transform_logger.warning(f"跳过没有发布时间的文章: {file_path}")
+                        logger.warning(f"跳过没有发布时间的文章: {file_path}")
                         continue
                     
                     # 跳过非微信公众号的文章
                     original_url = data.get('original_url', '')
                     if not original_url.startswith('https://mp.weixin.qq.com/'):
-                        transform_logger.warning(f"跳过非微信公众号文章: {file_path}, URL: {original_url}")
+                        logger.warning(f"跳过非微信公众号文章: {file_path}, URL: {original_url}")
                         continue
                         
                     # 检查URL是否重复
                     if original_url in processed_urls:
-                        transform_logger.debug(f"跳过重复文章: {original_url}")
+                        logger.debug(f"跳过重复文章: {original_url}")
                         continue
                     processed_urls.add(original_url)
                     
@@ -136,7 +134,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                     
                     # 如果有abstract内容且包含关键词，只使用abstract内容
                     if has_abstract and (not requerment_keywords or any(keyword.lower() in abstract_content.lower() for keyword in requerment_keywords)):
-                        transform_logger.debug(f"使用abstract内容: {file_path}")
+                        logger.debug(f"使用abstract内容: {file_path}")
                         # 过滤掉非微信公众号的链接
                         lines = abstract_content.split('\n')
                         filtered_lines = []
@@ -154,33 +152,33 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
                     else:
                         data['content'] = ""  # 不使用原始内容
                         
-                    transform_logger.debug(f"文章通过筛选: {file_path}")
+                    logger.debug(f"文章通过筛选: {file_path}")
                     
                     # 如果指定了时间范围，进一步按文章日期过滤
                     if time_range:
                         publish_date = data.get('publish_time', '')
                         # 只处理日期在范围内的文章
                         if start_time <= publish_date <= end_time:
-                            transform_logger.debug(f"文章日期 {publish_date} 在范围内")
+                            logger.debug(f"文章日期 {publish_date} 在范围内")
                             articles.append(data)
                         else:
-                            transform_logger.warning(f"跳过日期范围外的文章: {file_path}, 发布日期: {publish_date}")
+                            logger.warning(f"跳过日期范围外的文章: {file_path}, 发布日期: {publish_date}")
                     else:
                         articles.append(data)
                 except json.JSONDecodeError:
-                    transform_logger.error(f"Error loading {file_path}")
+                    logger.error(f"Error loading {file_path}")
     
-    transform_logger.debug(f"找到 {len(articles)} 篇文章")
+    logger.debug(f"找到 {len(articles)} 篇文章")
     
     # 按作者分组
-    transform_logger.debug("正在按作者分组...")
+    logger.debug("正在按作者分组...")
     author_groups = defaultdict(list)
     for article in articles:
         author = article.get('author', '未知作者')
         author_groups[author].append(article)
     
     # 对每个作者的文章按时间排序
-    transform_logger.debug("正在排序文章...")
+    logger.debug("正在排序文章...")
     for author, posts in tqdm(author_groups.items(), desc="排序作者文章"):
         posts.sort(key=lambda x: datetime.strptime(x['publish_time'], '%Y-%m-%d'), reverse=True)
     
@@ -192,14 +190,14 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
             latest_date_str = max(article.get('publish_time', '') for article in articles)
             latest_date = datetime.strptime(latest_date_str, '%Y-%m-%d')
         except (ValueError, KeyError) as e:
-            transform_logger.error(f"获取最新发布日期时出错: {e}，使用当前日期")
+            logger.error(f"获取最新发布日期时出错: {e}，使用当前日期")
     
     # 使用简短日期格式：MMDD
     latest_short_date = f"{latest_date.month:02d}{latest_date.day:02d}"
     output_file_base = Path(output_dir).with_suffix('')  # 移除扩展名
     
     # 预计算每个作者内容的行数
-    transform_logger.debug("正在计算内容行数...")
+    logger.debug("正在计算内容行数...")
     author_line_counts = {}
     
     # 如果有头部文本，计入总行数
@@ -226,7 +224,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         author_line_counts[author] = total_lines
     
     # 分组作者到不同的块，每块小于2000行
-    transform_logger.debug("正在分组内容...")
+    logger.debug("正在分组内容...")
     current_block = []
     current_block_lines = 0
     blocks = []
@@ -259,7 +257,7 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
         blocks.append((current_block, current_block_lines + header_lines))
     
     # 生成多个markdown文件
-    transform_logger.debug("正在生成Markdown文件...")
+    logger.debug("正在生成Markdown文件...")
     # 确保输出目录存在，使用绝对路径
     if not os.path.isabs(output_dir):
         output_dir = os.path.abspath(output_dir)
@@ -322,8 +320,8 @@ def summarize_md(input_dir: str, output_dir: str, time_range=None, title: str = 
             
             # 验证文件是否成功创建
             if os.path.exists(output_file):
-                transform_logger.info(f"成功生成第{i}块文件: {output_file} {file_name}")
+                logger.info(f"成功生成第{i}块文件: {output_file} {file_name}")
             else:
-                transform_logger.error(f"文件创建失败: {output_file}")
+                logger.error(f"文件创建失败: {output_file}")
         except Exception as e:
-            transform_logger.error(f"写入文件时出错: {e}")
+            logger.error(f"写入文件时出错: {e}")

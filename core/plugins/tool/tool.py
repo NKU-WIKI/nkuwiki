@@ -12,6 +12,9 @@ from config import Config
 from core.plugins import *
 from core.plugins import Plugin
 from core.bridge.context import EventContext, Event, EventAction
+from core.utils.logger import register_logger
+
+logger = register_logger("core.plugins.tool")
 
 
 @plugins.register(

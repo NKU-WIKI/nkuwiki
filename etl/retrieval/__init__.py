@@ -1,16 +1,7 @@
 """
 检索模块，实现文档检索和重排功能
 """
-import sys
-import torch
-import numpy as np
-from pathlib import Path
-from typing import List, Dict, Any, Union
 
-# 添加项目根目录到系统路径
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-
-# 明确导入需要的内容
 from etl import (
     config, DATA_PATH, COLLECTION_NAME, VECTOR_SIZE, 
     QDRANT_URL, QDRANT_TIMEOUT
@@ -19,7 +10,7 @@ from etl import (
 from core.utils.logger import register_logger
 
 # 创建模块专用日志记录器
-retrieval_logger = register_logger("etl.retrieval")
+logger = register_logger("etl.retrieval")
 
 # ---------- 检索配置 ----------
 # 是否只使用检索进行回答
@@ -72,7 +63,7 @@ from etl.retrieval.rerankers import (
 
 # 导出API
 __all__ = [
-    'retrieval_logger',
+    'logger',
     'COLLECTION_NAME', 'VECTOR_SIZE', 'QDRANT_URL', 'QDRANT_TIMEOUT',
     'RE_ONLY', 'RERANK_FUSION_TYPE', 'ANS_REFINE_TYPE', 'REINDEX', 'RETRIEVAL_TYPE',
     'F_TOPK_SPARSE', 'F_TOPK_DENSE', 'F_TOPK_HYBRID',
