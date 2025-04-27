@@ -15,24 +15,8 @@ ETL模块，负责数据抽取、转换和加载
 - data: 数据存储目录
 """
 import os
-import re
-import sys
-import json
-import time
-import requests
-import asyncio
-from tqdm.auto import tqdm
-from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Any, Set, Tuple, Union, Optional
-from collections import defaultdict
-sys.path.append(str(Path(__file__).resolve().parent.parent))
 from config import Config
-from core.utils.logger import logger, register_logger
-
-# 获取etl专用日志记录器
-etl_logger = register_logger("etl")
-
 # 导入配置
 config = Config()
 
@@ -46,7 +30,6 @@ CACHE_PATH = BASE_PATH / config.get("etl.data.cache.path", "/cache").lstrip("/")
 INDEX_PATH = BASE_PATH / config.get("etl.data.index.path", "/index").lstrip("/")
 QDRANT_PATH = BASE_PATH / config.get("etl.data.qdrant.path", "/qdrant").lstrip("/")
 NLTK_PATH = BASE_PATH / config.get("etl.data.nltk.path", "/nltk").lstrip("/")
-LOG_PATH = Path(__file__).resolve().parent / "logs"
 
 # 环境变量配置
 HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
@@ -63,11 +46,8 @@ os.environ["SENTENCE_TRANSFORMERS_HOME"] = SENTENCE_TRANSFORMERS_HOME
 os.environ["NLTK_DATA"] = str(NLTK_PATH.absolute())
 
 # 创建必要的目录
-for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, NLTK_PATH, LOG_PATH, MODELS_PATH]:
+for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, NLTK_PATH, MODELS_PATH]:
     path.mkdir(parents=True, exist_ok=True)
-
-# 设置日志目录
-LOG_PATH.mkdir(exist_ok=True, parents=True)
 
 # 导入nltk并设置下载路径
 import nltk
@@ -109,11 +89,8 @@ __version__ = "1.0.0"
 
 # 定义导出的符号列表 
 __all__ = [
-    # 基础库和工具
-    'os', 'sys', 'Path', 'logger', 'config','re','json','time','datetime','Dict', 'List', 'Tuple',
-    'Optional', 'Any', 'Set', 'datetime', 'timedelta','Union','requests','asyncio','tqdm','defaultdict',
     # 路径配置
-    'BASE_PATH', 'DATA_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'LOG_PATH','NLTK_PATH',
+    'BASE_PATH', 'DATA_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'NLTK_PATH',
     'MODELS_PATH',
     
     # 环境变量配置

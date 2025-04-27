@@ -10,7 +10,9 @@ from infra.deploy.app import logger
 from core.utils.plugins import *
 from core.utils.plugins import Plugin
 from core.bridge.context import EventContext, Event, EventAction
+from core.utils.logger import register_logger
 
+logger = register_logger("core.plugins.keyword")
 
 @plugins.register(
     name="Keyword",

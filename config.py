@@ -3,12 +3,7 @@ import pickle
 import json
 import copy
 from singleton_decorator import singleton
-import logging
 from typing import Any, Dict, Optional
-
-# 初始化日志
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger('config')
 
 # 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
@@ -380,8 +375,7 @@ class Config(dict):
         super().__init__()
         # 延迟导入logger，避免循环导入
         from core.utils.logger import register_logger
-        global logger
-        logger = register_logger('config')
+        self.logger = register_logger('config')
         
         self.update(available_setting)  # 先加载默认配置
         if d is None:
@@ -435,7 +429,7 @@ class Config(dict):
                 return value
             return super().get(key.lower(), default)
         except Exception as e:
-            logger.exception(f"[config] 配置获取异常: {str(e)}")
+            self.logger.exception(f"[config] 配置获取异常: {str(e)}")
             return default
 
     def set(self, key, value):
@@ -457,7 +451,7 @@ class Config(dict):
             else:
                 self[key.lower()] = value
         except Exception as e:
-            logger.exception(f"[config] 配置设置异常: {str(e)}")
+            self.logger.exception(f"[config] 配置设置异常: {str(e)}")
 
     def update(self, other):
         """递归更新配置字典，支持数组合并"""
@@ -492,7 +486,7 @@ class Config(dict):
         """获取应用数据存储目录"""
         data_path = self.get("etl.data.base_path", "") + self.get("etl.data.cache.path", "")
         if not os.path.exists(data_path):
-            logger.info("[INIT] data path not exists, create it: {}".format(data_path))
+            self.logger.info("[INIT] data path not exists, create it: {}".format(data_path))
             os.makedirs(data_path)
         return data_path
 
@@ -507,11 +501,11 @@ class Config(dict):
         try:
             with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "rb") as f:
                 self.user_datas = pickle.load(f)
-                logger.info("[Config] User datas loaded.")
+                self.logger.debug("[Config] User datas loaded.")
         except FileNotFoundError:
             pass
         except Exception as e:
-            logger.error(f"[Config] 加载用户数据失败: {str(e)}")
+            self.logger.error(f"[Config] 加载用户数据失败: {str(e)}")
             self.user_datas = {}
 
     def save_user_datas(self):
@@ -525,13 +519,12 @@ class Config(dict):
             
             with open(os.path.join(self.get_appdata_dir(), "user_datas.pkl"), "wb") as f:
                 pickle.dump(save_data, f)
-                logger.info("[Config] User datas saved.")
+                self.logger.debug("[Config] User datas saved.")
         except Exception as e:
-            logger.error(f"[Config] 保存用户数据失败: {str(e)}")
+            self.logger.error(f"[Config] 保存用户数据失败: {str(e)}")
 
-    def load_config(self, logger=logger):
+    def load_config(self):
         """加载配置文件"""
-        self.logger = logger
         config_path = os.path.join(os.path.dirname(__file__), "config.json")
         try:
             with open(config_path, "r", encoding="utf-8-sig") as f:
@@ -588,7 +581,7 @@ class Config(dict):
             return mask_sensitive(config_copy)
             
         except Exception as e:
-            logger.exception(e)
+            self.logger.exception(e)
             return self
 
 # 创建全局配置实例

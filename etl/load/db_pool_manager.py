@@ -19,11 +19,10 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from contextlib import contextmanager
 
-from etl import etl_logger, config
-from core.utils.logger import register_logger
+from config import Config
+from etl.load import logger
 
-# 创建模块专用日志记录器
-pool_logger = register_logger("etl.load.pool")
+config = Config()
 
 # Redis可用性标志
 REDIS_AVAILABLE = True

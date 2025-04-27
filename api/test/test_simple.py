@@ -9,6 +9,7 @@ import sys
 import os
 import json
 import requests
+import logging
 
 # 确保项目根目录在sys.path中
 current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -17,7 +18,20 @@ if current_dir not in sys.path:
 
 from core.utils.logger import register_logger
 
-logger = register_logger("test.api.agent.rag.simple")
+# 配置直接输出到控制台的日志
+logger = logging.getLogger("test.api.agent.rag.simple")
+logger.setLevel(logging.INFO)
+
+# 移除所有已有的处理器
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
+
+# 添加控制台处理器
+console_handler = logging.StreamHandler(sys.stdout)
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 # 服务器地址
 BASE_URL = "http://localhost:8000/api"
@@ -76,4 +90,9 @@ def test_rag():
         logger.error(f"请求异常: {str(e)}")
 
 if __name__ == "__main__":
+    # 打印启动信息
+    print("\n" + "="*50)
+    print("RAG测试脚本启动")
+    print("="*50 + "\n")
+    
     test_rag() 

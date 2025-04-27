@@ -32,6 +32,9 @@ from .tmp_resources import TmpDir, create_tmp_file, create_tmp_binary_file
 # 翻译工具
 from .translator import Translator, BaiduTranslator, create_translator
 
+# 日志工具
+from .logger import register_logger
+
 __all__ = [
     # 数据结构
     'ExpiredDict', 'SortedDict', 'Dequeue',
@@ -61,5 +64,8 @@ __all__ = [
     'TmpDir', 'create_tmp_file', 'create_tmp_binary_file',
     
     # 翻译工具
-    'Translator', 'BaiduTranslator', 'create_translator'
+    'Translator', 'BaiduTranslator', 'create_translator',
+    
+    # 日志工具
+    'register_logger'
 ]

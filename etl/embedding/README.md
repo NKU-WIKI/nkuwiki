@@ -25,7 +25,7 @@ embedding 模块负责将文本转换为向量表示，是实现语义搜索和�
 1. **创建嵌入类**:
 
 ```python
-from etl.embedding import BaseEmbedding
+from llama_index.core.base.embeddings.base import BaseEmbedding
 
 class MyEmbedding(BaseEmbedding):
     def __init__(self, **kwargs):
@@ -130,8 +130,18 @@ python -m etl.embedding.test_embedding
 1. 评估嵌入质量:
 
 ```python
-from etl.embedding import evaluate_embedding
-scores = evaluate_embedding(my_embedding, test_dataset)
+from etl.embedding.gte_embeddings import GTEEmbedding
+from etl.embedding.hf_embeddings import HFEmbeddings
+from etl.embedding.ingestion import ingest_documents
+
+# 初始化嵌入模型
+embedding_model = GTEEmbedding(model_name="gte-base")
+
+# 向量化文本
+vectors = embedding_model.embed(["这是第一段文本", "这是第二段文本"])
+
+# 评估嵌入质量
+scores = evaluate_embedding(embedding_model, test_dataset)
 print(f"平均相似度: {scores['avg_similarity']}")
 
 ```text

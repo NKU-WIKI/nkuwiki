@@ -4,15 +4,15 @@ import requests
 import json
 from typing import Dict, Any, List, Optional
 import datetime
-from core.utils.logger import register_logger
 
 from etl.embedding.ingestion import embed_document
 from etl.embedding.hierarchical import create_document_hierarchy
 from etl.load.json2mysql import store_document_metadata
-from etl.utils.wx_cloud import wx_cloud
+from etl.utils.cloud import wx_cloud
+from core.utils.logger import register_logger
 
 # 设置日志记录器
-etl_logger = register_logger("etl.pipeline")
+logger = register_logger("etl.pipeline")
 
 def index_document(file_path: str, metadata: Dict[str, Any] = None) -> Dict[str, Any]:
     """

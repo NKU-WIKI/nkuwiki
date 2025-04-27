@@ -10,6 +10,9 @@ from core.plugins import Plugin
 from core.bridge.context import EventContext, Event, EventAction
 from app import App
 from config import Config
+from core.utils.logger import register_logger
+
+logger = register_logger("core.plugins.hello")
 
 @plugins.register(
     name="Hello",
@@ -37,10 +40,10 @@ class Hello(Plugin):
             self.group_welc_prompt = self.config.get("group_welc_prompt", self.group_welc_prompt)
             self.group_exit_prompt = self.config.get("group_exit_prompt", self.group_exit_prompt)
             self.patpat_prompt = self.config.get("patpat_prompt", self.patpat_prompt)
-            App().logger.info("[Hello] inited")
+            logger.info("[Hello] inited")
             self.handlers[Event.ON_HANDLE_CONTEXT] = self.on_handle_context
         except Exception as e:
-            App().logger.error(f"[Hello]初始化异常：{e}")
+            logger.error(f"[Hello]初始化异常：{e}")
             raise "[Hello] init failed, ignore "
 
     def on_handle_context(self, e_context: EventContext):
@@ -89,7 +92,7 @@ class Hello(Plugin):
             return
 
         content = e_context["context"].content
-        App().logger.debug("[Hello] on_handle_context. content: %s" % content)
+        logger.debug("[Hello] on_handle_context. content: %s" % content)
         if content == "Hello":
             reply = Reply()
             reply.type = ReplyType.TEXT
@@ -118,7 +121,7 @@ class Hello(Plugin):
         return help_text
 
     def _load_config_template(self):
-        App().logger.debug("No Hello plugin config.json, use plugins/hello/config.json.template")
+        logger.debug("No Hello plugin config.json, use plugins/hello/config.json.template")
         try:
             plugin_config_path = os.path.join(self.path, "config.json.template")
             if os.path.exists(plugin_config_path):
@@ -126,4 +129,4 @@ class Hello(Plugin):
                     plugin_conf = json.load(f)
                     return plugin_conf
         except Exception as e:
-            App().logger.exception(e)
+            logger.exception(e)

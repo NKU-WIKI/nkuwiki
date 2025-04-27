@@ -1,17 +1,12 @@
 """
 加载模块，负责数据库操作和配置加载
 """
-import time
 import os
-import warnings
-from typing import Dict, Any, List, Optional, Union
-
-# 明确导入etl模块中需要的内容
-from etl import etl_logger, config, DATA_PATH
+from etl import config, DATA_PATH
 from core.utils.logger import register_logger
 
 # 创建模块专用日志记录器
-load_logger = register_logger("etl.load")
+logger = register_logger("etl.load")
 
 # 导入新的数据库核心模块
 from etl.load import db_core
@@ -30,34 +25,6 @@ except ImportError:
     _get_db_connection = None
     resize_pool_if_needed = lambda force_size=None: None
     _cleanup_pool = lambda: None
-
-# 为了向后兼容，提供相同的函数接口
-def get_conn():
-    """
-    获取数据库连接
-    
-    注意：此函数现返回上下文管理器而非直接连接对象
-    建议使用`with get_conn() as conn:`的形式
-    """
-    warnings.warn(
-        "get_conn()函数现返回上下文管理器，建议使用with语句",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    return db_core.get_connection()
-
-def close_conn():
-    """
-    关闭当前线程的数据库连接
-    
-    注意：此函数现在是空操作，因为连接在上下文管理器退出时自动关闭
-    """
-    warnings.warn(
-        "close_conn()不再需要手动调用，连接会自动关闭",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    pass  # 空操作，兼容旧代码
 
 def close_conn_pool():
     """关闭连接池，应用退出时调用"""
@@ -79,7 +46,6 @@ from etl.load.db_core import (
     execute_custom_query,
     batch_insert,
     get_all_tables,
-    
     # 异步函数
     async_query,
     async_insert,
@@ -96,7 +62,8 @@ __version__ = "2.0.0"
 # 导出模块API
 __all__ = [
     # 连接管理
-    'get_conn', 'close_conn', 'close_conn_pool', 'get_connection_stats',
+    'logger',
+    'close_conn_pool', 'get_connection_stats',
     'resize_pool_if_needed',
     
     # 基本数据库操作

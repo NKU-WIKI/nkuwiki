@@ -9,11 +9,8 @@ from llama_index.core.schema import BaseNode, MetadataMode
 from llama_index.core.utils import infer_torch_device
 from torch import Tensor
 from transformers import AutoTokenizer
-from etl.utils.modeling_qwen import Qwen2Model
+from etl.utils.model import Qwen2Model
 from etl.embedding.ingestion import get_node_content
-from core.utils.logger import register_logger
-
-logger = register_logger("etl.embedding.gte")
 
 
 class GTEEmbedding(BaseEmbedding):

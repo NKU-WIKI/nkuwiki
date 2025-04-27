@@ -8,7 +8,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 # 替换通配符导入为明确导入
 from etl import BASE_PATH, DATA_PATH
-from etl.embedding import embedding_logger
+
+from core.utils.logger import register_logger
+logger = register_logger("etl.embedding")
 
 from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.vector_stores.types import BasePydanticVectorStore
@@ -298,7 +300,7 @@ async def embed_and_store_document(
     Returns:
         处理后的节点列表
     """
-    embedding_logger.debug(f"开始处理 {len(documents)} 个文档")
+    logger.debug(f"开始处理 {len(documents)} 个文档")
     
     # 创建预处理管道
     pipeline = build_preprocess_pipeline(
@@ -310,7 +312,7 @@ async def embed_and_store_document(
     
     # 分块处理文档
     nodes = pipeline.run(documents=documents)
-    embedding_logger.debug(f"分块后生成 {len(nodes)} 个节点")
+    logger.debug(f"分块后生成 {len(nodes)} 个节点")
     
     # 嵌入节点
     for node in nodes:
@@ -322,6 +324,6 @@ async def embed_and_store_document(
     # 存储嵌入向量到向量存储
     if vector_store is not None:
         vector_store.add(nodes)
-        embedding_logger.debug(f"已将节点存储到向量存储 {collection_name}")
+        logger.debug(f"已将节点存储到向量存储 {collection_name}")
     
     return nodes

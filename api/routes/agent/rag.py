@@ -2,20 +2,17 @@
 基于Coze的RAG系统
 提供基于Coze的检索增强生成功能
 """
+import os
 import time
 import json
 import traceback
-import os
 import datetime
 from typing import List, Dict, Any, Optional, Union
-from fastapi import HTTPException, APIRouter, Query
-from api.models.knowledge import Source
+from fastapi import APIRouter
 from api.models.common import Response, Request, validate_params
 from core.agent.coze.coze_agent import CozeAgent
-from config import Config
 from fastapi.responses import StreamingResponse
 from core.utils.logger import register_logger
-from api.routes.knowledge.search import search_endpoint
 import urllib.parse
 import http.client
 import asyncio
@@ -26,36 +23,34 @@ os.environ['https_proxy'] = ''
 os.environ['all_proxy'] = ''
 
 logger = register_logger("agent.rag")
-config = Config()
 
 router = APIRouter()
 
 async def rewrite_query(query: str, rewrite_bot_tag = "rewrite") -> str:
     """使用Coze改写bot改写用户查询"""
     try:
-        # 创建agent实例，直接传入bot_id的标签，而不是使用config属性
         rewrite_agent = CozeAgent(tag = rewrite_bot_tag)
         prompt = query
         start_time = time.time()
         
         try:
-            # 使用异步超时控制，最多等待10秒
+            # 使用异步超时控制，最多等待30秒
             async def _rewrite_with_timeout():
                 # 创建可取消的任务
                 loop = asyncio.get_event_loop()
                 response = await loop.run_in_executor(None, lambda: rewrite_agent.chat_with_new_conversation(prompt, stream=False))
                 return response
                 
-            response = await asyncio.wait_for(_rewrite_with_timeout(), timeout=10.0)
+            response = await asyncio.wait_for(_rewrite_with_timeout(), timeout=30.0)
             
         except asyncio.TimeoutError:
-            logger.warning(f"改写请求超时（>10秒），返回原始查询")
+            logger.warning(f"改写请求超时（>30秒），返回原始查询")
             return query
             
         elapsed = time.time() - start_time
 
-        if response and isinstance(response, str):
-            rewritten_query = response.strip()
+        if response['response']: 
+            rewritten_query = response['response'].strip()
             return rewritten_query
         return query
     except Exception as e:
@@ -65,10 +60,8 @@ async def rewrite_query(query: str, rewrite_bot_tag = "rewrite") -> str:
 async def generate_answer(query: str, enhanced_query: str, sources: List[Any], rag_bot_tag = "rag") -> Dict[str, Any]:
     """使用Coze RAG bot生成答案"""
     try:
+        rag_agent = CozeAgent(tag = rag_bot_tag, index = 1)
         
-        rag_agent = CozeAgent(tag = rag_bot_tag)
-        
-
         sources_text = ""
         for i, source in enumerate(sources):
             try:
@@ -95,7 +88,7 @@ async def generate_answer(query: str, enhanced_query: str, sources: List[Any], r
             async def _generate_with_timeout():
                 loop = asyncio.get_event_loop()
                 
-                # 使用chat_with_new_conversation方法直接获取回答
+                # 使用chat_with_new_conversation方法直接获取回答和建议问题
                 response = await loop.run_in_executor(
                     None, 
                     lambda: rag_agent.chat_with_new_conversation(prompt, stream=False, openid=f"rag_user_{int(time.time())}")
@@ -106,7 +99,7 @@ async def generate_answer(query: str, enhanced_query: str, sources: List[Any], r
             response = await asyncio.wait_for(_generate_with_timeout(), timeout=30.0)
             
         except asyncio.TimeoutError:
-            logger.warning(f"生成回答请求超时（>15秒）")
+            logger.warning(f"生成回答请求超时（>30秒）")
             return {
                 "response": "抱歉，回答生成超时，请稍后再试。",
                 "suggested_questions": []
@@ -115,26 +108,16 @@ async def generate_answer(query: str, enhanced_query: str, sources: List[Any], r
             raise
             
         elapsed = time.time() - start_time
-
-        suggested_questions = []
-
-        if "建议问题：" in response or "建议问题:" in response:
-            parts = response.split("建议问题：" if "建议问题：" in response else "建议问题:")
-            answer_part = parts[0].strip()
-
-            if len(parts) > 1:
-                questions_part = parts[1].strip()
-                for line in questions_part.split("\n"):
-                    line = line.strip()
-                    if line and any(line.startswith(prefix) for prefix in ["1.", "2.", "3.", "- "]):
-                        question = line.lstrip("123.- ").strip()
-                        if question:
-                            suggested_questions.append(question)
-
-        answer = response if not suggested_questions else answer_part
-
-        if answer.startswith("回答：") or answer.startswith("回答:"):
+        logger.info(f"rag响应耗时: {elapsed:.2f}秒")
+        
+        # 使用新格式的返回值，包含response和suggested_questions两个字段
+        answer = response.get("response", "")
+        suggested_questions = response.get("suggested_questions", [])
+        
+        # 处理可能的格式化前缀
+        if answer and (answer.startswith("回答：") or answer.startswith("回答:")):
             answer = answer[3:].strip()
+            
         return {
             "response": answer,
             "suggested_questions": suggested_questions
@@ -330,7 +313,7 @@ async def rag_endpoint(request: Request):
             
             # 记录最终结果信息
             logger.debug(f"RAG处理完成，耗时: {total_time:.2f}秒")
-            logger.debug(f"最终响应内容:\n{'-'*30}\n{answer_result['response'][:500]}...\n{'-'*30}")
+            logger.debug(f"最终响应内容:\n{'-'*30}\n{(answer_result['response'] or '')[:500]}...\n{'-'*30}")
             
             # 返回结果
             if request_stream:

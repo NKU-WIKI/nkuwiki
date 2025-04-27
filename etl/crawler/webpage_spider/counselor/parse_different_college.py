@@ -1,3 +1,5 @@
+import re
+
 from bs4 import BeautifulSoup
 import lxml.etree as etree
 
@@ -31,12 +33,12 @@ url_maps = {
     '南开大学化学实验教学中心': 'https://cec.nankai.edu.cn/',
     '功能高分子材料教育部重点实验室': 'https://klfpm.nankai.edu.cn/',
     '先进能源材料化学教育部重点实验室': 'https://aemc.nankai.edu.cn/',
-    '化学化工学院': 'https://chem.lzu.edu.cn/', '生物国家级实验教学示范中心': 'https://swsyzx.nankai.edu.cn/',
+    '生物国家级实验教学示范中心': 'https://swsyzx.nankai.edu.cn/',
     '南开数学百年': 'http://century.math.nankai.edu.cn/', '日本研究院': 'http://www.riyan.nankai.edu.cn/',
 
     '功能材料与能源化学创新团队': 'https://energy.nankai.edu.cn/', '医学院（英文）': 'http://en.medical.nankai.edu.cn',
     '经济学院（英文）': 'http://en.economics.nankai.edu.cn/',
-    '滨海开发研究院': 'http://nkbinhai.nankai.edu.cn/',
+    '滨海开发研究院': 'http://binhai.nankai.edu.cn/',
     '南开大学国际合作与交流处、港澳台事务办公室、孔子学院工作办公室': 'https://international.nankai.edu.cn/',
     '经济行为与政策模拟实验室': 'https://lebps.nankai.edu.cn/',
     '南开大学（英文）': 'https://en.nankai.edu.cn/',
@@ -94,12 +96,38 @@ url_maps = {
     '南开大学电子信息与光学工程学院': 'https://ceo.nankai.edu.cn',
     '大学基础物理': 'https://dxwl.nankai.edu.cn',
     '天津物理学会': 'https://tjphysics.nankai.edu.cn/',
-    '网络安全学院（英文）': 'https://encyber.nankai.edu.cn/'
+    '网络安全学院（英文）': 'https://encyber.nankai.edu.cn/',
+
+    '南开大学财务信息网':'https://cwc.nankai.edu.cn/',
+    '南开大学机构知识库':'http://ir.nankai.edu.cn/',
+    '南开大学接待中心':'https://nkjd.nankai.edu.cn/',
+    '商学院（ibs）':'https://ibs.nankai.edu.cn/',
+    '中国大学生物理学术竞赛':'https://pt.nankai.edu.cn/',
+    '前沿光子学与声学微结构研究组':'https://chenlab.nankai.edu.cn/',
+    'The Zhiqiang Niu Group Lab of Aqueous Battery':'http://www.niu.nankai.edu.cn/',
+    '南开大学招投标管理办公室':'https://nkzbb.nankai.edu.cn/',
+    '商学院专业学位中心':'https://mba.nankai.edu.cn/'
 }
 url_maps_urls = [i.replace('http://', '').replace('https://', '')[:-1] for i in url_maps.values()]
 
+def get_pushtime_from_url(url: str):
+    """
+    支持解析的示例，https://21cnmarx.nankai.edu.cn/2023/1030/c16905a526941/page.htm
+    """
+    pattern = r'(\d{4})/(\d{2})(\d{2})/'
+    match = re.search(pattern, url)
+    if match:
+        year, month, day = match.groups()
+        date_str = f"{year}-{month}-{day}"
+        # print(date_str)  # 输出：2023-10-30
+    return date_str
 
 def parse_function(ans, url: str):
+    """
+    解析网页内容
+    """
+
+
     if "https://chem.nankai.edu.cn/" in url:
         tree = etree.HTML(ans)
 
@@ -290,6 +318,8 @@ def parse_function(ans, url: str):
         if pushtime is None:
             pushtime = tree.xpath('/html/body/div[4]/div/div/div[2]/div[1]/div[1]/text()')
             pushtime = pushtime[0].strip() if pushtime else None
+            if not pushtime:
+                pushtime = get_pushtime_from_url(url)
 
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
@@ -441,6 +471,9 @@ def parse_function(ans, url: str):
         b = BeautifulSoup(ans, 'lxml')
         t = b.find('td', attrs={'id': 'txt'})
         content = t.text if t else ''
+        if content == '':
+            t = b.find('div', attrs={'class': 'wp_articlecontent'})
+            content = t.text if t else ''
 
         img = tree.xpath('//img[@data-layer="photo"]')
         img = img[0].get('src') if img else None
@@ -720,6 +753,9 @@ def parse_function(ans, url: str):
         # 提取发布时间
         pushtime = tree.xpath('/html/body/div[4]/div[2]/div[1]/div[1]/div/div[2]/span[2]/text()')
         pushtime = pushtime[0].strip() if pushtime else None
+        if not pushtime:
+            pushtime = tree.xpath('/html/body/div[1]/div[3]/div/div[2]/div/div[2]/div[1]/div/text()')
+            pushtime = pushtime[0].strip() if pushtime else None
 
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
@@ -780,7 +816,8 @@ def parse_function(ans, url: str):
         # 提取发布时间
         pushtime = tree.xpath('//*[@id="container"]/div/div/div[2]/p/span[2]/text()')
         pushtime = pushtime[0].strip() if pushtime else None
-
+        if not pushtime:
+            pushtime = get_pushtime_from_url(url)
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
         t = b.find('div', attrs={'class': 'wp_articlecontent'})
@@ -809,6 +846,8 @@ def parse_function(ans, url: str):
         # 提取发布时间
         pushtime = tree.xpath('/html/body/div[1]/div[4]/div/div[2]/div/div[2]/div[1]/div/text()')
         pushtime = pushtime[0].strip() if pushtime else None
+        if not pushtime:
+            pushtime = get_pushtime_from_url(url)
 
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
@@ -1050,6 +1089,9 @@ def parse_function(ans, url: str):
         b = BeautifulSoup(ans, 'lxml')
         t = b.find('div', attrs={'data-eleid': "2"})
         content = t.text if t else ''
+        if content == '':
+            t = b.find('div', attrs={'class': "wp_articlecontent"})
+            content = t.text if t else ''
 
         img = tree.xpath('//img[@data-layer="photo"]')
         img = img[0].get('src') if img else None
@@ -1074,6 +1116,8 @@ def parse_function(ans, url: str):
         # 提取发布时间
         pushtime = tree.xpath('//*[@id="d-container"]/div/div/div/p/span[2]/text()')
         pushtime = pushtime[0].strip() if pushtime else None
+        if not pushtime:
+            pushtime = get_pushtime_from_url(url)
 
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
@@ -1093,7 +1137,7 @@ def parse_function(ans, url: str):
             img = pdf
         return title, pushtime, content, img
 
-    elif 'http://pharmacy.nankai.edu.cn' in url:
+    elif 'pharmacy.nankai.edu.cn' in url:
         tree = etree.HTML(ans)
 
         # 提取标题
@@ -1249,6 +1293,8 @@ def parse_function(ans, url: str):
         # 提取发布时间
         pushtime = tree.xpath('/html/body/div[2]/div[1]/div/div[2]/div[1]/span[2]/text()')
         pushtime = pushtime[0].strip() if pushtime else None
+        if not pushtime:
+            pushtime = get_pushtime_from_url(url)
 
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
@@ -1393,18 +1439,20 @@ def parse_function(ans, url: str):
         title = title[0].strip() if title else None
 
         # 提取发布时间
-        pushtime = tree.xpath('/html/body/div[2]/div[1]/div/div[2]/div[1]/span[2]/text()')
-        pushtime = pushtime[0].strip() if pushtime else None
+        xpath_list = [
+            '/html/body/div[2]/div[1]/div/div[2]/div[1]/span[2]/text()',
+            '//div[@class="laiyuan"]/text()',
+            '//p[@class="con_time"]/text()',
+            '//div[@class="zpxx"]/text()',
+            '/html/body/div[3]/div[2]/div/div[2]/div[1]/div[4]/text()'
+        ]
 
-        if not pushtime:
-            pushtime = tree.xpath('//div[@class="laiyuan"]/text()')
-            pushtime = pushtime[0].strip() if pushtime else None
-            if not pushtime:
-                pushtime = tree.xpath('//p[@class="con_time"]/text()')
-                pushtime = pushtime[0].strip() if pushtime else None
-                if not pushtime:
-                    pushtime = tree.xpath('//div[@class="zpxx"]/text()')
-                    pushtime = pushtime[0].strip() if pushtime else None
+        pushtime = None
+        for xpath in xpath_list:
+            result = tree.xpath(xpath)
+            if result:
+                pushtime = result[0].strip()
+                break
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
         t = b.find('div', attrs={'class': "neirong"})
@@ -1432,6 +1480,9 @@ def parse_function(ans, url: str):
         # 提取发布时间
         pushtime = tree.xpath('/html/body/div[2]/div[1]/div/div[2]/div[1]/span[2]/text()')
         pushtime = pushtime[0].strip() if pushtime else None
+        if not pushtime:
+            pushtime = tree.xpath('//*[@id="d-container"]/div/div/div/p/span[2]/text()')
+            pushtime = pushtime[0].strip() if pushtime else None
 
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
@@ -1478,7 +1529,7 @@ def parse_function(ans, url: str):
                 pdf = 'https://taslab.nankai.edu.cn/' + pdf.get('pdfsrc')
             img = pdf
         return title, pushtime, content, img
-    elif 'http://skleoc.nankai.edu.cn' in url:
+    elif 'skleoc.nankai.edu.cn' in url or 'en-skleoc.nankai.edu.cn' in url:
         tree = etree.HTML(ans)
 
         # 提取标题
@@ -1771,7 +1822,7 @@ def parse_function(ans, url: str):
                 pdf = 'http://en.economics.nankai.edu.cn/' + pdf.get('pdfsrc')
             img = pdf
         return title, pushtime, content, img
-    elif 'nkbinhai.nankai.edu.cn' in url:
+    elif 'binhai.nankai.edu.cn' in url:
         # 滨海开发研究院
         tree = etree.HTML(ans)
 
@@ -1792,12 +1843,12 @@ def parse_function(ans, url: str):
         img = img[0].get('src') if img else None
         if img:
             if 'http' not in img:
-                img = 'http://nkbinhai.nankai.edu.cn/' + img
+                img = 'http://binhai.nankai.edu.cn/' + img
 
         if (img is None) and (content.replace('\xa0', '') == ''):
             pdf = b.find('div', attrs={'class': "wp_pdf_player"})
             if pdf is not None:
-                pdf = 'http://nkbinhai.nankai.edu.cn/' + pdf.get('pdfsrc')
+                pdf = 'http://binhai.nankai.edu.cn/' + pdf.get('pdfsrc')
             img = pdf
         return title, pushtime, content, img
     elif 'international.nankai.edu.cn' in url:
@@ -1869,6 +1920,9 @@ def parse_function(ans, url: str):
         # 提取发布时间
         pushtime = tree.xpath('/html/body/div[1]/div[3]/div/div/div[1]/div/text()')
         pushtime = pushtime[0].strip() if pushtime else None
+        if not pushtime:
+            # 提取发布时间
+            pushtime = get_pushtime_from_url(url)
 
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
@@ -1886,6 +1940,12 @@ def parse_function(ans, url: str):
             if pdf is not None:
                 pdf = 'https://en.nankai.edu.cn/' + pdf.get('pdfsrc')
             img = pdf
+        if not img:
+            img = b.find('video')
+            img = img.get('src') if img else None
+            if img:
+                if 'http' not in img:
+                    img = 'https://en.nankai.edu.cn/' + img
         return title, pushtime, content, img
     elif 'tyb.nankai.edu.cn' in url:
         # 南开大学体育部
@@ -3007,9 +3067,19 @@ def parse_function(ans, url: str):
         title = title[0].strip() if title else None
 
         # 提取发布时间
-        pushtime = tree.xpath('//*[@id="d-container"]/div/div/div/p/span[1]/text()')
-        pushtime = pushtime[0].strip() if pushtime else None
+        xpath_list = [
+            '//*[@id="d-container"]/div/div/div/p/span[1]/text()',
+            '//*[@id="d-container"]/div/div/div/p/span[2]/text()'
+        ]
 
+        pushtime = None
+        for xpath in xpath_list:
+            result = tree.xpath(xpath)
+            if result:
+                pushtime = result[0].strip()
+                break
+        if not pushtime:
+            pushtime = get_pushtime_from_url(url)
         # 提取内容
         b = BeautifulSoup(ans, 'lxml')
         t = b.find('div', attrs={'class': "wp_articlecontent"})
@@ -3026,6 +3096,13 @@ def parse_function(ans, url: str):
             if pdf is not None:
                 pdf = 'https://lib.nankai.edu.cn/' + pdf.get('pdfsrc')
             img = pdf
+        if not img:
+            img = b.find('video')
+            img = img.get('src') if img else None
+            if img:
+                if 'http' not in img:
+                    img = 'https://lib.nankai.edu.cn/' + img
+
         return title, pushtime, content, img
     elif 'imo.nankai.edu.cn' in url:
         # 现代光学研究所\
@@ -3147,6 +3224,12 @@ def parse_function(ans, url: str):
             if pdf is not None:
                 pdf = 'http://enlib.nankai.edu.cn' + pdf.get('pdfsrc')
             img = pdf
+        if not img:
+            img = b.find('video')
+            img = img.get('src') if img else None
+            if img:
+                if 'http' not in img:
+                    img = 'https://lib.nankai.edu.cn/' + img
         return title, pushtime, content, img
 
     elif 'nkuef.nankai.edu.cn' in url:
@@ -3414,24 +3497,329 @@ def parse_function(ans, url: str):
         img = ''
 
         return title, pushtime, content, img
+    elif 'cwc.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://cwc.nankai.edu.cn/2024/0625/c3303a546246/page.htm
+        tree = etree.HTML(ans)
 
+        # 提取标题
+        title = tree.xpath('//*[@id="container"]/div/div[2]/div/h1/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = tree.xpath('//*[@id="container"]/div/div[2]/div/p/span[1]/text()')
+        pushtime = pushtime[0].strip() if pushtime else None
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'wp_articlecontent'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//img[@data-layer="photo"]')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://cwc.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://cwc.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+    
+    elif 'ir.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 http://ir.nankai.edu.cn/Home/Author/9f74b526-5be0-4418-ad5f-a4154e533f79.html
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('//*[@id="body"]/div[2]/div[2]/div[1]/div[1]/div[1]/a/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = tree.xpath('//*[@id="container"]/div/div[2]/div/p/span[1]/text()')
+        pushtime = pushtime[0].strip() if pushtime else None
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'pt10  pos'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//img[@data-layer="photo"]')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://ir.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://ir.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+    elif 'nkjd.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://nkjd.nankai.edu.cn/info/1014/2205.htm
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('/html/body/div[4]/div[2]/form/div/h1[1]/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = tree.xpath('/html/body/div[4]/div[2]/form/div/div[1]/text()')
+        pushtime = pushtime[0].strip() if pushtime else None
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'v_news_content'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//img[@data-layer="photo"]')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://nkjd.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://nkjd.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+    elif 'ibs.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://ibs.nankai.edu.cn/n/3945.html
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('//*[@id="pageIntro"]/div[1]/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = tree.xpath('//*[@id="pageIntro"]/div[2]/span[2]/text()')
+        pushtime = pushtime[0].strip() if pushtime else None
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'para-Content'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//img[@data-layer="photo"]')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://ibs.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://ibs.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+
+    elif 'pt.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://pt.nankai.edu.cn/2018/0204/c8520a89959/page.htm
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('//*[@id="info"]/div/div[2]/div/div/h1/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = get_pushtime_from_url(url)
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'wp_articlecontent'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//div[@class="img_wrapper"]/img')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://pt.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://pt.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+    
+    elif 'chenlab.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://chenlab.nankai.edu.cn/2019/0703/c24516a368504/page.htm
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('//title/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = get_pushtime_from_url(url)
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'wp_articlecontent'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//div[@class="img_wrapper"]/img')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://chenlab.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://chenlab.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+    elif 'www.niu.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://chenlab.nankai.edu.cn/2019/0703/c24516a368504/page.htm
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('//title/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = get_pushtime_from_url(url)
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'wp_articlecontent'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//div[@class="img_wrapper"]/img')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://www.niu.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://www.niu.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+    elif 'nkzbb.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://chenlab.nankai.edu.cn/2019/0703/c24516a368504/page.htm
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('/html/body/div[3]/div/div[1]/h1/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = tree.xpath('/html/body/div[3]/div/div[1]/div/i[1]/text()')
+        pushtime = pushtime[0].strip() if pushtime else None
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'ccontent'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//div[@class="img_wrapper"]/img')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://nkzbb.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://nkzbb.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
+
+    elif 'mba.nankai.edu.cn' in url:
+        # 南开大学财务信息网
+        # 参考链接 https://mba.nankai.edu.cn/2020/0219/c19339a265404/page.htm
+        tree = etree.HTML(ans)
+
+        # 提取标题
+        title = tree.xpath('//title/text()')
+        title = title[0].strip() if title else None
+
+        # 提取发布时间
+        pushtime = get_pushtime_from_url(url)
+
+        # 提取内容
+        b = BeautifulSoup(ans, 'lxml')
+        t = b.find('div', attrs={'class': 'ccontent'})
+        content = t.text if t else ''
+
+        img = tree.xpath('//img[@data-layer="photo"]')
+        img = img[0].get('src') if img else None
+        if img:
+            if 'http' not in img:
+                img = 'https://mba.nankai.edu.cn/' + img
+
+        if (img is None) and (content.replace('\xa0', '') == ''):
+            pdf = b.find('div', attrs={'class': "wp_pdf_player"})
+            if pdf is not None:
+                pdf = 'https://mba.nankai.edu.cn/' + pdf.get('pdfsrc')
+            img = pdf
+        return title, pushtime, content, img
     raise Exception(f'没有对应的解析规则。url = {url}')
 
 
-# 被遗弃的url们
-forgot_urls = ['https://taslab.nankai.edu.cn/2019/0507/c12836a131956/page.htm'
-               'https://21cnmarx.nankai.edu.cn/2019/1008/c16906a208911/page.htm'
-               'https://taslab.nankai.edu.cn/2019/0507/c12836a131956/page.htm',
-               'https://graduate.nankai.edu.cn/2024/0925/c35948a551790/page.psp',
-               'https://chem.nankai.edu.cn/ce/a6/c24065a380582/page.psp',
-               'https://en.fcollege.nankai.edu.cn',
-               'http://www.zk-nankai.com',
-               'http://careers.nankai.edu.cn']
-forgot_netlocs = ['fcollege.nankai.edu.cn',
-                  'en.fcollege.nankai.edu.cn',
-                  'www.zk-nankai.com',
-                  'iam.nankai.edu.cn',
-                  'cim-profile.nankai.edu.cn',
-                  'base_url',
-                  'xxgk.nankai.edu.cn',
-                  'careers.nankai.edu.cn']
+# 被遗弃的netlocs们
+forgot_netlocs = ['old.lib.nankai.edu.cn',
+ 'bbs.nankai.edu.cn',
+ 'less.nankai.edu.cn',
+ 'mem.nankai.edu.cn',
+ 'physics.nankai.edu.cn',
+ '100.nankai.edu.cn',
+ 'nkuefnew.nankai.edu.cn',
+ 'nkda.nankai.edu.cn',
+ 'yanglab.nankai.edu.cn',
+ 'fzs.nankai.edu.cnsky.nankai.edu.cn',
+ 'fzs.nankai.edu.cnlife.less.nankai.edu.cn',
+ 'jss.nankai.edu.cn',
+ 'icia.nankai.edu.cn',
+ 'shsj.nankai.edu.cn',
+ 'zixiuke.nankai.edu.cn',
+ 'ygb.nankai.edu.cn',
+ 'oldphysics.nankai.edu.cn',
+ 'english.nankai.edu.cn',
+ 'recruitment.nankai.edu.cn',
+ 'phys.nankai.edu.cn',
+ 'waizhuan.nankai.edu.cn',
+ 'sms.nankai.edu.cn',
+ 'it.nankai.edu.cn',
+ 'libprint.lib.nankai.edu.cn',
+ 'opac.nankai.edu.cn',
+ 'ic.lib.nankai.edu.cn',
+ 'www.tianjinforum.nankai.edu.cn',
+ 'chempaper.nankai.edu.cn',
+ 'libprint.nankai.edu.cn',
+ 'nktv.nankai.edu.cn',
+ 'hqbzb.nankai.edu.cn',
+ 'zhaoqizheng.nkbinhai.nankai.edu.cn',
+ 'zhouliqun.nkbinhai.nankai.edu.cn',
+ 'radio.nankai.edu.cn',
+ 'keji.nankai.edu.cn',
+ 'sheke.nankai.edu.cn',
+ 'jw.nankai.edu.cn',
+ 'fcollege.nankai.edu.cn',
+ 'en.fcollege.nankai.edu.cn',
+ 'www.zk-nankai.com',
+ 'iam.nankai.edu.cn',
+ 'cim-profile.nankai.edu.cn',
+ 'base_url',
+ 'xxgk.nankai.edu.cn',
+ 'careers.nankai.edu.cn',
+ 'cyber-backend.nankai.edu.cn',
+
+ # 以下是可以访问但是没有什么实际内容的网站
+ 'phy.less.nankai.edu.cn',
+ 'env.less.nankai.edu.cn',
+ 'med.less.nankai.edu.cn',
+ 'sklmcb.less.nankai.edu.cn']
