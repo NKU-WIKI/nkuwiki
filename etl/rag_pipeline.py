@@ -20,13 +20,14 @@ from etl.embedding.ingestion import (
     build_qdrant_filters,
     get_node_content as _get_node_content
 )
+from etl.embedding.hf_embeddings import HuggingFaceEmbedding
 from etl.retrieval.rerankers import SentenceTransformerRerank
 from etl.retrieval.retrievers import QdrantRetriever, BM25Retriever, HybridRetriever
 from etl.embedding.hierarchical import HierarchicalNodeParser, get_leaf_nodes
 from etl.utils.text import QA_TEMPLATE, MERGE_TEMPLATE, generation as _generation
 from etl.embedding.compressors import ContextCompressor
-from etl.utils.model import local_llm_generate as _local_llm_generate
 from config import Config
+from core.utils import register_logger
 
 # 初始化回调管理器和全局设置
 callback_manager = CallbackManager([
@@ -82,18 +83,18 @@ class EasyRAGPipeline:
         self.rerank_fusion_type = self.config.get("etl.retrieval.rerank_fusion_type", 1)
         self.ans_refine_type = self.config.get("etl.retrieval.ans_refine_type", 1)
         self.reindex = self.config.get("etl.retrieval.reindex", False)
-        self.retrieval_type = self.config.get("etl.retrieval.type", 1)
+        self.retrieval_type = self.config.get("etl.retrieval.retrieval_type", 1)
         self.f_topk = self.config.get("etl.retrieval.f_topk", 10)
         self.f_topk_1 = self.config.get("etl.retrieval.f_topk_1", 10)
         self.f_topk_2 = self.config.get("etl.retrieval.f_topk_2", 10)
         self.f_topk_3 = self.config.get("etl.retrieval.f_topk_3", 0)
         self.bm25_type = self.config.get("etl.retrieval.bm25_type", 0)
-        self.embedding_name = self.config.get("etl.embedding.embedding_name", "m3e-base")
-        self.r_topk = self.config.get("etl.retrieval.r_topk", 5)
-        self.r_topk_1 = self.config.get("etl.retrieval.r_topk_1", 5)
-        self.r_embed_bs = self.config.get("etl.retrieval.r_embed_bs", 128)
-        self.reranker_name = self.config.get("etl.retrieval.reranker_name", "")
-        self.r_use_efficient = self.config.get("etl.retrieval.r_use_efficient", False)
+        self.embedding_name = self.config.get("etl.embedding.name", "BAAI/bge-small-zh-v1.5")
+        self.r_topk = self.config.get("etl.reranker.r_topk", 5)
+        self.r_topk_1 = self.config.get("etl.reranker.r_topk_1", 5)
+        self.r_embed_bs = self.config.get("etl.reranker.r_embed_bs", 128)
+        self.reranker_name = self.config.get("etl.reranker.name", "BAAI/bge-reranker-base")
+        self.r_use_efficient = self.config.get("etl.reranker.r_use_efficient", 0)
         self.f_embed_type_1 = self.config.get("etl.embedding.f_embed_type_1", 0)
         self.f_embed_type_2 = self.config.get("etl.embedding.f_embed_type_2", 0)
         self.r_embed_type = self.config.get("etl.embedding.r_embed_type", 0)
@@ -103,13 +104,13 @@ class EasyRAGPipeline:
         self.chunk_overlap = self.config.get("etl.embedding.chunking.chunk_overlap", 200)
         base_path = Path(self.config.get("etl.data.base_path", "/data"))
         self.raw_dir = base_path / 'test'
-        self.index_dir = base_path / self.config.get("etl.data.index.path", "/index")
-        self.qdrant_dir = base_path / self.config.get("etl.data.qdrant.path", "/qdrant")
-        self.qdrant_url = self.config.get("etl.qdrant.url", "http://localhost:6333")
-        self.collection_name = self.config.get("etl.qdrant.collection_name", "nkuwiki")
-        self.vector_size = self.config.get("etl.qdrant.vector_size", 768)
-        self.compress_method = self.config.get("etl.compress.method", None)
-        self.compress_rate = self.config.get("etl.compress.rate", 0.5)
+        self.index_dir = base_path / self.config.get("etl.data.index.path", "/index")[1:]
+        self.qdrant_dir = base_path / self.config.get("etl.data.qdrant.path", "/qdrant")[1:]
+        self.qdrant_url = self.config.get("etl.data.qdrant.url", "http://localhost:6333")
+        self.collection_name = self.config.get("etl.data.qdrant.collection", "nkuwiki")
+        self.vector_size = self.config.get("etl.data.qdrant.vector_size", 1024)
+        self.compress_method = self.config.get("etl.compression.compress_method", "")
+        self.compress_rate = self.config.get("etl.compression.compress_rate", 0.5)
         self.hyde_enabled = self.config.get("etl.hyde.enabled", False)
         self.hyde_merging = self.config.get("etl.hyde.merging", False)
 
@@ -122,6 +123,10 @@ class EasyRAGPipeline:
         self.use_embeddings = True  # 默认启用embeddings
         self.embeddings = None
         self.docstore = None
+                                # 加载稀疏检索
+        self.stp_words = load_stopwords("./etl/utils/nltk_data/hit_stopwords.txt")
+        import jieba
+        self.sparse_tk = jieba.Tokenizer()
 
     async def __aenter__(self):
         """异步上下文管理器入口"""
@@ -226,7 +231,7 @@ class EasyRAGPipeline:
             self.logger.error(f"加载索引状态失败: {str(e)}")
 
     async def async_init(self):
-        # Initialize callback manager
+        # 初始化回调管理器
         if Settings.callback_manager is None:
             Settings.callback_manager = callback_manager
             
@@ -246,13 +251,12 @@ class EasyRAGPipeline:
 
         # 文档预处理成节点
         documents = read_data(self.raw_dir)
-
         print(f"文档读入完成，一共有{len(documents)}个文档")
-        vector_store = None
 
+        # 初始化向量存储
         client, vector_store = await build_vector_store(
             qdrant_url=self.qdrant_url,
-            cache_path=str(self.qdrant_dir),  # 明确提供qdrant_dir作为本地缓存路径
+            cache_path=str(self.qdrant_dir),
             reindex=self.reindex,
             collection_name=self.collection_name,
             vector_size=self.vector_size,
@@ -260,19 +264,38 @@ class EasyRAGPipeline:
         
         # 保存 qdrant_client 用于后续持久化
         self.qdrant_client = client
-
+        self.llm = None
+        
+        # 获取集合信息
         collection_info = await client.get_collection(
             collection_name=self.collection_name,
         )
-        self.llm = None
         
         # 初始化密集检索器 - 无论集合是否为空都需要初始化
         if self.embeddings is not None:
-            f_topk_1 = self.f_topk_1
-            self.dense_retriever = QdrantRetriever(vector_store, self.embeddings, similarity_top_k=f_topk_1)
+            self.dense_retriever = QdrantRetriever(vector_store, self.embeddings, similarity_top_k=self.f_topk_1)
             print(f"创建{self.embedding_name}密集检索器成功")
         
+        # 初始化节点和稀疏检索器
+        need_create_nodes = False
+        
+        # 检查是否已有节点，如果docstore为空或不存在，则需要创建节点
+        if not hasattr(self, 'docstore') or self.docstore is None or not self.docstore.docs:
+            need_create_nodes = True
+        else:
+            # 使用现有docstore中的节点
+            self.nodes = list(self.docstore.docs.values())
+            print(f"从docstore加载了{len(self.nodes)}个节点")
+            
+            # 如果docstore中没有节点，但集合中有点，也需要创建节点
+            if len(self.nodes) == 0 and collection_info.points_count > 0 and len(documents) > 0:
+                need_create_nodes = True
+        
+        # 集合为空，需要创建索引
         if collection_info.points_count == 0:
+            need_create_nodes = True
+            
+            # 构建向量索引管道
             pipeline = build_pipeline(
                 self.llm, 
                 self.embeddings, 
@@ -282,19 +305,26 @@ class EasyRAGPipeline:
                 chunk_overlap=self.chunk_overlap,
                 callback_manager=callback_manager
             )
+            
             # 暂时停止实时索引
             await client.update_collection(
                 collection_name=self.collection_name,
                 optimizer_config=models.OptimizersConfigDiff(indexing_threshold=0),
             )
+            
+            # 执行索引构建
             nodes = await pipeline.arun(documents=documents, show_progress=True, num_workers=1)
+            
             # 恢复实时索引
             await client.update_collection(
                 collection_name=self.collection_name,
                 optimizer_config=models.OptimizersConfigDiff(indexing_threshold=20000),
             )
             print(f"索引建立完成，一共有{len(nodes)}个节点")
-
+        
+        # 需要创建或重新创建节点
+        if need_create_nodes and len(documents) > 0:
+            # 创建预处理管道
             preprocess_pipeline = build_preprocess_pipeline(
                 self.raw_dir,
                 self.chunk_size,
@@ -302,13 +332,12 @@ class EasyRAGPipeline:
                 self.split_type,
                 callback_manager=callback_manager
             )
+            
+            # 处理文档生成节点
             nodes_ = await preprocess_pipeline.arun(documents=documents, show_progress=True, num_workers=1)
-            print(f"索引已建立，一共有{len(nodes_)}个节点")
-
-            # 加载稀疏检索
-            self.stp_words = load_stopwords("./data/nltk/hit_stopwords.txt")
-            import jieba
-            self.sparse_tk = jieba.Tokenizer()
+            print(f"{'重新生成' if len(self.nodes) > 0 else ''}索引完成，一共有{len(nodes_)}个节点")
+            
+            # 根据分割类型处理节点
             if self.split_type == 1:
                 self.nodes = get_leaf_nodes(nodes_)
                 print("叶子节点数量:", len(self.nodes))
@@ -319,10 +348,19 @@ class EasyRAGPipeline:
                 self.nodes = nodes_
                 self.docstore.add_documents(self.nodes)
             
-            # 保存初始化的docstore
+            # 保存docstore
             os.makedirs(self.index_dir, exist_ok=True)
             await self.save_state()
+            print(f"{'成功保存了' if len(self.docstore.docs) > 0 else '无法保存'}docstore，包含{len(self.docstore.docs)}个文档")
+        
+        # 只有当节点存在时创建检索器
+        if hasattr(self, 'nodes') and len(self.nodes) > 0:
+            # 创建node快速索引
+            self.nodeid2idx = dict()
+            for i, node in enumerate(self.nodes):
+                self.nodeid2idx[node.node_id] = i
             
+            # 创建稀疏检索器
             self.sparse_retriever = BM25Retriever.from_defaults(
                 nodes=self.nodes,
                 tokenizer=self.sparse_tk,
@@ -331,220 +369,62 @@ class EasyRAGPipeline:
                 embed_type=self.f_embed_type_2,
                 bm25_type=self.bm25_type,
             )
-
+            print("创建BM25稀疏检索器成功")
+            
+            # 创建路径检索器（如果需要）
             if self.f_topk_3 != 0:
                 self.path_retriever = BM25Retriever.from_defaults(
                     nodes=self.nodes,
                     tokenizer=self.sparse_tk,
                     similarity_top_k=self.f_topk_3,
                     stopwords=self.stp_words,
-                    embed_type=5,  # 4-->file_path 5-->know_path
+                    embed_type=5,  # 5-->know_path
                     bm25_type=self.bm25_type,
                 )
             else:
                 self.path_retriever = None
-
-            if self.split_type == 1:
+            
+            # 如果是层次分割，使用自动合并检索器
+            if self.split_type == 1 and hasattr(self, 'docstore') and self.docstore is not None:
+                storage_context = StorageContext.from_defaults(docstore=self.docstore)
                 self.sparse_retriever = AutoMergingRetriever(
                     self.sparse_retriever,
                     storage_context,
                     simple_ratio_thresh=0.4
                 )
-            print("创建BM25稀疏检索器成功")
-
-            # 创建node快速索引
-            self.nodeid2idx = dict()
-            for i, node in enumerate(self.nodes):
-                self.nodeid2idx[node.node_id] = i
-
-            # 创建检索器
+            
+            # 根据检索类型设置主检索器
             if self.retrieval_type == 1:
                 self.retriever = self.dense_retriever
             elif self.retrieval_type == 2:
                 self.retriever = self.sparse_retriever
             elif self.retrieval_type == 3:
-                f_topk = self.f_topk
                 self.retriever = HybridRetriever(
                     dense_retriever=self.dense_retriever,
                     sparse_retriever=self.sparse_retriever,
-                    retrieval_type=self.retrieval_type,  # 1-dense 2-sparse 3-hybrid
-                    topk=f_topk,
+                    retrieval_type=self.retrieval_type,
+                    topk=self.f_topk,
                 )
                 print("创建混合检索器成功")
         else:
-            # 如果集合已存在，需要从存储加载相关数据
-            # 加载稀疏检索所需数据
-            self.stp_words = load_stopwords("./data/nltk/hit_stopwords.txt")
-            import jieba
-            self.sparse_tk = jieba.Tokenizer()
-            
-            # 使用docstore中的节点
-            if hasattr(self, 'docstore') and self.docstore is not None:
-                self.nodes = list(self.docstore.docs.values())
-                print(f"从docstore加载了{len(self.nodes)}个节点")
-                
-                # 只有当有节点时才创建检索器
-                if len(self.nodes) > 0:
-                    # 创建node快速索引
-                    self.nodeid2idx = dict()
-                    for i, node in enumerate(self.nodes):
-                        self.nodeid2idx[node.node_id] = i
-                    
-                    # 初始化检索器
-                    self.sparse_retriever = BM25Retriever.from_defaults(
-                        nodes=self.nodes,
-                        tokenizer=self.sparse_tk,
-                        similarity_top_k=self.f_topk_2,
-                        stopwords=self.stp_words,
-                        embed_type=self.f_embed_type_2,
-                        bm25_type=self.bm25_type,
-                    )
-                    print("创建BM25稀疏检索器成功")
-                    
-                    if self.f_topk_3 != 0:
-                        self.path_retriever = BM25Retriever.from_defaults(
-                            nodes=self.nodes,
-                            tokenizer=self.sparse_tk,
-                            similarity_top_k=self.f_topk_3,
-                            stopwords=self.stp_words,
-                            embed_type=5,
-                            bm25_type=self.bm25_type,
-                        )
-                    else:
-                        self.path_retriever = None
-                    
-                    if self.split_type == 1:
-                        storage_context = StorageContext.from_defaults(docstore=self.docstore)
-                        self.sparse_retriever = AutoMergingRetriever(
-                            self.sparse_retriever,
-                            storage_context,
-                            simple_ratio_thresh=0.4
-                        )
-                    
-                    # 创建检索器
-                    if self.retrieval_type == 1:
-                        self.retriever = self.dense_retriever
-                    elif self.retrieval_type == 2:
-                        self.retriever = self.sparse_retriever
-                    elif self.retrieval_type == 3:
-                        f_topk = self.f_topk
-                        self.retriever = HybridRetriever(
-                            dense_retriever=self.dense_retriever,
-                            sparse_retriever=self.sparse_retriever,
-                            retrieval_type=self.retrieval_type,
-                            topk=f_topk,
-                        )
-                        print("创建混合检索器成功")
-                else:
-                    print("docstore中没有节点，将重新生成节点和检索器")
-                    
-                    # 在docstore为空但collection已存在的情况下，重新生成节点
-                    if collection_info.points_count > 0 and len(documents) > 0:
-                        print(f"集合中有{collection_info.points_count}个点，但docstore为空，重新生成节点")
-                        
-                        # 重新创建节点
-                        preprocess_pipeline = build_preprocess_pipeline(
-                            self.raw_dir,
-                            self.chunk_size,
-                            self.chunk_overlap,
-                            self.split_type,
-                            callback_manager=callback_manager
-                        )
-                        nodes_ = await preprocess_pipeline.arun(documents=documents, show_progress=True, num_workers=1)
-                        print(f"重新生成了{len(nodes_)}个节点")
-                        
-                        # 加载稀疏检索
-                        self.stp_words = load_stopwords("./data/nltk/hit_stopwords.txt")
-                        import jieba
-                        self.sparse_tk = jieba.Tokenizer()
-                        
-                        if self.split_type == 1:
-                            self.nodes = get_leaf_nodes(nodes_)
-                            print("叶子节点数量:", len(self.nodes))
-                            self.docstore = SimpleDocumentStore()
-                            self.docstore.add_documents(self.nodes)
-                            storage_context = StorageContext.from_defaults(docstore=self.docstore)
-                        else:
-                            self.nodes = nodes_
-                            self.docstore.add_documents(self.nodes)
-                        
-                        # 保存初始化的docstore
-                        os.makedirs(self.index_dir, exist_ok=True)
-                        await self.save_state()
-                        print(f"成功保存了docstore，包含{len(self.docstore.docs)}个文档")
-                        
-                        # 创建node快速索引
-                        self.nodeid2idx = dict()
-                        for i, node in enumerate(self.nodes):
-                            self.nodeid2idx[node.node_id] = i
-                        
-                        # 初始化检索器
-                        self.sparse_retriever = BM25Retriever.from_defaults(
-                            nodes=self.nodes,
-                            tokenizer=self.sparse_tk,
-                            similarity_top_k=self.f_topk_2,
-                            stopwords=self.stp_words,
-                            embed_type=self.f_embed_type_2,
-                            bm25_type=self.bm25_type,
-                        )
-                        print("创建BM25稀疏检索器成功")
-                        
-                        if self.f_topk_3 != 0:
-                            self.path_retriever = BM25Retriever.from_defaults(
-                                nodes=self.nodes,
-                                tokenizer=self.sparse_tk,
-                                similarity_top_k=self.f_topk_3,
-                                stopwords=self.stp_words,
-                                embed_type=5,
-                                bm25_type=self.bm25_type,
-                            )
-                        else:
-                            self.path_retriever = None
-                        
-                        if self.split_type == 1:
-                            self.sparse_retriever = AutoMergingRetriever(
-                                self.sparse_retriever,
-                                storage_context,
-                                simple_ratio_thresh=0.4
-                            )
-                        
-                        # 创建检索器
-                        if self.retrieval_type == 1:
-                            self.retriever = self.dense_retriever
-                        elif self.retrieval_type == 2:
-                            self.retriever = self.sparse_retriever
-                        elif self.retrieval_type == 3:
-                            f_topk = self.f_topk
-                            self.retriever = HybridRetriever(
-                                dense_retriever=self.dense_retriever,
-                                sparse_retriever=self.sparse_retriever,
-                                retrieval_type=self.retrieval_type,
-                                topk=f_topk,
-                            )
-                            print("创建混合检索器成功")
-                    else:
-                        print("docstore中没有节点，将使用默认密集检索器")
-                        self.nodes = []
-                        self.retriever = self.dense_retriever
-                        self.sparse_retriever = None
-                        self.path_retriever = None
-            else:
-                print("警告：docstore不可用，将使用默认密集检索器")
-                self.nodes = []
-                self.retriever = self.dense_retriever
-                self.sparse_retriever = None
-                self.path_retriever = None
+            # 如果没有可用节点，使用默认密集检索器
+            print("没有可用节点，使用默认密集检索器")
+            self.nodes = []
+            self.retriever = self.dense_retriever
+            self.sparse_retriever = None
+            self.path_retriever = None
+            self.nodeid2idx = dict()
 
         # 创建重排器
         self.reranker = None
-       
-        if(self.reranker_name): 
+        if self.reranker_name: 
             self.reranker = SentenceTransformerRerank(
                 top_n=self.r_topk,
                 model=self.reranker_name,
             )
             print(f"创建{self.reranker_name}重排器成功")
      
+        # 创建压缩器（如果启用）
         if self.compress_method:
             self.compressor = ContextCompressor(
                 self.compress_method,

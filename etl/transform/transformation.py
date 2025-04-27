@@ -104,15 +104,23 @@ class CustomTitleExtractor(BaseExtractor):
     async def aextract(self, nodes: Sequence[BaseNode]) -> list[dict]:
         try:
             document_title = nodes[0].text.split("\n")[0]
-            last_file_path = nodes[0].metadata["file_path"]
+            last_file_path = nodes[0].metadata.get("file_path", "")
         except:
             document_title = ""
             last_file_path = ""
         metadata_list = []
         for node in nodes:
-            if node.metadata["file_path"] != last_file_path:
+            # 安全获取file_path，如果不存在则提供默认值
+            current_file_path = node.metadata.get("file_path", "")
+            
+            # 如果node没有file_path属性，添加一个空值
+            if "file_path" not in node.metadata:
+                node.metadata["file_path"] = ""
+                
+            if current_file_path != last_file_path:
                 document_title = node.text.split("\n")[0]
-                last_file_path = node.metadata["file_path"]
+                last_file_path = current_file_path
+                
             node.metadata["document_title"] = document_title
             metadata_list.append(node.metadata)
 

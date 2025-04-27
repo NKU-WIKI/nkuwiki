@@ -13,7 +13,7 @@ class HuggingFaceEmbedding(BaseEmbedding):
     )
     
     model_name: str = Field(
-        default="BAAI/bge-small-en-v1.5",
+        default="BAAI/bge-small-zh-v1.5",  # 改为一个兼容的模型
         description="Sentence transformers模型名称"
     )
     normalize: bool = Field(
@@ -28,8 +28,12 @@ class HuggingFaceEmbedding(BaseEmbedding):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self._embed_type = kwargs.get('embed_type', 1)
+        # 处理模型名称，移除可能的"sentence-transformers/"前缀
+        model_name = kwargs.get('model_name', self.model_name)
+        if model_name.startswith("sentence-transformers/"):
+            model_name = model_name.replace("sentence-transformers/", "")
         self._model = SentenceTransformer(
-            self.model_name,
+            model_name,
             device=kwargs.get('device', 'cpu'),
             trust_remote_code=True
         )
