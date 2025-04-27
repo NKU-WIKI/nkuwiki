@@ -240,6 +240,19 @@ server {
     add_header X-Frame-Options SAMEORIGIN;
     add_header X-XSS-Protection "1; mode=block";
 
+    # mihomo 面板配置
+    location /mihomo {
+        alias /var/www/html/mihomo;
+        index index.html;
+        try_files $uri $uri/ /mihomo/index.html;
+    }
+
+    # mihomo 静态资源
+    location /mihomo/assets/ {
+        alias /var/www/html/mihomo/assets/;
+        expires 1d;
+    }
+
     # mihomo API专用配置
     location ^~ /mihomo-api/ {
         proxy_pass http://127.0.0.1:9090/;
@@ -371,6 +384,19 @@ server {
     add_header 'Access-Control-Allow-Origin' '*' always;
     add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
     add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range' always;
+
+    # mihomo 面板配置
+    location /mihomo {
+        alias /var/www/html/mihomo;
+        index index.html;
+        try_files \$uri \$uri/ /mihomo/index.html;
+    }
+
+    # mihomo 静态资源
+    location /mihomo/assets/ {
+        alias /var/www/html/mihomo/assets/;
+        expires 1d;
+    }
 
     # mihomo API专用配置
     location ^~ /mihomo-api/ {
