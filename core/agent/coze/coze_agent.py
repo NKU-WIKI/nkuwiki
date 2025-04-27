@@ -13,6 +13,7 @@ from typing import List, Dict, Generator
 import time
 from loguru import logger
 import uuid
+import httpx
 
 # 确保项目根目录在 sys.path 中
 current_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -42,6 +43,10 @@ class CozeAgent(Agent):
         """初始化Coze智能体"""
         super().__init__()
         self.sessions = SessionManager(ChatGPTSession, model=config.get("model") or "coze")
+        
+        # 强制清空代理环境变量，保证 cozepy 直连
+        for var in ["http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]:
+            os.environ.pop(var, None)
         
         # 获取API密钥
         self.api_key = config.get("core.agent.coze.api_key", "")
@@ -421,7 +426,7 @@ class CozeAgent(Agent):
             logger.error(f"获取对话消息失败: {str(e)}")
             return []
     
-    def chat_with_new_conversation(self, query, stream=True, openid="default_user", meta_data=None):
+    def chat_with_new_conversation(self, query, stream=True, openid="default_user", meta_data=None, http=False):
         """创建新对话并发送消息
         
         Args:
@@ -429,12 +434,123 @@ class CozeAgent(Agent):
             stream: 是否使用流式响应，默认True
             openid: 用户唯一标识，默认"default_user"
             meta_data: 元数据，默认None
-            
+            http: 是否直接用http请求coze.cn，不用SDK
         Returns:
             如果stream=True，返回一个生成器，用于流式输出
             如果stream=False，返回一个字典: {"response": 回复内容, "suggested_questions": 推荐问题列表}
         """
         try:
+            if http:
+                # 直接HTTP请求coze.cn v3接口
+                base_url = getattr(self, "base_url", "https://api.coze.cn")
+                url = base_url.rstrip("/") + "/v3/chat"
+                headers = {
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                }
+                additional_messages = [
+                    {
+                        "role": "user",
+                        "type": "question",
+                        "content": query,
+                        "content_type": "text",
+                        "meta_data": meta_data or None
+                    }
+                ]
+                data = {
+                    "bot_id": self.bot_id,
+                    "user_id": openid,
+                    "additional_messages": additional_messages,
+                    "stream": stream
+                }
+                if stream:
+                    # 流式响应
+                    def content_generator():
+                        with httpx.stream("POST", url, headers=headers, json=data, timeout=30.0) as resp:
+                            for line in resp.iter_lines():
+                                if not line:
+                                    continue
+                                try:
+                                    obj = json.loads(line)
+                                    # v3流式返回: event/data
+                                    if obj.get("event") == "conversation.message.delta":
+                                        event_data = obj.get("data")
+                                        if event_data:
+                                            message = json.loads(event_data)
+                                            content = message.get("content", "")
+                                            if content:
+                                                yield content
+                                except Exception:
+                                    continue
+                    return content_generator()
+                else:
+                    # 非流式响应
+                    resp = httpx.post(url, headers=headers, json=data, timeout=30.0)
+                    resp_data = resp.json().get("data", {})
+                    conversation_id = resp_data.get("conversation_id")
+                    logger.debug(f"创建新对话成功: {conversation_id}")
+                    chat_id = resp_data.get("id")
+                    status = resp_data.get("status")
+                    # 轮询直到终态
+                    poll_count = 0
+                    max_poll = 30
+                    while status == "in_progress":
+                        time.sleep(1)
+                        poll_count += 1
+                        retrieve_url = (
+                            base_url.rstrip("/") +
+                            f"/v3/chat/retrieve?conversation_id={conversation_id}&chat_id={chat_id}"
+                        )
+                        try:
+                            retrieve_resp = httpx.get(retrieve_url, headers=headers, timeout=30.0)
+                            status = retrieve_resp.json().get("status")
+                        except httpx.TimeoutException:
+                            logger.warning(f"轮询超时，重试中...（第{poll_count}次）")
+                            continue
+                        except Exception as e:
+                            logger.error(f"轮询异常: {str(e)}，重试中...（第{poll_count}次）")
+                            continue
+                        if poll_count > max_poll:
+                            logger.error("轮询超时，终止等待")
+                            break  # 最多等30秒
+                    # 获取消息详情
+                    msg_url = (
+                        base_url.rstrip("/") +
+                        f"/v3/chat/message/list?conversation_id={conversation_id}&chat_id={chat_id}"
+                    )
+                    try:
+                        msg_resp = httpx.get(msg_url, headers=headers, timeout=30.0)
+                    except httpx.TimeoutException:
+                        logger.error("获取消息详情超时")
+                        return {"response": None, "suggested_questions": []}
+                    except Exception as e:
+                        logger.error(f"获取消息详情异常: {str(e)}")
+                        return {"response": None, "suggested_questions": []}
+                    response = None
+                    suggested_questions = []
+                    for msg in msg_resp.json().get("data", []):
+                        if msg.get("role") == "assistant" and msg.get("type") == "answer" and msg.get("content"):
+                            if not response:
+                                response = msg.get("content")
+                        if msg.get("type") == "follow_up":
+                            try:
+                                content = json.loads(msg.get("content", ""))
+                                if isinstance(content, list):
+                                    suggested_questions.extend(content)
+                                elif isinstance(content, dict):
+                                    for k in ["questions", "follow_ups", "suggestions"]:
+                                        if k in content:
+                                            suggested_questions.extend(content[k])
+                                else:
+                                    suggested_questions.append(msg.get("content", ""))
+                            except Exception:
+                                suggested_questions.append(msg.get("content", ""))
+                    logger.debug(f"获取消息详情成功: {str(response)[:50]}...")
+                    return {
+                        "response": response,
+                        "suggested_questions": suggested_questions
+                    }
+            # SDK原有逻辑
             # 流式响应
             if stream:
                 logger.debug(f"创建新对话并发送消息(流式): {query[:30]}...")

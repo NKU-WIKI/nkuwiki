@@ -34,17 +34,17 @@ async def rewrite_query(query: str, rewrite_bot_tag = "rewrite") -> str:
         start_time = time.time()
         
         try:
-            # 使用异步超时控制，最多等待10秒
+            # 使用异步超时控制，最多等待30秒
             async def _rewrite_with_timeout():
                 # 创建可取消的任务
                 loop = asyncio.get_event_loop()
                 response = await loop.run_in_executor(None, lambda: rewrite_agent.chat_with_new_conversation(prompt, stream=False))
                 return response
                 
-            response = await asyncio.wait_for(_rewrite_with_timeout(), timeout=10.0)
+            response = await asyncio.wait_for(_rewrite_with_timeout(), timeout=30.0)
             
         except asyncio.TimeoutError:
-            logger.warning(f"改写请求超时（>10秒），返回原始查询")
+            logger.warning(f"改写请求超时（>30秒），返回原始查询")
             return query
             
         elapsed = time.time() - start_time
@@ -313,7 +313,7 @@ async def rag_endpoint(request: Request):
             
             # 记录最终结果信息
             logger.debug(f"RAG处理完成，耗时: {total_time:.2f}秒")
-            logger.debug(f"最终响应内容:\n{'-'*30}\n{answer_result['response'][:500]}...\n{'-'*30}")
+            logger.debug(f"最终响应内容:\n{'-'*30}\n{(answer_result['response'] or '')[:500]}...\n{'-'*30}")
             
             # 返回结果
             if request_stream:
