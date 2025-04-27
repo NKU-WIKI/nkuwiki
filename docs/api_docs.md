@@ -921,8 +921,20 @@ API接口的参数类型规范如下：
 **响应**：
 
 ```json
-{"code":200,"message":"success","data":{"20":{"exist":true,"is_liked":false,"is_favorited":false,"is_author":false,"is_following":false,"like_count":0,"favorite_count":0,"comment_count":0,"view_count":2}},"details":null,"timestamp":"2025-04-12T21:08:44.098526","pagination":null}
+{"code":200,"message":"success","data":{"20":{"exist":true,"is_liked":false,"is_favorited":false,"is_commented":false,"is_author":false,"is_following":false,"like_count":0,"favorite_count":0,"comment_count":0,"view_count":2}},"details":null,"timestamp":"2025-04-12T21:08:44.098526","pagination":null}
 ```
+
+**响应字段说明**：
+- `exist` - 帖子是否存在
+- `is_liked` - 当前用户是否已点赞该帖子
+- `is_favorited` - 当前用户是否已收藏该帖子
+- `is_commented` - 当前用户是否对该帖子有评论
+- `is_author` - 当前用户是否为该帖作者
+- `is_following` - 当前用户是否已关注该帖作者
+- `like_count` - 点赞数
+- `favorite_count` - 收藏数
+- `comment_count` - 评论数
+- `view_count` - 浏览数
 
 
 ## 三、评论接口

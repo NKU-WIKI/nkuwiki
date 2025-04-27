@@ -765,11 +765,14 @@ async def get_post_status(
             p.comment_count,
             p.view_count,
             MAX(CASE WHEN a.action_type = 'like' THEN 1 ELSE 0 END) AS is_liked,
-            MAX(CASE WHEN a.action_type = 'favorite' THEN 1 ELSE 0 END) AS is_favorited
+            MAX(CASE WHEN a.action_type = 'favorite' THEN 1 ELSE 0 END) AS is_favorited,
+            MAX(CASE WHEN c.id IS NOT NULL THEN 1 ELSE 0 END) AS is_commented
         FROM 
             wxapp_post p
         LEFT JOIN 
             wxapp_action a ON p.id = a.target_id AND a.openid = %s AND a.target_type = 'post'
+        LEFT JOIN 
+            wxapp_comment c ON c.resource_id = p.id AND c.resource_type = 'post' AND c.openid = %s AND c.is_deleted = 0
         WHERE 
             p.id IN %s
         GROUP BY 
@@ -779,7 +782,7 @@ async def get_post_status(
         # 执行联合查询
         posts_with_actions = await async_execute_custom_query(
             status_sql,
-            [openid, openid, tuple(post_ids)]
+            [openid, openid, openid, tuple(post_ids)]
         )
         
         # 查询当前用户关注的用户列表
@@ -813,6 +816,7 @@ async def get_post_status(
                         "exist": True,
                         "is_liked": bool(post.get("is_liked")),
                         "is_favorited": bool(post.get("is_favorited")),
+                        "is_commented": bool(post.get("is_commented")),
                         "is_author": bool(post.get("is_author")),
                         "is_following": author_openid in following_openids,
                         "like_count": post.get("like_count", 0),
@@ -828,6 +832,7 @@ async def get_post_status(
                     "exist": False,
                     "is_liked": False,
                     "is_favorited": False,
+                    "is_commented": False,
                     "is_author": False,
                     "is_following": False,
                     "like_count": 0,

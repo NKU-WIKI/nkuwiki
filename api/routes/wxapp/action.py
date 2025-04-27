@@ -173,17 +173,12 @@ async def create_comment(request: Request):
                     # 对评论的回复应该每次都产生通知
                     logger.debug(f"创建评论回复通知前检查: resource_id={resource_id}, comment_id={comment_id}, parent_openid={parent_comment['openid']}")
                     
-                    # 输出到终端方便调试
-                    print(f"创建评论回复通知: resource_id={resource_id}, resource_type={resource_type}, comment_id={comment_id}, parent_id={parent_id}")
-                    print(f"creator_openid={openid}, parent_openid={parent_comment['openid']}")
-                    
                     # 获取发送者的头像
                     sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
                     sender_info = await async_execute_custom_query(sender_info_sql, [openid])
                     sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
                     sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
                     
-                    # 使用直接执行SQL的方式插入通知
                     notification_sql = """
                     INSERT INTO wxapp_notification (
                         openid, title, content, type, is_read, sender, target_id, 
@@ -197,61 +192,32 @@ async def create_comment(request: Request):
                         f"用户回复了你的评论",
                         "comment",
                         0,
-                        json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储，添加avatar
-                        int(comment_id),
-                        "comment",
+                        json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),
+                        int(parent_id),  # target_id为父评论id
+                        "comment",      # target_type为comment
                         1
                     ]
-                    logger.debug(f"SQL: {notification_sql}")
-                    logger.debug(f"参数: {notification_params}")
-                    
-                    # 执行数据库查询前输出终端信息
-                    print(f"执行SQL: {notification_sql}")
-                    print(f"参数: {notification_params}")
-                    
                     try:
-                        # 使用execute_query直接执行SQL
-                        notification_id = execute_query(
+                        notification_id = await async_execute_custom_query(
                             notification_sql, 
                             notification_params, 
                             fetch=False
                         )
                         logger.debug(f"评论回复通知创建结果: notification_id={notification_id}")
-                        print(f"评论回复通知创建结果: notification_id={notification_id}")
-                        
-                        # 验证通知是否实际创建
-                        check_sql = "SELECT * FROM wxapp_notification WHERE target_id = %s AND type = 'comment' ORDER BY id DESC LIMIT 1"
-                        check_result = execute_query(check_sql, [int(comment_id)])
-                        logger.debug(f"检查通知创建结果: {check_result}")
-                        print(f"检查通知创建结果: {check_result}")
-                        
-                        if not notification_id:
-                            logger.error(f"评论回复通知创建失败，返回结果: {notification_id}")
                     except Exception as ne:
                         logger.exception(f"创建评论回复通知异常: {str(ne)}")
                         logger.error(traceback.format_exc())
-                        print(f"创建评论回复通知异常: {str(ne)}")
             except Exception as pe:
                 logger.exception(f"获取父评论异常: {str(pe)}")
                 logger.error(traceback.format_exc())
-                print(f"获取父评论异常: {str(pe)}")
         elif resource["openid"] != openid:
             try:
-                # 对帖子的评论应该每次都产生通知
-                logger.debug(f"创建帖子评论通知前检查: resource_id={resource_id}, comment_id={comment_id}")
-                
-                # 输出到终端方便调试
-                print(f"创建帖子评论通知: resource_id={resource_id}, resource_type={resource_type}, comment_id={comment_id}")
-                print(f"creator_openid={openid}, resource_owner_openid={resource['openid']}")
-                print(f"条件判断: resource['openid']({resource['openid']}) != openid({openid}) = {resource['openid'] != openid}")
-                
-                # 获取发送者的头像
+                # 顶级评论，通知资源作者
+                logger.debug(f"创建资源评论通知前检查: resource_id={resource_id}, comment_id={comment_id}")
                 sender_info_sql = "SELECT nickname, avatar FROM wxapp_user WHERE openid = %s LIMIT 1"
                 sender_info = await async_execute_custom_query(sender_info_sql, [openid])
                 sender_avatar = sender_info[0].get("avatar", "") if sender_info else ""
                 sender_nickname = sender_info[0].get("nickname", "") if sender_info else ""
-                
-                # 使用async_execute_custom_query直接执行SQL
                 notification_sql = """
                 INSERT INTO wxapp_notification (
                     openid, title, content, type, is_read, sender, target_id, 
@@ -263,53 +229,27 @@ async def create_comment(request: Request):
                 notification_params = [
                     resource["openid"],
                     "收到新评论",
-                    f"用户评论了你的帖子「{safe_title}」",
+                    f"用户评论了你的{ '帖子' if resource_type == 'post' else '知识' }「{safe_title}」",
                     "comment",
                     0,
-                    json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),  # 将sender作为JSON对象存储
-                    int(comment_id),
-                    "comment",
+                    json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}),
+                    int(resource_id),   # target_id为资源id
+                    resource_type,      # target_type为post/knowledge
                     1
                 ]
-                
-                print(f"执行SQL: {notification_sql}")
-                print(f"参数: {notification_params}")
-                
                 try:
-                    # 使用异步方式执行SQL
                     notification_id = await async_execute_custom_query(
                         notification_sql, 
                         notification_params, 
                         fetch=False
                     )
-                    print(f"帖子评论通知创建结果: notification_id={notification_id}")
-                    
-                    # 验证通知是否实际创建
-                    check_sql = "SELECT * FROM wxapp_notification WHERE target_id = %s AND type = 'comment' ORDER BY id DESC LIMIT 1"
-                    check_result = await async_execute_custom_query(check_sql, [int(comment_id)])
-                    print(f"检查通知创建结果: {check_result}")
-                    
-                    if not check_result:
-                        print("警告: 无法找到刚刚创建的通知记录，尝试直接使用mysql命令插入")
-                        # 备用方案: 使用mysql命令直接插入
-                        safe_title_escape = safe_title.replace("'", "\\'").replace('"', '\\"')
-                        # 获取用户头像和昵称用于备用方案
-                        sender_avatar = sender_info[0].get("avatar", "").replace("'", "\\'").replace('"', '\\"') if sender_info else ""
-                        sender_nickname = sender_info[0].get("nickname", "").replace("'", "\\'").replace('"', '\\"') if sender_info else ""
-                        sender_json = json.dumps({"openid": openid, "avatar": sender_avatar, "nickname": sender_nickname}).replace("'", "\\'")
-                        os_command = f"""
-                        mysql -u root -p"root" -e "INSERT INTO nkuwiki.wxapp_notification (openid, title, content, type, is_read, sender, target_id, target_type, status, create_time, update_time) VALUES ('{resource['openid']}', '收到新评论', '用户评论了你的帖子「{safe_title_escape}」', 'comment', 0, '{sender_json}', {int(comment_id)}, 'comment', 1, NOW(), NOW());"
-                        """
-                        print(f"执行备用命令: {os_command}")
-                        os.system(os_command)
-                    
+                    logger.debug(f"资源评论通知创建结果: notification_id={notification_id}")
                 except Exception as ne:
-                    print(f"创建帖子评论通知异常: {str(ne)}")
-                    print(traceback.format_exc())
-                
+                    logger.exception(f"创建资源评论通知异常: {str(ne)}")
+                    logger.error(traceback.format_exc())
             except Exception as pe:
-                print(f"处理帖子评论通知异常: {str(pe)}")
-                print(traceback.format_exc())
+                logger.exception(f"处理资源评论通知异常: {str(pe)}")
+                logger.error(traceback.format_exc())
 
         return Response.success(data=comment)
 
