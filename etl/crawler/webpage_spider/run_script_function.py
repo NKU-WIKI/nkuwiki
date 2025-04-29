@@ -17,8 +17,9 @@ def run_counselor_script():
     path1 = 'nk_2_update.db'
     if 'counselor' not in os.getcwd():
         path1 = os.path.join('./counselor', path1)
-    print(path1)
-    conn = sqlite3.connect(path1)
+    absolute_path = os.path.abspath(path1)
+    print(absolute_path)
+    conn = sqlite3.connect(absolute_path)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS entries (
