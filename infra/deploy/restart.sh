@@ -1,1 +1,0 @@
-sudo systemctl restart nkuwiki.service
