@@ -38,7 +38,7 @@ def run_counselor_script():
     conn.close()
     # 使用 subprocess 模块运行外部脚本
     project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'counselor'))
-    subprocess.run(['python', 'main.py'], cwd=project_path)
+    subprocess.run(['python3', 'main.py'], cwd=project_path)
     from from_sqlite_to_mysql import export_web_to_mysql
     export_web_to_mysql(logger=logging)
 
