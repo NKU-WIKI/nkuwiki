@@ -90,7 +90,7 @@ def export_web_to_mysql(logger):
     init_database(logger)
     offset = int(os.getenv('offset'))
 
-    conn = sqlite3.connect('./counselor/nk_2_update.db')
+    conn = sqlite3.connect(os.path.join('./counselor','nk_2_update.db'))
     cursor = conn.cursor()
     cursor.execute("SELECT title,content,url,push_time_date,source FROM entries ORDER BY push_time_date DESC OFFSET ?",(offset,))
     # 获取列名并转换结果

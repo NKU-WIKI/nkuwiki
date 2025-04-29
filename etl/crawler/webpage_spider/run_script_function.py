@@ -9,12 +9,14 @@ def run_counselor_script():
         level=logging.INFO,  # 设置日志级别为 INFO
         format="%(asctime)s - %(levelname)s - %(message)s",  # 设置日志格式
         datefmt="%Y-%m-%d %H:%M:%S",  # 设置时间格式
-        handlers=[logging.StreamHandler()]  # 指定日志输出到控制台
+        handlers=[
+            logging.FileHandler('log.txt', encoding='utf-8')  # 指定日志输出到本地的 log.txt 文件，使用 UTF-8 编码
+        ]
     )
 
     path1 = 'nk_2_update.db'
     if 'counselor' not in os.getcwd():
-        path1 = './counselor/' + path1
+        path1 = os.path.join('./counselor', path1)
     print(path1)
     conn = sqlite3.connect(path1)
     cursor = conn.cursor()
