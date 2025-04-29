@@ -15,9 +15,10 @@ def run_counselor_script():
     )
 
     path1 = 'nk_2_update.db'
-    if 'counselor' not in os.getcwd():
-        path1 = os.path.join('./counselor', path1)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path1 = os.path.join(script_dir, 'counselor', path1)
     absolute_path = os.path.abspath(path1)
+
     print(absolute_path)
     conn = sqlite3.connect(absolute_path)
     cursor = conn.cursor()

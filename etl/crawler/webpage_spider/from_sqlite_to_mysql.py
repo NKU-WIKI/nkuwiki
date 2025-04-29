@@ -89,8 +89,12 @@ def export_web_to_mysql(logger):
     # 初始化数据库
     init_database(logger)
     offset = int(os.getenv('offset'))
-    path1 = os.path.join('./counselor', 'nk_2_update.db')
+
+    path1 = 'nk_2_update.db'
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path1 = os.path.join(script_dir, 'counselor', path1)
     absolute_path = os.path.abspath(path1)
+
     conn = sqlite3.connect(absolute_path)
     cursor = conn.cursor()
     cursor.execute("SELECT title,content,url,push_time_date,source FROM entries ORDER BY push_time_date DESC OFFSET ?",(offset,))
