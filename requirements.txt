@@ -125,4 +125,5 @@ psutil>=5.9.0
 # 网页爬虫 (Spider for website)
 # ========================================
 scrapy==2.11.1
+mysql-connector-python==8.0.32
 
