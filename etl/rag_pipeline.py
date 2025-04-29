@@ -735,7 +735,7 @@ if __name__ == "__main__":
                 print(f"- 使用的检索器类型: {type(pipeline.retriever).__name__ if hasattr(pipeline, 'retriever') else '无'}")
                 
                 query = {
-                    "query": "博士"
+                    "query": "南开"
                 }
                 print(f"\n正在处理查询: '{query['query']}'")
                 res = await pipeline.run(query)
