@@ -492,7 +492,7 @@ async def search_knowledge(
 async def search_endpoint(
     query: str = Query(..., description="搜索关键词"),
     openid: str = Query(..., description="用户openid"),
-    platform: Optional[str] = Query(None, description="平台标识(wechat,website,market,wxapp)，多个用逗号分隔"),
+    platform: Optional[str] = Query("wechat,website,market,wxapp", description="平台标识(wechat,website,market,wxapp)，多个用逗号分隔"),
     tag: Optional[str] = Query(None, description="标签，多个用逗号分隔"),
     max_results: int = Query(10, description="单表最大结果数"),
     page: int = Query(1, description="分页页码"),
