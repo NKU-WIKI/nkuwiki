@@ -11,6 +11,7 @@
 - 🤖 企微机器人参考[三步将nkuwiki bot添加到你的群](https://nankai.feishu.cn/wiki/UT4EwiPxmisBdOk3d1ycnGR2nve?from=from_copylink)
 - 🔎 微信服务号：nkuwiki知识社区（无限制，用户体验更好）
 - 🗝️ 微信订阅号 nkuwiki（有消极回复限制）
+- 🔥 微信小程序：nku元智wiki
 
 ## 🎯 愿景与目标
 
