@@ -2,7 +2,11 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)
 
-<img src="./docs/assets/wiki7.png" width="400" alt="nkuwiki logo" />
+<img src="./docs/assets/logo-lc-green.png" width="400" alt="nkuwiki logo" />
+
+## demo
+
+![demo](./docs/assets/wxapp.gif)
 
 ## 🚀 立即体验
 
@@ -90,24 +94,25 @@ nkuwiki_service_manager.sh deploy 8000 8 # 8000~8007端口8个实例，nginx负�
 
 - **core/**: 核心功能模块
   - agent/: 智能体对话实现
-  - auth/: 认证授权
   - utils/: 通用工具
 
 - **etl/**: 数据处理模块
   - crawler/: 数据采集
   - transform/: 数据转换
   - load/: 数据加载
-  - embedding/: 向量化处理
-  - retrieval/: 检索服务
+  - embedding/: 向量嵌入
+  - retrieval/: 知识检索
 
 - **api/**: API服务模块
   - models/: 数据模型
-  - routers/: 路由处理
-  - database/: 数据库操作
+  - routes/: 路由处理
+  - common/: 通用工具
 
 - **services/**: 多渠道服务
   - app/: 微信小程序
   - wechatmp/: 微信公众号
+  - wework/: 微信机器人
+  - website/: 网站
   - terminal/: 终端服务
 
 ## 💻 技术实现
@@ -157,31 +162,7 @@ nkuwiki_service_manager.sh deploy 8000 8 # 8000~8007端口8个实例，nginx负�
 
 ## 🔧 开发指南
 
-### 代码规范
-
-- 代码风格遵循 PEP8
-- 使用 black 进行代码格式化
-- 遵循 vscode 的 markdownlint 规范
-
-### 日志规范
-
-- 默认使用 debug 级别
-- 重要信息使用 info 级别
-- 使用 `core/utils/logger.py` 中的 `register_logger` 注册日志
-
-### 配置管理
-
-- 配置项统一在 `config.py` 中定义
-- 实际配置值在 `config.json` 中设置
-- 支持嵌套配置引用
-
-### 命名规范
-
-- 默认小写
-- 缩写用大写
-- 类名首字母大写
-- 驼峰命名用大写
-- 下划线分割用小写
+详见[飞书开发文档](https://nankai.feishu.cn/wiki/U3hSweEsUiJDHKkQtVycuNSMnMe)。
 
 ## 🤝 如何参与
 
@@ -190,23 +171,17 @@ nkuwiki_service_manager.sh deploy 8000 8 # 8000~8007端口8个实例，nginx负�
 🌱 **使用即贡献，贡献即治理**：您可以通过使用我们的服务，联系我们反馈您的宝贵意见，向朋友安利我们的服务，上传您认为有价值的资料，在我们的项目提issue或PR，或者直接加入开发团队与志愿者团队等多种方式为社区发展作出贡献。我们欢迎任何形式，不计大小的贡献！
 
 现任开发团队：
+
 - [@aokimi0](https://github.com/aokimi0)
-- [@LiaojunChen](https://github.com/LiaojunChen)
-- [@hht421](https://github.com/hht421)
+- [@client2233](https://github.com/client2233)
 - [@Frederick2313072](https://github.com/Frederick2313072)
 - [@Because66666](https://github.com/Because66666)
+- [@ghost233lism](https://github.com/ghost233lism)
+- [@hht421](https://github.com/hht421)
+
 
 现任志愿者团队：
 - [@aokimi0](https://github.com/aokimi0)
 - [@hht421](https://github.com/hht421)
 - [@hengdaoye50](https://github.com/hengdaoye50)
 - [@Because66666](https://github.com/Because66666)
-
-## 📄 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
-
-## 📞 联系我们
-
-- 微信：ao_kimi
-- 飞书：@廖望
