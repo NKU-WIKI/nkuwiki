@@ -49,22 +49,12 @@ class WiKiSpider(scrapy.Spider):
         'LOG_FILE': f'./log/{date.today().strftime("%Y-%m-%d")}.txt'
 
     }
-    path1 = 'nk_database.db'
-    if 'counselor' not in os.getcwd():
-        path1 = './counselor/'+path1
-    conn = sqlite3.connect(path1, check_same_thread=False)
-    cursor = conn.cursor()
-    # 查询所有 url 字段的值
-    cursor.execute("SELECT url FROM entries")
-    rows = cursor.fetchall()
     # 将查询结果存储到一个集合中
-    url_set = set(row[0] for row in rows)
-    # 关闭数据库连接
-    cursor.close()
-    conn.close()
+    url_set = set()
+
     path1 = 'nk_2_update.db'
-    if 'counselor' not in os.getcwd():
-        path1 = './counselor/'+path1
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    path1 = os.path.join(os.path.dirname(script_dir),path1)
     conn = sqlite3.connect(path1, check_same_thread=False)
     cursor = conn.cursor()
     cursor.execute('''

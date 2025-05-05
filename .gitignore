@@ -69,3 +69,4 @@ htmlcov/
 temp*/
 ./*.png
 static/
+ etl/crawler/webpage_spider/log.txt

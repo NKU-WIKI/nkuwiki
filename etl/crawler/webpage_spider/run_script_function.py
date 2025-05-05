@@ -5,18 +5,22 @@ def run_counselor_script():
 
     """
     import os,sqlite3,subprocess,logging
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     logging.basicConfig(
         level=logging.INFO,  # 设置日志级别为 INFO
         format="%(asctime)s - %(levelname)s - %(message)s",  # 设置日志格式
         datefmt="%Y-%m-%d %H:%M:%S",  # 设置时间格式
-        handlers=[logging.StreamHandler()]  # 指定日志输出到控制台
+        handlers=[
+            logging.FileHandler(os.path.abspath(os.path.join(script_dir,'log.txt')), encoding='utf-8')
+        ]
     )
 
     path1 = 'nk_2_update.db'
-    if 'counselor' not in os.getcwd():
-        path1 = './counselor/' + path1
-    print(path1)
-    conn = sqlite3.connect(path1)
+    path1 = os.path.join(script_dir, 'counselor', path1)
+    absolute_path = os.path.abspath(path1)
+
+    print(absolute_path)
+    conn = sqlite3.connect(absolute_path)
     cursor = conn.cursor()
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS entries (
@@ -34,7 +38,7 @@ def run_counselor_script():
     conn.close()
     # 使用 subprocess 模块运行外部脚本
     project_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'counselor'))
-    subprocess.run(['python', 'main.py'], cwd=project_path)
+    subprocess.run(['python3', 'main.py'], cwd=project_path)
     from from_sqlite_to_mysql import export_web_to_mysql
     export_web_to_mysql(logger=logging)
 

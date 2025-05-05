@@ -49,9 +49,9 @@ def get_date_from_url(url:str):
 class WikiPipeline(object):
 
     def __init__(self):
-        path1 = 'nk_2_update.db'
-        if 'counselor' not in os.getcwd():
-            path1 = './counselor/' + path1
+        path1 = 'nk_database.db'
+        script_dir = os.path.abspath(__file__)
+        path1 = os.path.join(os.path.dirname(script_dir), path1)
         self.conn = sqlite3.connect(path1, check_same_thread=False)
         self.cursor = self.conn.cursor()
         self.lock = threading.Lock()
