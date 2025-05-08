@@ -6,4 +6,4 @@ print('子进程当前路径：',os.getcwd())
 shutil.rmtree('jobdir', ignore_errors=True)  # 先删除旧目录
 if not os.path.exists('./log'):
     os.mkdir('./log')
-cmdline.execute('scrapy crawl wikipieda_spider -s JOBDIR=jobdir  -s DEPTH_LIMIT=7'.split())
+cmdline.execute('scrapy crawl wikipieda_spider -s JOBDIR=jobdir  -s DEPTH_LIMIT=5'.split())
