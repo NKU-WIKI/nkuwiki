@@ -17,6 +17,11 @@ ETL模块，负责数据抽取、转换和加载
 import os
 from pathlib import Path
 from config import Config
+from core.utils import register_logger
+
+# 创建ETL模块专用日志器
+logger = register_logger("etl")
+
 # 导入配置
 config = Config()
 
@@ -60,16 +65,16 @@ try:
         try:
             nltk.data.find(f'corpora/{resource}')
         except LookupError:
-            etl_logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
+            logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
             try:
                 nltk.download(resource, download_dir=str(NLTK_PATH.absolute()), quiet=False)
-                etl_logger.debug(f"NLTK资源 {resource} 下载成功")
+                logger.debug(f"NLTK资源 {resource} 下载成功")
             except Exception as e:
-                etl_logger.error(f"NLTK资源 {resource} 下载失败: {e}")
-                etl_logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
+                logger.error(f"NLTK资源 {resource} 下载失败: {e}")
+                logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
 except Exception as e:
-    etl_logger.error(f"NLTK资源检查失败: {e}")
-    etl_logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
+    logger.error(f"NLTK资源检查失败: {e}")
+    logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
 
 # 数据库配置
 DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')

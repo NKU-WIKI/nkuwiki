@@ -1,4 +1,18 @@
-from etl.crawler import *
+import os
+import sys
+import time
+import pytz
+import requests
+import asyncio
+import random
+from collections import Counter
+from playwright.async_api import async_playwright
+from typing import List, Dict, Any
+from pathlib import Path
+from datetime import datetime, timedelta
+
+from etl.crawler import crawler_logger, RAW_PATH, DEFAULT_USER_AGENTS, DEFAULT_LOCALE, DEFAULT_TIMEZONE
+
 
 class BaseCrawler():
     """通用爬虫基类，封装常用爬取方法和反反爬策略

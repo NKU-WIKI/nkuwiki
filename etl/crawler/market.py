@@ -4,10 +4,12 @@ import time
 import random
 import hashlib
 import hmac
+import asyncio
 from datetime import datetime
 from pathlib import Path
-from .__init__ import crawler_logger, MARKET_TOKEN
-from base_crawler import BaseCrawler
+from etl.crawler import crawler_logger, MARKET_TOKEN
+from etl.crawler.base_crawler import BaseCrawler
+
 
 class Market(BaseCrawler):
     """Zanao集市数据爬虫"""
@@ -17,6 +19,7 @@ class Market(BaseCrawler):
         self.tag = tag
         self.content_type = "post"
         self.base_url = "https://c.zanao.com"
+        self.logger = crawler_logger
         super().__init__(debug, headless)
 
         self.api_urls = {
