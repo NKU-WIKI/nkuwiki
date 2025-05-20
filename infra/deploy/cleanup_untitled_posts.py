@@ -24,13 +24,20 @@ import datetime
 import pymysql
 from pathlib import Path
 
+# 定位到项目根目录
+project_root = Path(__file__).parent.parent.parent
+log_dir = project_root / 'logs'
+
+# 确保日志目录存在
+os.makedirs(log_dir, exist_ok=True)
+
 # 设置日志
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout),
-        logging.FileHandler(os.path.join('logs', 'cleanup_untitled_posts.log'))
+        logging.FileHandler(str(log_dir / 'cleanup_untitled_posts.log'))
     ]
 )
 logger = logging.getLogger(__name__)
@@ -38,8 +45,7 @@ logger = logging.getLogger(__name__)
 def load_db_config():
     """从config.json加载数据库配置信息"""
     try:
-        # 定位到项目根目录
-        project_root = Path(__file__).parent.parent.parent
+        # 使用已经定义的项目根目录
         config_path = project_root / 'config.json'
         
         if not config_path.exists():
@@ -112,9 +118,6 @@ def delete_untitled_posts():
 if __name__ == "__main__":
     logger.info("开始执行无标题帖子清理任务...")
     start_time = datetime.datetime.now()
-    
-    # 确保日志目录存在
-    os.makedirs('logs', exist_ok=True)
     
     # 执行删除操作
     success = delete_untitled_posts()

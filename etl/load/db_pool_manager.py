@@ -96,7 +96,7 @@ def get_redis_client():
             decode_responses=True
         )
     except Exception as e:
-        pool_logger.error(f"获取Redis客户端失败: {str(e)}")
+        logger.error(f"获取Redis客户端失败: {str(e)}")
         return None
 
 # 重试函数装饰器
@@ -111,12 +111,12 @@ def with_redis_retry(max_retries=3, delay=1.0, default_return=False):
                 except (redis.exceptions.ConnectionError, redis.exceptions.TimeoutError) as e:
                     last_error = e
                     if attempt < max_retries - 1:
-                        pool_logger.warning(f"Redis操作失败，{delay}秒后重试 ({attempt+1}/{max_retries}): {str(e)}")
+                        logger.warning(f"Redis操作失败，{delay}秒后重试 ({attempt+1}/{max_retries}): {str(e)}")
                         time.sleep(delay)
                     else:
-                        pool_logger.error(f"Redis操作失败，已达到最大重试次数: {str(e)}")
+                        logger.error(f"Redis操作失败，已达到最大重试次数: {str(e)}")
                 except Exception as e:
-                    pool_logger.error(f"Redis操作失败，未知错误: {str(e)}")
+                    logger.error(f"Redis操作失败，未知错误: {str(e)}")
                     last_error = e
                     break
             
@@ -148,10 +148,10 @@ def register_instance():
         
         # 注册实例信息
         r.hset(f"{REDIS_KEY_PREFIX}instances", INSTANCE_ID, json.dumps(instance_info))
-        pool_logger.debug(f"实例 {INSTANCE_ID} 已注册到Redis")
+        logger.debug(f"实例 {INSTANCE_ID} 已注册到Redis")
         return True
     except Exception as e:
-        pool_logger.error(f"注册实例到Redis失败: {str(e)}")
+        logger.error(f"注册实例到Redis失败: {str(e)}")
         return False
 
 @with_redis_retry(max_retries=2)
@@ -164,10 +164,10 @@ def unregister_instance():
         
         # 删除实例信息
         r.hdel(f"{REDIS_KEY_PREFIX}instances", INSTANCE_ID)
-        pool_logger.debug(f"实例 {INSTANCE_ID} 已从Redis注销")
+        logger.debug(f"实例 {INSTANCE_ID} 已从Redis注销")
         return True
     except Exception as e:
-        pool_logger.error(f"从Redis注销实例失败: {str(e)}")
+        logger.error(f"从Redis注销实例失败: {str(e)}")
         return False
 
 @with_redis_retry(max_retries=2)
@@ -214,7 +214,7 @@ def update_instance_metrics():
         
         return True
     except Exception as e:
-        pool_logger.error(f"更新实例指标失败: {str(e)}")
+        logger.error(f"更新实例指标失败: {str(e)}")
         return False
 
 @with_redis_retry(max_retries=2, default_return=[])
@@ -246,7 +246,7 @@ def get_active_instances():
         
         return active_instances
     except Exception as e:
-        pool_logger.error(f"获取活跃实例列表失败: {str(e)}")
+        logger.error(f"获取活跃实例列表失败: {str(e)}")
         return []
 
 def get_max_mysql_connections():
@@ -261,7 +261,7 @@ def get_max_mysql_connections():
         max_connections = int(result.stdout.strip())
         return max_connections
     except Exception as e:
-        pool_logger.warning(f"无法获取MySQL最大连接数，使用默认值150: {str(e)}")
+        logger.warning(f"无法获取MySQL最大连接数，使用默认值150: {str(e)}")
         return 150
 
 def get_mysql_current_connections():
@@ -276,7 +276,7 @@ def get_mysql_current_connections():
         current_connections = int(result.stdout.strip())
         return current_connections
     except Exception as e:
-        pool_logger.warning(f"无法获取当前连接数，使用默认值0: {str(e)}")
+        logger.warning(f"无法获取当前连接数，使用默认值0: {str(e)}")
         return 0
 
 def calculate_optimal_pool_size():
@@ -297,7 +297,7 @@ def calculate_optimal_pool_size():
             min_pool_size = config.get('etl.data.mysql.db_pool.min_pool_size', 4)
             max_pool_size = config.get('etl.data.mysql.db_pool.max_pool_size', 32)
             default_size = min(16, max(min_pool_size, max_pool_size // 2))
-            pool_logger.debug(f"Redis不可用，使用默认连接池大小: {default_size}")
+            logger.debug(f"Redis不可用，使用默认连接池大小: {default_size}")
             return default_size
             
         # 获取MySQL最大连接数和当前连接数
@@ -358,13 +358,13 @@ def calculate_optimal_pool_size():
         # 更新调整时间
         LAST_POOL_RESIZE_TIME = current_time
         
-        pool_logger.info(f"动态连接池配置 - MySQL最大连接: {max_mysql_connections}, "
+        logger.info(f"动态连接池配置 - MySQL最大连接: {max_mysql_connections}, "
                        f"当前连接: {current_connections}, 实例数: {instance_count}, "
                        f"负载因子: {load_factors.get(INSTANCE_ID, 0):.2f}, 分配大小: {final_size}")
         
         return final_size
     except Exception as e:
-        pool_logger.error(f"计算最优连接池大小失败: {str(e)}")
+        logger.error(f"计算最优连接池大小失败: {str(e)}")
         # 使用保守的默认值
         return 8
 
@@ -398,7 +398,7 @@ def initialize_pool():
         POOL_CREATED_TIME = time.time()
         
         # 记录日志
-        pool_logger.info(f"MySQL连接池创建成功: {db_config['host']}:{db_config['port']}/{db_config['database']}, "
+        logger.info(f"MySQL连接池创建成功: {db_config['host']}:{db_config['port']}/{db_config['database']}, "
                        f"连接池大小: {pool_size}, 实例ID: {INSTANCE_ID}")
         
         # 更新实例指标
@@ -410,7 +410,7 @@ def initialize_pool():
         
         return True
     except Exception as e:
-        pool_logger.error(f"初始化连接池失败: {str(e)}")
+        logger.error(f"初始化连接池失败: {str(e)}")
         return False
 
 def resize_pool_if_needed(force_size=None):
@@ -432,11 +432,11 @@ def resize_pool_if_needed(force_size=None):
         # 如果指定了大小，直接设置
         if force_size is not None:
             new_size = force_size
-            pool_logger.info(f"强制调整连接池大小: {current_size} -> {new_size}")
+            logger.info(f"强制调整连接池大小: {current_size} -> {new_size}")
         else:
             # 检查Redis是否可用
             if not check_redis_available() and not force_size:
-                pool_logger.debug("Redis不可用，跳过自动调整连接池大小")
+                logger.debug("Redis不可用，跳过自动调整连接池大小")
                 return None
                 
             # 检查是否需要调整
@@ -447,7 +447,7 @@ def resize_pool_if_needed(force_size=None):
                 # 判断是否需要调整 - 只有变化超过一定比例才调整
                 if abs(optimal_size - current_size) >= 2:
                     new_size = optimal_size
-                    pool_logger.info(f"动态调整连接池大小: {current_size} -> {new_size}")
+                    logger.info(f"动态调整连接池大小: {current_size} -> {new_size}")
                 else:
                     return None  # 不需要调整
             else:
@@ -483,13 +483,13 @@ def resize_pool_if_needed(force_size=None):
                     update_instance_metrics()
                 
                 # 记录日志
-                pool_logger.info(f"连接池大小调整成功: {current_size} -> {new_size}")
+                logger.info(f"连接池大小调整成功: {current_size} -> {new_size}")
                 return new_size
             except Exception as e:
-                pool_logger.error(f"调整连接池大小失败: {str(e)}")
+                logger.error(f"调整连接池大小失败: {str(e)}")
                 return None
     except Exception as e:
-        pool_logger.error(f"调整连接池大小过程中发生错误: {str(e)}")
+        logger.error(f"调整连接池大小过程中发生错误: {str(e)}")
         return None
 
 def get_connection(max_retries=3, retry_interval=0.5):
@@ -532,7 +532,7 @@ def get_connection(max_retries=3, retry_interval=0.5):
             if CONNECTION_STATS["active"] > CONNECTION_STATS["max_active"]:
                 CONNECTION_STATS["max_active"] = CONNECTION_STATS["active"]
             
-            pool_logger.debug(f"从连接池获取新连接成功，当前活跃连接: {CONNECTION_STATS['active']}")
+            logger.debug(f"从连接池获取新连接成功，当前活跃连接: {CONNECTION_STATS['active']}")
             
             # 异步更新实例指标
             if REDIS_AVAILABLE:
@@ -547,18 +547,18 @@ def get_connection(max_retries=3, retry_interval=0.5):
             # 如果连接池已满并且还有重试次数，等待后重试
             if "queue is full" in str(e) and attempt < max_retries - 1:
                 CONNECTION_STATS["rejected"] += 1
-                pool_logger.warning(f"连接池已满，等待重试 ({attempt+1}/{max_retries})...")
+                logger.warning(f"连接池已满，等待重试 ({attempt+1}/{max_retries})...")
                 time.sleep(retry_interval)
             else:
                 # 其他错误或者重试次数用尽，直接失败
                 break
     
     # 所有重试都失败
-    pool_logger.error(f"无法从连接池获取连接: {str(last_error)}")
+    logger.error(f"无法从连接池获取连接: {str(last_error)}")
     
     # 尝试直接创建独立连接作为应急措施
     try:
-        pool_logger.warning("尝试创建独立连接作为应急措施...")
+        logger.warning("尝试创建独立连接作为应急措施...")
         
         # 获取数据库配置
         db_config = get_mysql_config()
@@ -570,10 +570,10 @@ def get_connection(max_retries=3, retry_interval=0.5):
         CONNECTION_STATS["created"] += 1
         CONNECTION_STATS["active"] += 1
         
-        pool_logger.warning("成功创建独立连接作为应急措施")
+        logger.warning("成功创建独立连接作为应急措施")
         return _thread_local.connection
     except Exception as e:
-        pool_logger.error(f"创建独立连接失败: {str(e)}")
+        logger.error(f"创建独立连接失败: {str(e)}")
         raise Exception(f"无法获取数据库连接: {str(last_error)}")
 
 def release_connection():
@@ -596,7 +596,7 @@ def release_connection():
                 _thread_local.connection.close()
             except mysql.connector.errors.PoolError as e:
                 if "queue is full" in str(e):
-                    pool_logger.debug(f"连接池已满，连接可能已自动归还: {str(e)}")
+                    logger.debug(f"连接池已满，连接可能已自动归还: {str(e)}")
                 else:
                     # 其他PoolError错误仍然需要记录
                     raise
@@ -609,9 +609,9 @@ def release_connection():
         CONNECTION_STATS["closed"] += 1
         CONNECTION_STATS["active"] -= 1
         
-        pool_logger.debug(f"释放MySQL连接成功，当前活跃连接: {CONNECTION_STATS['active']}")
+        logger.debug(f"释放MySQL连接成功，当前活跃连接: {CONNECTION_STATS['active']}")
     except Exception as e:
-        pool_logger.warning(f"释放MySQL连接失败: {str(e)}")
+        logger.warning(f"释放MySQL连接失败: {str(e)}")
         CONNECTION_STATS["errors"] += 1
 
 def close_all_connections():
@@ -640,14 +640,14 @@ def cleanup_pool():
             try:
                 unregister_instance()
             except Exception as e:
-                pool_logger.warning(f"从Redis注销实例失败: {str(e)}")
+                logger.warning(f"从Redis注销实例失败: {str(e)}")
         
         # 重置连接池
         CONNECTION_POOL = None
         
-        pool_logger.info(f"MySQL连接池已清理，实例ID: {INSTANCE_ID}, 统计: {CONNECTION_STATS}")
+        logger.info(f"MySQL连接池已清理，实例ID: {INSTANCE_ID}, 统计: {CONNECTION_STATS}")
     except Exception as e:
-        pool_logger.warning(f"清理连接池资源失败: {str(e)}")
+        logger.warning(f"清理连接池资源失败: {str(e)}")
 
 @contextmanager
 def get_db_connection():
@@ -697,16 +697,16 @@ def check_redis_available():
         redis_client = get_redis_client()
         if redis_client and redis_client.ping():
             if not REDIS_AVAILABLE:
-                pool_logger.info("Redis服务恢复连接")
+                logger.info("Redis服务恢复连接")
                 REDIS_AVAILABLE = True
             return True
         else:
             if REDIS_AVAILABLE:
-                pool_logger.warning("无法连接到Redis服务，将采用本地模式")
+                logger.warning("无法连接到Redis服务，将采用本地模式")
                 REDIS_AVAILABLE = False
             return False
     except Exception as e:
         if REDIS_AVAILABLE:
-            pool_logger.warning(f"Redis连接检查失败: {str(e)}，将采用本地模式")
+            logger.warning(f"Redis连接检查失败: {str(e)}，将采用本地模式")
             REDIS_AVAILABLE = False
         return False 
