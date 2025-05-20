@@ -1,6 +1,6 @@
 # nkuwiki 开源·共治·普惠的南开百科
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)[![DeepWiki](https://img.shields.io/badge/DeepWiki-documentation-blue)](https://deepwiki.com/NKU-WIKI/nkuwiki)
 
 <img src="./docs/assets/logo-lc-green.png" width="400" alt="nkuwiki logo" />
 
@@ -84,9 +84,26 @@ python app.py --api --port 8000
 curl -X GET "http://localhost:8000/api/health"
 
 # 一键部署服务集群（在linux服务器上）
-nkuwiki_service_manager.sh deploy 8000 8 # 8000~8007端口8个实例，nginx负载均衡
-
+nkuwiki_service_manager.sh deploy 8000
 ```
+
+**爬虫模式**
+
+```bash
+# 运行微信公众号爬虫
+python -m etl.crawler.wechat
+
+# 运行校园集市爬虫
+python -m etl.crawler.market
+
+# 运行小红书爬虫
+python -m etl.crawler.xhs_spider
+
+# 运行抖音爬虫
+python -m etl.crawler.douyin_spider
+```
+
+更多爬虫使用说明请参考[爬虫模块使用指南](./docs/crawler_guide.md)
 
 ## 🏗 系统架构
 
@@ -99,7 +116,7 @@ nkuwiki_service_manager.sh deploy 8000 8 # 8000~8007端口8个实例，nginx负�
   - utils/: 通用工具
 
 - **etl/**: 数据处理模块
-  - crawler/: 数据采集
+  - crawler/: 数据采集 (详见 [爬虫模块使用指南](./docs/crawler_guide.md))
   - transform/: 数据转换
   - load/: 数据加载
   - embedding/: 向量嵌入
