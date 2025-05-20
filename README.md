@@ -16,6 +16,8 @@
 - 🔎 微信服务号：nkuwiki知识社区（无限制，用户体验更好）
 - 🗝️ 微信订阅号 nkuwiki（有消极回复限制）
 - 🔥 微信小程序：nku元智wiki
+  
+![微信小程序码](https://raw.githubusercontent.com/aokimi0/image-hosting-platform/main/img/2ed4dd7258abda2204b768c7e1017cf.jpg)
 
 ## 🎯 愿景与目标
 
@@ -31,7 +33,7 @@
 - 🤖 **开源知识中枢**
   - 🧠 双擎驱动：**RAG**框架 + **SOTA**模型推理
   - 🔄 **动态知识图谱**
-    - 🔓 接入**南开全渠道数据源**（网站/微信公众号/校园集市/小红书/微博/抖音/B站/知乎etc.）
+    - 🔓 接入**南开全渠道数据源**（网站/微信公众号/校园集市/小红书/微博/抖音/B站/知乎etc.，详见[数据源重点实体清单](https://nankai.feishu.cn/wiki/OEuGw04XXiqJnekbawcc9XsQnUf)）
     - 🤝 **社区共治**：志愿者团队与用户协同维护
     - 🛡️ **开源评估框架**（贡献者透明审计）
   - 🔍 多模态和丰富插件支持
