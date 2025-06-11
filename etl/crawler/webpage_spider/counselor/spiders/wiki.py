@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import scrapy
 from scrapy.selector import Selector
-from items import ContentItem
-from parse_different_college import parse_function,url_maps
+from ..items import ContentItem, LinkItem
+from ..parse_different_college import parse_function,url_maps
 import sqlite3
 import re
 import os
@@ -12,6 +12,9 @@ def check_url_end(url):
     return bool(re.search(pattern, url))
 
 def check_content(url):
+    doc_extensions = ['.pdf', '.docx', '.doc', '.xlsx', '.xls']
+    if any(url.lower().endswith(ext) for ext in doc_extensions):
+        return True
     if 'https://career.nankai.edu.cn/company/index/id' in url:
         return True
     if url in [
@@ -45,7 +48,10 @@ class WiKiSpider(scrapy.Spider):
     allowed_domains = ['nankai.edu.cn']
     start_urls = list(url_maps.values())
     custom_settings = {
-        'ITEM_PIPELINES': {'counselor.pipelines.WikiPipeline': 800},
+        'ITEM_PIPELINES': {
+            'counselor.pipelines.LinkGraphPipeline': 300,
+            'counselor.pipelines.WikiPipeline': 800
+        },
         'LOG_FILE': f'./log/{date.today().strftime("%Y-%m-%d")}.txt'
 
     }
@@ -134,16 +140,6 @@ class WiKiSpider(scrapy.Spider):
                 flag = False
             elif '*' in url:
                 flag = False
-            elif '.docx' in url:
-                flag = False
-            elif '.doc' in url:
-                flag = False
-            elif '.pdf' in url:
-                flag = False
-            elif '.xlsx' in url:
-                flag = False
-            elif '.xls' in url:
-                flag = False
             elif 'page.psp' in url:
                 flag = False
 
@@ -157,6 +153,12 @@ class WiKiSpider(scrapy.Spider):
         # 处理完分类页面后，将所有可能的内容请求链接直接提交处理队列处理
         for url in url2:
             if is_valid_url(url):
+                # 产生一个LinkItem用于存储链接关系
+                link_item = LinkItem()
+                link_item['source_url'] = this_url
+                link_item['target_url'] = url
+                yield link_item
+
                 if self.check_if_in_sqlite(url):
                     continue
                 if check_content(url):
@@ -175,6 +177,26 @@ class WiKiSpider(scrapy.Spider):
             return
         this_url = response.url
         parsed_url = urlparse(this_url)
+
+        doc_extensions = ['.pdf', '.docx', '.doc', '.xlsx', '.xls']
+        if any(this_url.lower().endswith(ext) for ext in doc_extensions):
+            self.logger.info(f'发现文档URL，仅保存元数据: {this_url}')
+            item = ContentItem()
+            item['title'] = os.path.basename(parsed_url.path)
+            item['push_time'] = ''
+            item['content'] = ''  # Content will be extracted by a dedicated parser later
+            item['file_url'] = this_url
+            # 确定来源
+            base_netloc = parsed_url.netloc
+            source_college = ''
+            for key, value in url_maps.items():
+                if base_netloc in value:
+                    source_college = key
+                    break
+            item['source'] = source_college if source_college else 'document'
+            item['url'] = this_url
+            return item
+
         self.logger.info(f'本次访问URL:{this_url},进入到了文章解析函数。')
         base = parsed_url.netloc
         college = ''
@@ -200,5 +222,6 @@ class WiKiSpider(scrapy.Spider):
         counselor_item['file_url'] = img
         counselor_item['source'] = college
         counselor_item['url'] = this_url
+        counselor_item['html_content'] = response.body
 
         return counselor_item

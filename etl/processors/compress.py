@@ -1,3 +1,11 @@
+"""
+上下文压缩器模块
+
+提供基于不同策略的上下文压缩功能：
+- BM25提取压缩
+- LLMLingua压缩
+"""
+
 import torch
 from llmlingua import PromptCompressor
 from etl.utils.text import cut_sent
@@ -9,21 +17,21 @@ class ContextCompressor:
             rate=0.5,
             bm25_retriever=None,
     ):
-        """Initialize the context compressor.
+        """初始化上下文压缩器
         
         Args:
-            method (str): Compression method, either "bm25_extract" or "llmlingua"
-            rate (float): Compression rate (0.0 to 1.0)
-            bm25_retriever: BM25 retriever instance for bm25_extract method
+            method (str): 压缩方法，可选"bm25_extract"或"llmlingua"
+            rate (float): 压缩率 (0.0 到 1.0)
+            bm25_retriever: BM25检索器实例，用于bm25_extract方法
         """
         if not 0.0 <= rate <= 1.0:
-            raise ValueError("Compression rate must be between 0.0 and 1.0")
+            raise ValueError("压缩率必须在0.0到1.0之间")
             
         self.rate = rate
         self.method = method
         
         if method == "bm25_extract" and bm25_retriever is None:
-            raise ValueError("bm25_retriever is required for bm25_extract method")
+            raise ValueError("bm25_extract方法需要提供bm25_retriever")
             
         if 'llmlingua' in method:
             try:
@@ -36,25 +44,25 @@ class ContextCompressor:
                     }
                 )
             except Exception as e:
-                raise RuntimeError(f"Failed to initialize LLMLingua: {str(e)}")
+                raise RuntimeError(f"初始化LLMLingua失败: {str(e)}")
         elif method == "bm25_extract":
             self.bm25_retriever = bm25_retriever
         else:
-            raise ValueError(f"Unsupported compression method: {method}")
+            raise ValueError(f"不支持的压缩方法: {method}")
 
     def compress(
             self,
             query: str,
             context: str
     ) -> str:
-        """Compress the context based on the query.
+        """基于查询压缩上下文
         
         Args:
-            query (str): The query string
-            context (str): The context to compress
+            query (str): 查询字符串
+            context (str): 待压缩的上下文
             
         Returns:
-            str: The compressed context
+            str: 压缩后的上下文
         """
         if not query or not context:
             return context
@@ -65,11 +73,11 @@ class ContextCompressor:
             else:  # llmlingua
                 return self._compress_llmlingua(query, context)
         except Exception as e:
-            print(f"Error in context compression: {str(e)}")
+            print(f"上下文压缩错误: {str(e)}")
             return context  # 返回原始上下文而不是失败
             
     def _compress_bm25(self, query: str, context: str) -> str:
-        """Compress context using BM25 extraction method."""
+        """使用BM25提取方法压缩上下文"""
         # 上下文切割为句子
         pre_len = len(context)
         raw_sentences = cut_sent(context)
@@ -102,11 +110,11 @@ class ContextCompressor:
             return "".join(sentences[i] for i in selected_indices)
             
         except Exception as e:
-            print(f"Error in BM25 compression: {str(e)}")
+            print(f"BM25压缩错误: {str(e)}")
             return context
             
     def _compress_llmlingua(self, query: str, context: str) -> str:
-        """Compress context using LLMLingua method."""
+        """使用LLMLingua方法压缩上下文"""
         try:
             compressed_obj = self.prompt_compressor.compress_prompt(
                 context,
@@ -117,5 +125,5 @@ class ContextCompressor:
             )
             return compressed_obj.get('compressed_prompt', context)
         except Exception as e:
-            print(f"Error in LLMLingua compression: {str(e)}")
-            return context
+            print(f"LLMLingua压缩错误: {str(e)}")
+            return context 

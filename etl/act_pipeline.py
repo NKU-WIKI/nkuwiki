@@ -2,14 +2,16 @@ import asyncio
 from datetime import datetime
 from etl import RAW_PATH
 from etl.crawler.wechat import Wechat
-from etl.transform.summarize_md import summarize_md
-requerment_keywords=[]
+from etl.crawler import university_official_accounts, school_official_accounts
+from etl.processors import summarize_markdown_file as summarize_md
+
+requerment_keywords = []
 
 async def main():
     """异步主函数"""
     current_date = datetime.now().strftime('%Y-%m-%d')
     from_date = datetime.strptime('2025-03-01', '%Y-%m-%d')
-    crawler = Wechat(authors=UNIVERSITY_OFFICIAL_ACCOUNTS + SCHOOL_OFFICIAL_ACCOUNTS, tag = "nku", debug=True, headless=True, use_proxy=True)
+    crawler = Wechat(authors=university_official_accounts + school_official_accounts, tag = "nku", debug=True, headless=True, use_proxy=True)
     # try:
         # await crawler.async_init()
         # await crawler.scrape(max_article_num=10, total_max_article_num=1e10, time_range=(from_date, current_date), recruitment_keywords=None)

@@ -10,7 +10,7 @@ from llama_index.core.utils import infer_torch_device
 from torch import Tensor
 from transformers import AutoTokenizer
 from etl.utils.model import Qwen2Model
-from etl.embedding.ingestion import get_node_content
+from etl.processors.nodes import get_node_content
 
 
 class GTEEmbedding(BaseEmbedding):

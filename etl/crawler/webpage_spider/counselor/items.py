@@ -35,6 +35,13 @@ class ContentItem(scrapy.Item):
     content = scrapy.Field()
     # pdf链接（若有）
     file_url = scrapy.Field()
+    # 原始HTML内容 (用于网页快照)
+    html_content = scrapy.Field()
     def print_self(self):
         from pprint import pp
         pp(dict(self))
+
+class LinkItem(scrapy.Item):
+    """用于存储页面链接关系 (for PageRank)"""
+    source_url = scrapy.Field()
+    target_url = scrapy.Field()

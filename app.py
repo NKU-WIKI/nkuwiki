@@ -18,10 +18,17 @@ from fastapi.middleware.gzip import GZipMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import JSONResponse
 
+print("正在导入核心模块...")
 from api import router
+print("✅ API路由模块导入成功")
+from api.common.logging_middleware import SearchLoggingMiddleware
+print("✅ 日志中间件导入成功")
 from api.models.common import Response, Request
+print("✅ API模型导入成功")
 from core.utils.logger import register_logger
+print("✅ 日志工具导入成功")
 from config import Config
+print("✅ 配置模块导入成功")
 
 # 过滤pydub的ffmpeg警告
 warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", category=RuntimeWarning)
@@ -31,11 +38,19 @@ warnings.filterwarnings("ignore", message="Couldn't find ffmpeg or avconv", cate
 # =============================================================================
 
 # 创建配置对象
+print("正在初始化配置...")
 config = Config()
+print("✅ 配置对象创建成功")
+
 # 初始化日志系统
+print("正在初始化日志系统...")
 logger = register_logger("app")
+print("✅ 日志系统初始化完成")
+
 # 创建应用上下文
+print("正在创建应用上下文...")
 request_id_var = ContextVar("request_id", default="")
+print("✅ 应用上下文创建完成")
 
 
 # =============================================================================
@@ -107,6 +122,7 @@ def cleanup_resources():
 
 DEBUG = False
 # 创建FastAPI应用
+print("正在创建FastAPI应用...")
 app = FastAPI(
     title="NKUWiki API",
     version=config.get("version", "1.0.0"),
@@ -116,6 +132,7 @@ app = FastAPI(
     redoc_url="/api/redoc" if DEBUG else None,           # 仅在调试模式开启ReDoc
     default_response_class=Response  
 )
+print("✅ FastAPI应用创建成功")
 
 # 添加API路由器，所有路由统一添加/api前缀
 api_router = APIRouter(prefix="/api")
@@ -138,6 +155,9 @@ app.add_middleware(
     GZipMiddleware,
     minimum_size=1024  # 最小压缩大小（字节）
 )
+
+# 添加搜索历史记录中间件
+app.add_middleware(SearchLoggingMiddleware)
 
 # 请求日志中间件
 @app.middleware("http")
@@ -276,24 +296,26 @@ async def health_check():
     )
 
 # 注册所有API路由
+print("正在注册API路由...")
 logger.debug("开始注册API路由...")
 api_router.include_router(router)
 app.include_router(api_router) 
 logger.debug("API路由注册完成")
+print("✅ API路由注册完成")
 
 # 挂载静态文件目录，用于微信校验文件等
-app.mount("/static", StaticFiles(directory="static"), name="static_files")
+# app.mount("/static", StaticFiles(directory="static"), name="static_files")
 
 # 挂载Mihomo控制面板静态文件
-app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
+# app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
 
 # 网站路由 - 确保具体路径挂载在根路径之前
-website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
-app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
-app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
+# website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
+# app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
+# app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
 
 # 挂载网站根目录 - 放在最后
-app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
+# app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
 
 # =============================================================================
 # 服务启动相关函数
@@ -404,6 +426,7 @@ if __name__ == "__main__":
     
     if args.api:
         # 启动API服务
+        print(f"🚀 准备启动API服务 (端口: {args.port}, 进程数: {args.workers})")
         run_api_service(args.port, args.workers)
     elif args.qa:
         # 如果只启动了问答服务，则等待问答服务线程结束

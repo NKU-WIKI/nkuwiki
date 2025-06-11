@@ -81,10 +81,10 @@ def filter_noise(record):
 # 确保日志根目录存在
 LOG_ROOT_DIR.mkdir(exist_ok=True)
 
-# 添加控制台处理器（ERROR级别），过滤掉大部分日志
+# 添加控制台处理器（修改为INFO级别），输出更多日志信息
 logger.add(
     sys.stderr,
-    level="ERROR",
+    level="INFO",
     format=LOG_CONSOLE_FORMAT,
     filter=filter_noise
 )
