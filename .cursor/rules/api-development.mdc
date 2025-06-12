@@ -1,0 +1,511 @@
+---
+description: 
+globs: api/*
+alwaysApply: false
+---
+# API 开发规范
+
+## FastAPI 开发标准
+
+开发新接口后及时更新api文档docs/api_docs.md
+
+### 1. 路由设计规范
+```python
+from fastapi import APIRouter, HTTPException, Depends
+from api.models.common import Response, Request
+
+router = APIRouter()
+
+# ✅ 推荐的路由设计
+@router.get("/users/{user_id}")  # RESTful风格
+@router.post("/search")          # 复杂操作使用POST
+@router.get("/health")           # 健康检查
+```
+
+### 2. 统一响应格式
+```python
+from api.models.common import Response
+
+# ✅ 成功响应
+@router.get("/user")
+async def get_user(user_id: str):
+    try:
+        user_data = await user_service.get_user(user_id)
+        return Response.success(data=user_data)
+    except UserNotFoundError:
+        return Response.error(
+            code=404, 
+            message="用户不存在",
+            details={"user_id": user_id}
+        )
+    except Exception as e:
+        logger.exception("获取用户信息失败")
+        return Response.error(message="服务内部错误")
+```
+
+### 3. 请求模型定义
+```python
+from pydantic import BaseModel, Field, validator
+from typing import Optional, List
+
+class SearchRequest(BaseModel):
+    """搜索请求模型"""
+    query: str = Field(..., min_length=1, max_length=200, description="搜索关键词")
+    page: int = Field(1, ge=1, description="页码")
+    page_size: int = Field(10, ge=1, le=100, description="每页大小")
+    filters: Optional[Dict[str, str]] = Field(None, description="过滤条件")
+    
+    @validator('query')
+    def validate_query(cls, v):
+        if not v.strip():
+            raise ValueError('查询内容不能为空')
+        return v.strip()
+
+class UserCreateRequest(BaseModel):
+    """用户创建请求模型"""
+    openid: str = Field(..., description="微信openid")
+    nickname: str = Field(..., max_length=50, description="用户昵称")
+    avatar: Optional[str] = Field(None, description="头像URL")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "openid": "wx_abc123",
+                "nickname": "张三",
+                "avatar": "https://example.com/avatar.jpg"
+            }
+        }
+```
+
+### 4. 路径参数和查询参数
+```python
+from fastapi import Query, Path
+
+@router.get("/posts/{post_id}")
+async def get_post(
+    post_id: int = Path(..., gt=0, description="帖子ID"),
+    openid: str = Query(..., description="用户openid"),
+    include_comments: bool = Query(False, description="是否包含评论")
+):
+    """获取帖子详情"""
+    pass
+
+@router.get("/posts")
+async def list_posts(
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(10, ge=1, le=100, description="每页大小"),
+    category: Optional[str] = Query(None, description="分类筛选"),
+    sort_by: str = Query("create_time", regex="^(create_time|like_count)$")
+):
+    """获取帖子列表"""
+    pass
+```
+
+## 错误处理规范
+
+### 1. HTTP状态码使用
+```python
+from fastapi import HTTPException, status
+
+# ✅ 标准HTTP状态码
+@router.post("/posts")
+async def create_post(request: PostCreateRequest):
+    try:
+        post = await post_service.create(request)
+        return Response.success(data=post, code=201)  # 创建成功
+    except ValidationError as e:
+        return Response.error(code=400, message="请求参数错误")
+    except PermissionDeniedError:
+        return Response.error(code=403, message="权限不足")
+    except ResourceNotFoundError:
+        return Response.error(code=404, message="资源不存在")
+    except Exception as e:
+        logger.exception("创建帖子失败")
+        return Response.error(code=500, message="服务内部错误")
+```
+
+### 2. 自定义异常处理
+```python
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(ValidationError)
+async def validation_exception_handler(request: Request, exc: ValidationError):
+    """参数验证异常处理"""
+    return JSONResponse(
+        status_code=400,
+        content=Response.error(
+            code=400,
+            message="请求参数错误",
+            details={"errors": exc.errors()}
+        ).dict()
+    )
+```
+
+## 依赖注入规范
+
+### 1. 数据库连接依赖
+```python
+from fastapi import Depends
+from etl.load import get_db_connection
+
+async def get_db():
+    """获取数据库连接依赖"""
+    connection = None
+    try:
+        connection = await get_db_connection()
+        yield connection
+    finally:
+        if connection:
+            await connection.close()
+
+@router.get("/users")
+async def list_users(db=Depends(get_db)):
+    """使用数据库连接依赖"""
+    users = await user_service.list_users(db)
+    return Response.success(data=users)
+```
+
+### 2. 认证依赖
+```python
+from fastapi import Depends, HTTPException
+from fastapi.security import HTTPBearer
+
+security = HTTPBearer()
+
+async def get_current_user(token: str = Depends(security)):
+    """获取当前用户依赖"""
+    try:
+        user = await auth_service.verify_token(token.credentials)
+        return user
+    except AuthenticationError:
+        raise HTTPException(
+            status_code=401,
+            detail="认证失败",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+@router.get("/profile")
+async def get_profile(current_user=Depends(get_current_user)):
+    """需要认证的接口"""
+    return Response.success(data=current_user)
+```
+
+### 3. 配置依赖
+```python
+from config import Config
+
+def get_config() -> Config:
+    """获取配置依赖"""
+    return Config()
+
+@router.get("/settings")
+async def get_settings(config: Config = Depends(get_config)):
+    """使用配置依赖"""
+    settings = {
+        "max_file_size": config.get("api.max_file_size", 10485760),
+        "allowed_types": config.get("api.allowed_file_types", [])
+    }
+    return Response.success(data=settings)
+```
+
+## 中间件使用规范
+
+### 1. 请求日志中间件
+```python
+import time
+from fastapi import Request
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """请求日志中间件"""
+    start_time = time.time()
+    
+    # 记录请求开始
+    logger.info(
+        "API请求开始: %s %s",
+        request.method,
+        request.url.path,
+        extra={
+            "method": request.method,
+            "path": request.url.path,
+            "query_params": str(request.query_params),
+            "client_ip": request.client.host
+        }
+    )
+    
+    # 处理请求
+    response = await call_next(request)
+    
+    # 计算处理时间
+    process_time = time.time() - start_time
+    
+    # 记录请求完成
+    logger.info(
+        "API请求完成: %s %s - %d (%.2fs)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        process_time,
+        extra={
+            "status_code": response.status_code,
+            "process_time": process_time
+        }
+    )
+    
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
+```
+
+### 2. CORS中间件配置
+```python
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.get("api.cors.allow_origins", ["*"]),
+    allow_credentials=True,
+    allow_methods=["GET", "POST"],  # 仅允许GET和POST
+    allow_headers=["*"],
+)
+```
+
+## 文档规范
+
+### 1. OpenAPI文档配置
+```python
+from fastapi import FastAPI
+
+app = FastAPI(
+    title="NKUWiki API",
+    version="2.0.0",
+    description="南开百科知识共享平台API",
+    docs_url="/api/docs" if DEBUG else None,
+    redoc_url="/api/redoc" if DEBUG else None,
+    openapi_url="/api/openapi.json" if DEBUG else None
+)
+
+# 标签分组
+tags_metadata = [
+    {
+        "name": "wxapp",
+        "description": "微信小程序接口",
+    },
+    {
+        "name": "knowledge", 
+        "description": "知识库检索接口",
+    },
+    {
+        "name": "agent",
+        "description": "智能体对话接口",
+    }
+]
+```
+
+### 2. 接口文档注释
+```python
+@router.post(
+    "/search",
+    summary="知识库搜索",
+    description="使用RAG技术在知识库中搜索相关内容",
+    response_description="搜索结果列表",
+    tags=["knowledge"]
+)
+async def search_knowledge(
+    request: SearchRequest,
+    openid: str = Query(..., description="用户openid，用于记录搜索历史")
+) -> Response:
+    """
+    ## 知识库搜索接口
+    
+    支持以下搜索功能：
+    - 语义搜索：基于BGE嵌入模型的语义理解
+    - 关键词搜索：基于BM25算法的精确匹配
+    - 混合搜索：结合语义和关键词的综合搜索
+    - 通配符搜索：支持*和?通配符
+    
+    ### 搜索策略自动选择
+    - 包含通配符：使用Elasticsearch
+    - 长查询/问句：使用混合搜索
+    - 短查询/专有名词：使用BM25搜索
+    - 概念性查询：使用向量搜索
+    
+    ### 返回结果排序
+    结果按相关性分数排序，同时考虑：
+    - 文本相似度分数
+    - PageRank权威性分数
+    - 用户个性化偏好（基于搜索历史）
+    """
+    pass
+```
+
+## 性能优化规范
+
+### 1. 异步操作
+```python
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
+
+@router.post("/batch-process")
+async def batch_process(requests: List[ProcessRequest]):
+    """批量处理请求"""
+    # ✅ 并发处理多个请求
+    tasks = [process_single_request(req) for req in requests]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # 处理结果和异常
+    success_results = []
+    errors = []
+    
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            errors.append({"index": i, "error": str(result)})
+        else:
+            success_results.append(result)
+    
+    return Response.success(
+        data={"results": success_results, "errors": errors}
+    )
+
+# ✅ CPU密集型任务使用线程池
+executor = ThreadPoolExecutor(max_workers=4)
+
+@router.post("/cpu-intensive")
+async def cpu_intensive_task(data: ProcessRequest):
+    """CPU密集型任务"""
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(
+        executor, 
+        cpu_intensive_function, 
+        data.content
+    )
+    return Response.success(data=result)
+```
+
+### 2. 缓存策略
+```python
+from functools import lru_cache
+import aioredis
+
+# ✅ 内存缓存
+@lru_cache(maxsize=1000)
+def get_cached_config(key: str) -> str:
+    """缓存配置项"""
+    return config.get(key)
+
+# ✅ Redis缓存
+async def get_cached_search_result(query: str) -> Optional[Dict]:
+    """从Redis获取缓存的搜索结果"""
+    redis = await aioredis.from_url("redis://localhost")
+    cache_key = f"search:{hash(query)}"
+    
+    cached = await redis.get(cache_key)
+    if cached:
+        return json.loads(cached)
+    return None
+
+async def cache_search_result(query: str, result: Dict) -> None:
+    """缓存搜索结果"""
+    redis = await aioredis.from_url("redis://localhost")
+    cache_key = f"search:{hash(query)}"
+    
+    await redis.setex(
+        cache_key, 
+        3600,  # 1小时过期
+        json.dumps(result, ensure_ascii=False)
+    )
+```
+
+## 测试规范
+
+### 1. API测试
+```python
+import pytest
+from fastapi.testclient import TestClient
+from app import app
+
+client = TestClient(app)
+
+class TestKnowledgeAPI:
+    
+    def test_search_success(self):
+        """测试搜索成功场景"""
+        response = client.get(
+            "/api/knowledge/search",
+            params={"query": "南开大学", "openid": "test_user"}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 200
+        assert "data" in data
+        assert isinstance(data["data"], list)
+    
+    def test_search_empty_query(self):
+        """测试空查询参数"""
+        response = client.get(
+            "/api/knowledge/search",
+            params={"query": "", "openid": "test_user"}
+        )
+        
+        assert response.status_code == 400
+        data = response.json()
+        assert data["code"] == 400
+    
+    @pytest.mark.asyncio
+    async def test_search_with_mock(self, mocker):
+        """使用Mock测试搜索功能"""
+        mock_search = mocker.patch('api.routes.knowledge.search.search_service.search')
+        mock_search.return_value = [{"title": "测试结果", "content": "测试内容"}]
+        
+        response = client.get(
+            "/api/knowledge/search",
+            params={"query": "测试", "openid": "test_user"}
+        )
+        
+        assert response.status_code == 200
+        mock_search.assert_called_once()
+```
+
+## 安全规范
+
+### 1. 输入验证
+```python
+from pydantic import validator, Field
+import re
+
+class UserInput(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+    
+    @validator('content')
+    def validate_content(cls, v):
+        # 防止XSS攻击
+        dangerous_patterns = ['<script', 'javascript:', 'onerror=']
+        for pattern in dangerous_patterns:
+            if pattern.lower() in v.lower():
+                raise ValueError('输入内容包含危险字符')
+        return v
+
+    @validator('email')
+    def validate_email(cls, v):
+        if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', v):
+            raise ValueError('邮箱格式不正确')
+        return v
+```
+
+### 2. 频率限制
+```python
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+@router.post("/search")
+@limiter.limit("100/minute")  # 每分钟最多100次请求
+async def search_with_limit(request: Request, search_req: SearchRequest):
+    """带频率限制的搜索接口"""
+    pass
+```

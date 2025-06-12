@@ -495,7 +495,7 @@ class MySQLIndexer:
                         original_url,
                         title,
                         content,
-                        data.get('source', ''),
+                        data.get('author', ''),
                         publish_time,
                         scrape_time,
                         data.get('platform', 'website'),
@@ -522,7 +522,7 @@ class MySQLIndexer:
                         original_url,
                         title,
                         content,
-                        data.get('source', ''),
+                        data.get('author', ''),
                         publish_time,
                         scrape_time,
                         data.get('platform', 'wechat'),
@@ -535,7 +535,7 @@ class MySQLIndexer:
                     await db_core.execute_query("""
                         INSERT INTO wxapp_post (
                             title, content, nickname, avatar_url, location, 
-                            category, source, status, view_count, like_count, comment_count
+                            category, platform, status, view_count, like_count, comment_count
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
                             title = VALUES(title),
@@ -554,7 +554,7 @@ class MySQLIndexer:
                         data.get('avatar_url', ''),
                         data.get('location', ''),
                         data.get('category', ''),
-                        data.get('source', 'wxapp'),
+                        data.get('platform', 'wxapp'),
                         1,  # status = 1 (active)
                         data.get('view_count', 0),
                         data.get('like_count', 0),
@@ -895,7 +895,7 @@ async def _process_file_async(
             "original_url": original_url,
             "title": title,
             "content": content,
-            "author": data.get("source"),
+            "author": data.get("author", ""),
             "publish_time": publish_time_str,
             "scrape_time": data.get("scrape_time", datetime.now().isoformat()),
             "platform": data.get("platform", "website"),

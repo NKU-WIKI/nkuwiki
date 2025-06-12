@@ -1,0 +1,375 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Python 编码规范
+
+## 基础规范
+
+### 1. 代码风格
+- 遵循 **PEP 8** 代码风格指南
+- 使用 **ruff** 进行代码格式化和检查
+- 行长度限制：**88字符**（Black风格）
+- 使用4个空格缩进，不使用Tab
+
+### 2. 类型提示（强制要求）
+```python
+from typing import List, Dict, Optional, Union, Any
+from pathlib import Path
+
+def process_documents(
+    docs: List[Dict[str, Any]], 
+    output_path: Optional[Path] = None
+) -> Dict[str, int]:
+    """处理文档并返回统计信息"""
+    return {"processed": len(docs), "errors": 0}
+```
+
+### 3. 命名规范
+```python
+# 变量和函数：小写下划线
+user_id = "123"
+def get_user_info() -> Dict:
+    pass
+
+# 类名：大驼峰
+class UserManager:
+    pass
+
+# 常量：大写下划线
+MAX_RETRY_COUNT = 3
+DEFAULT_TIMEOUT = 30
+
+# 私有成员：单下划线开头
+class Service:
+    def _internal_method(self):
+        pass
+```
+
+## 导入规范
+
+### 导入顺序（用空行分隔）
+```python
+# 1. 标准库导入
+import os
+import sys
+from pathlib import Path
+from typing import List, Dict, Optional
+
+# 2. 第三方库导入
+from fastapi import APIRouter, HTTPException
+from llama_index.core import Settings
+import pandas as pd
+
+# 3. 项目内导入
+from config import Config
+from core.utils import register_logger
+from etl.load import db_core
+```
+
+### 导入最佳实践
+```python
+# ✅ 推荐：明确导入
+from core.utils.logger import register_logger
+from etl.retrieval.retrievers import QdrantRetriever
+
+# ❌ 避免：通配符导入
+from module import *
+
+# ✅ 推荐：长导入使用别名
+from very_long_module_name import VeryLongClassName as VLC
+```
+
+## 文档字符串规范
+
+### 函数文档字符串
+```python
+def retrieve_documents(
+    query: str, 
+    top_k: int = 5,
+    filters: Optional[Dict] = None
+) -> List[Dict[str, Any]]:
+    """检索相关文档
+    
+    使用混合检索策略（向量+BM25）检索与查询最相关的文档。
+    
+    Args:
+        query: 用户查询文本
+        top_k: 返回结果数量，默认5
+        filters: 可选的过滤条件，支持source、category等字段
+        
+    Returns:
+        包含文档内容和元数据的字典列表，每个字典包含：
+        - content: 文档内容
+        - metadata: 文档元数据（source、title等）
+        - score: 相关性分数
+        
+    Raises:
+        ValueError: 当query为空或top_k小于1时
+        ConnectionError: 当向量数据库连接失败时
+        
+    Example:
+        >>> docs = retrieve_documents("南开大学", top_k=3)
+        >>> len(docs)
+        3
+    """
+    if not query.strip():
+        raise ValueError("查询文本不能为空")
+    
+    # 实现逻辑...
+    return []
+```
+
+### 类文档字符串
+```python
+class DocumentProcessor:
+    """文档处理器
+    
+    负责处理各种格式的文档，包括文本清洗、分割和元数据提取。
+    支持的格式：PDF、DOCX、HTML、Markdown。
+    
+    Attributes:
+        chunk_size: 文档分块大小，默认512
+        chunk_overlap: 分块重叠大小，默认50
+        
+    Example:
+        >>> processor = DocumentProcessor(chunk_size=256)
+        >>> chunks = processor.process_text("长文本内容...")
+    """
+    
+    def __init__(self, chunk_size: int = 512, chunk_overlap: int = 50):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+```
+
+## 日志规范
+
+### 日志器创建
+```python
+from core.utils import register_logger
+
+# 每个模块创建专用日志器
+logger = register_logger(__name__)  # 推荐使用模块名
+# 或者
+logger = register_logger("etl.crawler.wechat")  # 明确指定名称
+```
+
+### 日志级别使用
+```python
+# DEBUG：详细调试信息（默认级别）
+logger.debug("开始处理文档: %s", doc_id)
+logger.debug("配置参数: %s", config_dict)
+
+# INFO：重要业务流程信息
+logger.info("成功处理%d个文档", processed_count)
+logger.info("服务启动完成，监听端口: %d", port)
+
+# WARNING：警告信息
+logger.warning("检测到重复数据: %s", duplicate_id)
+logger.warning("API调用频率接近限制")
+
+# ERROR：错误信息
+logger.error("数据库连接失败: %s", str(e))
+logger.exception("处理文档时发生异常")  # 自动包含堆栈信息
+```
+
+### 日志格式最佳实践
+```python
+# ✅ 使用参数化格式（性能更好）
+logger.info("用户%s查询了%d条记录", user_id, count)
+
+# ❌ 避免字符串拼接
+logger.info("用户" + user_id + "查询了" + str(count) + "条记录")
+
+# ✅ 结构化日志
+logger.info(
+    "查询完成", 
+    extra={
+        "user_id": user_id,
+        "query": query,
+        "result_count": len(results),
+        "duration_ms": duration
+    }
+)
+```
+
+## 配置管理规范
+
+### 配置访问模式
+```python
+from config import Config
+
+config = Config()
+
+# ✅ 使用点号路径访问配置
+db_host = config.get("etl.data.mysql.host", "localhost")
+api_key = config.get("core.agent.coze.api_key", "")
+batch_size = config.get("etl.processing.batch_size", 100)
+
+# ✅ 配置验证
+if not api_key:
+    raise ValueError("Coze API密钥未配置")
+
+# ✅ 类型转换
+max_workers = int(config.get("etl.crawler.max_workers", "4"))
+enable_cache = config.get("etl.cache.enabled", "false").lower() == "true"
+```
+
+## 异常处理规范
+
+### 具体异常处理
+```python
+import mysql.connector
+from requests.exceptions import RequestException, Timeout
+
+try:
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+except Timeout:
+    logger.error("请求超时: %s", url)
+    return {"error": "timeout"}
+except RequestException as e:
+    logger.error("请求失败: %s, 错误: %s", url, str(e))
+    return {"error": "request_failed"}
+except Exception as e:
+    logger.exception("未预期的错误")
+    return {"error": "internal_error"}
+```
+
+### 自定义异常
+```python
+class NKUWikiError(Exception):
+    """NKUWiki基础异常类"""
+    pass
+
+class DataProcessingError(NKUWikiError):
+    """数据处理异常"""
+    pass
+
+class ConfigurationError(NKUWikiError):
+    """配置错误异常"""
+    pass
+
+# 使用示例
+def validate_config():
+    if not config.get("required_field"):
+        raise ConfigurationError("缺少必需的配置项: required_field")
+```
+
+## 性能优化规范
+
+### 异步编程
+```python
+import asyncio
+import aiohttp
+from typing import AsyncGenerator
+
+async def fetch_data(session: aiohttp.ClientSession, url: str) -> Dict:
+    """异步获取数据"""
+    async with session.get(url) as response:
+        return await response.json()
+
+async def process_urls_concurrently(urls: List[str]) -> List[Dict]:
+    """并发处理URL列表"""
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch_data(session, url) for url in urls]
+        return await asyncio.gather(*tasks)
+```
+
+### 生成器和迭代器
+```python
+def process_large_file(file_path: Path) -> AsyncGenerator[Dict, None]:
+    """逐行处理大文件，避免内存溢出"""
+    async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+        async for line in f:
+            yield process_line(line)
+
+# 使用示例
+async for item in process_large_file(large_file):
+    await save_to_db(item)
+```
+
+## 测试规范
+
+### 单元测试
+```python
+import pytest
+from unittest.mock import Mock, patch
+
+class TestDocumentProcessor:
+    
+    def setup_method(self):
+        """每个测试方法前执行"""
+        self.processor = DocumentProcessor()
+    
+    def test_process_text_success(self):
+        """测试文本处理成功场景"""
+        text = "这是一个测试文档" * 100
+        chunks = self.processor.process_text(text)
+        
+        assert len(chunks) > 0
+        assert all(len(chunk) <= self.processor.chunk_size for chunk in chunks)
+    
+    def test_process_empty_text(self):
+        """测试空文本处理"""
+        with pytest.raises(ValueError, match="文本不能为空"):
+            self.processor.process_text("")
+    
+    @patch('etl.processors.document.requests.get')
+    def test_fetch_with_mock(self, mock_get):
+        """使用Mock测试外部依赖"""
+        mock_response = Mock()
+        mock_response.text = "测试内容"
+        mock_get.return_value = mock_response
+        
+        result = self.processor.fetch_content("http://example.com")
+        assert result == "测试内容"
+```
+
+## 代码组织规范
+
+### 模块结构
+```python
+"""
+模块文档字符串
+"""
+
+# 导入部分
+import standard_library
+from third_party import something
+from project import module
+
+# 常量定义
+CONSTANT_VALUE = "value"
+
+# 异常定义
+class ModuleError(Exception):
+    pass
+
+# 函数定义
+def utility_function():
+    pass
+
+# 类定义
+class MainClass:
+    pass
+
+# 主执行逻辑
+if __name__ == "__main__":
+    main()
+```
+
+### 文件命名
+```
+# ✅ 推荐的文件名
+user_manager.py      # 模块文件
+db_core.py          # 核心功能
+base_crawler.py     # 基类文件
+__init__.py         # 包初始化
+
+# ❌ 避免的文件名
+UserManager.py      # 避免大驼峰
+db-core.py         # 避免连字符
+util.py            # 名称太通用
+```

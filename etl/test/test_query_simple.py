@@ -31,7 +31,7 @@ async def test_basic_query():
                 # 使用run方法进行查询
                 results = pipeline.run(
                     query=query,
-                    retrieval_strategy=RetrievalStrategy.HYBRID,
+                    retrieval_strategy=RetrievalStrategy.HYBRID,  # 测试改进后的HYBRID
                     rerank_strategy=RerankStrategy.BGE_RERANKER,
                     skip_generation=True,
                     top_k_retrieve=5,

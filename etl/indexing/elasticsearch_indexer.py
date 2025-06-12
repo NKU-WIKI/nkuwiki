@@ -194,7 +194,7 @@ class ElasticsearchIndexer:
                             "type": "date",
                             "format": "yyyy-MM-dd||yyyy-MM-dd HH:mm:ss||epoch_millis"
                         },
-                        "source": {
+                        "platform": {
                             "type": "keyword",
                             "index": True
                         },
@@ -623,13 +623,11 @@ class ElasticsearchIndexer:
                             "_source": {
                                 "source_id": record.get('source_id'),
                                 "id": record.get('id'),
-                                "url": record.get('original_url', ''),
+                                "original_url": record.get('original_url', ''),
                                 "title": record.get('title', ''),
                                 "content": record.get('content', ''),
                                 "author": record.get('author', ''),
-                                "original_url": record.get('original_url', ''),
                                 "publish_time": record.get('publish_time'),
-                                "source": record.get('platform', ''),
                                 "platform": record.get('platform', ''),
                                 "pagerank_score": record.get('pagerank_score', 0.0)
                             }

@@ -126,8 +126,7 @@ def extract_node_metadata(record: Dict[str, Any]) -> Dict[str, Any]:
         'original_url': record.get('original_url'),
         'publish_time': str(record.get('publish_time')) if record.get('publish_time') else None,
         'pagerank_score': record.get('pagerank_score', 0.0),
-        'platform': record.get('platform'),
-        'source': record.get('source', ''),
+        'platform': record.get('platform', ''),
     }
 
 

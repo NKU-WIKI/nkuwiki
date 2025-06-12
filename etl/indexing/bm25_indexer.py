@@ -489,12 +489,10 @@ class BM25Indexer:
                                     metadata={
                                         'source_id': f"{config['platform_name']}_{record.get('id')}",  # 唯一标识
                                         'id': record.get('id'),
-                                        'url': record.get('url', ''),
                                         'title': title,
                                         'author': record.get('author', ''),
-                                        'original_url': record.get('url', ''),
+                                        'original_url': record.get('original_url', ''),
                                         'publish_time': str(record.get('publish_time', '')),
-                                        'source': config['platform_name'],
                                         'platform': config['platform_name'],
                                         'pagerank_score': float(record.get('pagerank_score', 0.0)),
                                         'table_name': config['table']  # 标记来源表
@@ -682,7 +680,7 @@ class BM25Indexer:
                 updated_count = 0
                 with tqdm(raw_nodes, desc="补充PageRank分数", unit="节点") as pbar:
                     for node in pbar:
-                        url = node.metadata.get('url', '')
+                        url = node.metadata.get('original_url', '')
                         if url in pagerank_mapping:
                             node.metadata['pagerank_score'] = float(pagerank_mapping[url])
                             updated_count += 1

@@ -74,7 +74,7 @@ result = rag.retrieve_only(
 from qdrant_client import models
 filters = models.Filter(
     must=[models.FieldCondition(
-        key="metadata.source", 
+        key="metadata.platform", 
         match=models.MatchValue(value="academic")
     )]
 )
@@ -602,7 +602,7 @@ class RagPipeline:
                 # 获取节点的元数据
                 metadata = node.node.metadata if hasattr(node.node, 'metadata') else {}
                 title = metadata.get('title', '未知标题')
-                platform = metadata.get('source', '未知平台')
+                platform = metadata.get('platform', '未知平台')
                 content = node.get_content()
                 
                 # 精简内容，最多保留200个字符
@@ -750,10 +750,10 @@ class RagPipeline:
             retrieved_texts.append({
                 "rank": i,
                 "content": content,
-                "score": score,
+                "relevance": score,
                 "title": metadata.get('title', ''),
-                "url": metadata.get('url', ''),
-                "source": metadata.get('source', '')
+                "original_url": metadata.get('original_url', ''),
+                "platform": metadata.get('platform', '')
             })
         
         # 如果跳过生成步骤，直接返回召回文本

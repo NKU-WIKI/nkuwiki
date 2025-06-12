@@ -1,0 +1,1127 @@
+---
+description: 测试和部署规范
+globs: 
+alwaysApply: false
+---
+# 测试和部署规范
+
+## 测试框架规范
+
+### 1. 单元测试
+```python
+# tests/test_etl/test_crawler.py
+import pytest
+import asyncio
+from unittest.mock import Mock, patch, AsyncMock
+from etl.crawler.webpage_spider.counselor.spiders.wiki import WikiSpider
+
+class TestWikiSpider:
+    """Wiki爬虫测试类"""
+    
+    @pytest.fixture
+    def spider(self):
+        """创建爬虫实例"""
+        spider = WikiSpider()
+        spider.settings = Mock()
+        return spider
+    
+    @pytest.fixture
+    def mock_response(self):
+        """模拟响应对象"""
+        response = Mock()
+        response.url = "https://example.com/test"
+        response.status = 200
+        response.css = Mock()
+        return response
+    
+    def test_extract_title_success(self, spider, mock_response):
+        """测试标题提取成功场景"""
+        # 设置模拟数据
+        mock_response.css.return_value.get.return_value = "测试标题"
+        
+        # 执行测试
+        title = spider.extract_title(mock_response)
+        
+        # 验证结果
+        assert title == "测试标题"
+        mock_response.css.assert_called()
+    
+    def test_extract_title_fallback(self, spider, mock_response):
+        """测试标题提取回退机制"""
+        # 设置模拟数据 - 没有找到标题
+        mock_response.css.return_value.get.return_value = None
+        mock_response.url = "https://example.com/test-page"
+        
+        # 执行测试
+        title = spider.extract_title(mock_response)
+        
+        # 验证回退到URL
+        assert title == "test-page"
+    
+    def test_clean_text(self, spider):
+        """测试文本清理功能"""
+        # 测试数据
+        dirty_text = "  这是一个    测试\n\n文本  \t  "
+        
+        # 执行清理
+        clean_text = spider.clean_text(dirty_text)
+        
+        # 验证结果
+        assert clean_text == "这是一个 测试 文本"
+        assert not clean_text.startswith(' ')
+        assert not clean_text.endswith(' ')
+    
+    def test_should_follow_allowed_domain(self, spider):
+        """测试域名白名单过滤"""
+        spider.allowed_domains = ['example.com']
+        
+        # 允许的域名
+        assert spider.should_follow('https://example.com/page') == True
+        
+        # 不允许的域名
+        assert spider.should_follow('https://other.com/page') == False
+    
+    def test_should_follow_blocked_extensions(self, spider):
+        """测试文件扩展名过滤"""
+        # 被阻止的文件类型
+        assert spider.should_follow('https://example.com/file.pdf') == False
+        assert spider.should_follow('https://example.com/doc.docx') == False
+        
+        # 允许的页面
+        assert spider.should_follow('https://example.com/page.html') == True
+    
+    @pytest.mark.asyncio
+    async def test_parse_content_integration(self, spider, mock_response):
+        """集成测试：解析页面内容"""
+        # 设置复杂的模拟响应
+        mock_response.css.side_effect = [
+            Mock(get=Mock(return_value="测试标题")),  # 标题提取
+            Mock(css=Mock(return_value=Mock(getall=Mock(return_value=["测试", "内容"])))),  # 内容提取
+        ]
+        
+        # 执行解析
+        result = spider.parse_content(mock_response)
+        
+        # 验证结果结构
+        assert 'url' in result
+        assert 'title' in result
+        assert 'content' in result
+        assert result['title'] == "测试标题"
+```
+
+### 2. API测试
+```python
+# tests/test_api/test_knowledge_search.py
+import pytest
+from fastapi.testclient import TestClient
+from unittest.mock import patch, Mock
+from app import app
+
+client = TestClient(app)
+
+class TestKnowledgeSearchAPI:
+    """知识搜索API测试"""
+    
+    @pytest.fixture
+    def mock_search_service(self):
+        """模拟搜索服务"""
+        with patch('api.routes.knowledge.search.search_service') as mock:
+            yield mock
+    
+    def test_search_success(self, mock_search_service):
+        """测试搜索成功场景"""
+        # 设置模拟返回
+        mock_search_service.search.return_value = [
+            {
+                "title": "测试文档",
+                "content": "这是测试内容",
+                "score": 0.95,
+                "url": "https://example.com/test"
+            }
+        ]
+        
+        # 发送请求
+        response = client.post("/api/knowledge/advanced-search", json={
+            "query": "测试查询",
+            "openid": "test_user"
+        })
+        
+        # 验证响应
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 200
+        assert len(data["data"]) == 1
+        assert data["data"][0]["title"] == "测试文档"
+    
+    def test_search_empty_query(self):
+        """测试空查询参数"""
+        response = client.post("/api/knowledge/advanced-search", json={
+            "query": "",
+            "openid": "test_user"
+        })
+        
+        assert response.status_code == 422  # 参数验证错误
+    
+    def test_search_missing_openid(self):
+        """测试缺少openid参数"""
+        response = client.post("/api/knowledge/advanced-search", json={
+            "query": "测试查询"
+        })
+        
+        assert response.status_code == 422
+    
+    def test_search_service_error(self, mock_search_service):
+        """测试搜索服务异常"""
+        # 设置服务抛出异常
+        mock_search_service.search.side_effect = Exception("搜索服务异常")
+        
+        response = client.post("/api/knowledge/advanced-search", json={
+            "query": "测试查询",
+            "openid": "test_user"
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["code"] == 500
+        assert "错误" in data["message"]
+    
+    @pytest.mark.parametrize("query,expected_count", [
+        ("南开大学", 5),
+        ("计算机科学", 3),
+        ("*模式", 2),  # 通配符查询
+    ])
+    def test_search_different_queries(self, mock_search_service, query, expected_count):
+        """参数化测试：不同查询的预期结果"""
+        # 设置不同查询的模拟返回
+        mock_results = [{"title": f"结果{i}", "content": "内容"} 
+                       for i in range(expected_count)]
+        mock_search_service.search.return_value = mock_results
+        
+        response = client.post("/api/knowledge/advanced-search", json={
+            "query": query,
+            "openid": "test_user"
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["data"]) == expected_count
+```
+
+### 3. 数据库测试
+```python
+# tests/test_etl/test_database.py
+import pytest
+from unittest.mock import Mock, patch
+from etl.load.dao.website_dao import WebsiteDAO
+from etl.load import db_core
+
+class TestWebsiteDAO:
+    """网站数据DAO测试"""
+    
+    @pytest.fixture
+    def dao(self):
+        """创建DAO实例"""
+        return WebsiteDAO()
+    
+    @pytest.fixture
+    def mock_connection(self):
+        """模拟数据库连接"""
+        with patch('etl.load.dao.base_dao.get_connection') as mock:
+            connection = Mock()
+            mock.return_value.__enter__.return_value = connection
+            yield connection
+    
+    @pytest.fixture
+    def sample_document(self):
+        """示例文档数据"""
+        return {
+            'id': 'test123',
+            'title': '测试文档',
+            'content': '这是测试内容',
+            'url': 'https://example.com/test',
+            'source': 'test_source'
+        }
+    
+    def test_create_document(self, dao, mock_connection, sample_document):
+        """测试创建文档"""
+        # 设置模拟返回
+        with patch('etl.load.dao.base_dao.db_ops') as mock_ops:
+            mock_ops.execute_insert.return_value = 1
+            
+            # 执行创建
+            result = dao.create(sample_document)
+            
+            # 验证调用
+            mock_ops.execute_insert.assert_called_once_with(
+                mock_connection, 'website_nku', sample_document
+            )
+            assert result == 1
+    
+    def test_find_by_url(self, dao, mock_connection):
+        """测试根据URL查找"""
+        expected_result = {'id': 'test123', 'title': '测试文档'}
+        
+        with patch('etl.load.dao.base_dao.db_ops') as mock_ops:
+            mock_ops.execute_query.return_value = expected_result
+            
+            # 执行查找
+            result = dao.find_by_url('https://example.com/test')
+            
+            # 验证结果
+            assert result == expected_result
+            mock_ops.execute_query.assert_called_once()
+    
+    def test_batch_create(self, dao, mock_connection):
+        """测试批量创建"""
+        documents = [
+            {'id': 'doc1', 'title': '文档1', 'content': '内容1'},
+            {'id': 'doc2', 'title': '文档2', 'content': '内容2'},
+        ]
+        
+        with patch('etl.load.dao.base_dao.db_ops') as mock_ops:
+            mock_ops.execute_batch_insert.return_value = 2
+            
+            # 执行批量创建
+            result = dao.batch_create(documents)
+            
+            # 验证结果
+            assert result == 2
+            mock_ops.execute_batch_insert.assert_called_once_with(
+                mock_connection, 'website_nku', documents, 1000
+            )
+    
+    def test_update_pagerank_scores(self, dao, mock_connection):
+        """测试更新PageRank分数"""
+        scores = {
+            'https://example1.com': 0.85,
+            'https://example2.com': 0.75
+        }
+        
+        with patch('etl.load.dao.base_dao.db_ops') as mock_ops:
+            mock_ops.execute_update.return_value = 1
+            
+            # 执行更新
+            result = dao.update_pagerank_scores(scores)
+            
+            # 验证调用次数
+            assert mock_ops.execute_update.call_count == 2
+            assert result == 2  # 两次更新的总数
+```
+
+### 4. 集成测试
+```python
+# tests/integration/test_full_etl_pipeline.py
+import pytest
+import asyncio
+from unittest.mock import patch, Mock
+from etl.rag_pipeline import RAGPipeline
+from config import Config
+
+@pytest.mark.integration
+class TestETLPipeline:
+    """ETL管道集成测试"""
+    
+    @pytest.fixture
+    def config(self):
+        """测试配置"""
+        config = Config()
+        # 使用测试数据库
+        config.data['etl']['data']['mysql']['database'] = 'nkuwiki_test'
+        return config
+    
+    @pytest.fixture
+    def pipeline(self, config):
+        """RAG管道实例"""
+        return RAGPipeline(config)
+    
+    @pytest.mark.asyncio
+    async def test_full_search_pipeline(self, pipeline):
+        """测试完整搜索管道"""
+        # 模拟索引数据
+        with patch.object(pipeline, 'vector_retriever') as mock_vector, \
+             patch.object(pipeline, 'bm25_retriever') as mock_bm25:
+            
+            # 设置模拟返回
+            mock_vector._retrieve.return_value = [
+                Mock(node=Mock(text="向量搜索结果", metadata={"source": "test"}), score=0.9)
+            ]
+            mock_bm25._retrieve.return_value = [
+                Mock(node=Mock(text="BM25搜索结果", metadata={"source": "test"}), score=0.8)
+            ]
+            
+            # 执行搜索
+            results = await pipeline.search("测试查询", top_k=5)
+            
+            # 验证结果
+            assert len(results) > 0
+            assert all(hasattr(result, 'score') for result in results)
+    
+    @pytest.mark.asyncio
+    async def test_wildcard_search_routing(self, pipeline):
+        """测试通配符查询路由"""
+        with patch.object(pipeline, 'es_retriever') as mock_es:
+            mock_es._retrieve.return_value = [
+                Mock(node=Mock(text="ES搜索结果"), score=0.85)
+            ]
+            
+            # 执行通配符搜索
+            results = await pipeline.search("测试*", top_k=5)
+            
+            # 验证ES检索器被调用
+            mock_es._retrieve.assert_called_once()
+    
+    @pytest.mark.slow
+    @pytest.mark.asyncio
+    async def test_document_processing_pipeline(self):
+        """测试文档处理管道（慢速测试）"""
+        from etl.processors.document import DocumentProcessor
+        
+        processor = DocumentProcessor()
+        
+        # 测试文档
+        raw_doc = {
+            'url': 'https://example.com/test',
+            'title': '测试文档',
+            'content': '这是一个测试文档的内容' * 100,  # 长内容
+            'source': 'test'
+        }
+        
+        # 处理文档
+        document = await processor.process_document(raw_doc)
+        
+        # 验证处理结果
+        assert document.id is not None
+        assert document.title == '测试文档'
+        assert len(document.content) > 0
+        assert document.metadata is not None
+```
+
+## 性能测试
+
+### 1. 压力测试
+```python
+# tests/performance/test_api_performance.py
+import pytest
+import asyncio
+import time
+from fastapi.testclient import TestClient
+from concurrent.futures import ThreadPoolExecutor
+from app import app
+
+client = TestClient(app)
+
+@pytest.mark.performance
+class TestAPIPerformance:
+    """API性能测试"""
+    
+    def test_search_api_response_time(self):
+        """测试搜索API响应时间"""
+        start_time = time.time()
+        
+        response = client.post("/api/knowledge/advanced-search", json={
+            "query": "测试查询",
+            "openid": "test_user"
+        })
+        
+        end_time = time.time()
+        response_time = end_time - start_time
+        
+        # 验证响应时间小于2秒
+        assert response_time < 2.0
+        assert response.status_code == 200
+    
+    def test_concurrent_requests(self):
+        """测试并发请求性能"""
+        def make_request():
+            return client.post("/api/knowledge/advanced-search", json={
+                "query": "并发测试",
+                "openid": f"user_{time.time()}"
+            })
+        
+        # 并发执行10个请求
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            start_time = time.time()
+            futures = [executor.submit(make_request) for _ in range(10)]
+            responses = [future.result() for future in futures]
+            end_time = time.time()
+        
+        # 验证所有请求都成功
+        assert all(r.status_code == 200 for r in responses)
+        
+        # 验证总时间合理（应该比串行快）
+        total_time = end_time - start_time
+        assert total_time < 10.0  # 10个请求总时间小于10秒
+    
+    @pytest.mark.benchmark
+    def test_search_throughput(self, benchmark):
+        """基准测试：搜索吞吐量"""
+        def search_operation():
+            response = client.post("/api/knowledge/advanced-search", json={
+                "query": "基准测试",
+                "openid": "benchmark_user"
+            })
+            return response.status_code == 200
+        
+        # 运行基准测试
+        result = benchmark(search_operation)
+        assert result is True
+```
+
+### 2. 内存和CPU测试
+```python
+# tests/performance/test_resource_usage.py
+import pytest
+import psutil
+import time
+from memory_profiler import profile
+from etl.rag_pipeline import RAGPipeline
+
+@pytest.mark.performance
+class TestResourceUsage:
+    """资源使用测试"""
+    
+    def test_memory_usage_during_search(self):
+        """测试搜索过程中的内存使用"""
+        process = psutil.Process()
+        initial_memory = process.memory_info().rss
+        
+        # 执行搜索操作
+        pipeline = RAGPipeline()
+        for i in range(100):
+            results = pipeline.search(f"测试查询{i}", top_k=10)
+        
+        final_memory = process.memory_info().rss
+        memory_increase = final_memory - initial_memory
+        
+        # 验证内存增长不超过100MB
+        assert memory_increase < 100 * 1024 * 1024
+    
+    @profile
+    def test_memory_profile_document_processing(self):
+        """使用memory_profiler分析文档处理内存使用"""
+        from etl.processors.document import DocumentProcessor
+        
+        processor = DocumentProcessor()
+        
+        # 处理大量文档
+        for i in range(1000):
+            doc = {
+                'url': f'https://example.com/doc{i}',
+                'title': f'文档{i}',
+                'content': '测试内容' * 1000,
+                'source': 'test'
+            }
+            processed = processor.process_document(doc)
+    
+    def test_cpu_usage_during_indexing(self):
+        """测试索引构建过程中的CPU使用"""
+        from etl.embedding.run_embedding_pipeline import EmbeddingPipeline
+        
+        # 监控CPU使用
+        process = psutil.Process()
+        cpu_percent_list = []
+        
+        def monitor_cpu():
+            for _ in range(10):
+                cpu_percent_list.append(process.cpu_percent(interval=1))
+        
+        # 启动CPU监控
+        import threading
+        monitor_thread = threading.Thread(target=monitor_cpu)
+        monitor_thread.start()
+        
+        # 执行索引构建（模拟）
+        pipeline = EmbeddingPipeline()
+        # pipeline.build_index(sample_documents)
+        
+        monitor_thread.join()
+        
+        # 验证CPU使用合理
+        avg_cpu = sum(cpu_percent_list) / len(cpu_percent_list)
+        assert avg_cpu < 80.0  # 平均CPU使用率不超过80%
+```
+
+## 部署配置
+
+### 1. Docker配置
+```dockerfile
+# Dockerfile
+FROM python:3.10-slim
+
+# 设置工作目录
+WORKDIR /app
+
+# 安装系统依赖
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    git \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# 复制依赖文件
+COPY requirements.txt .
+
+# 安装Python依赖
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 复制应用代码
+COPY . .
+
+# 创建数据目录
+RUN mkdir -p /data/logs /data/models /data/index
+
+# 设置环境变量
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/api/health || exit 1
+
+# 暴露端口
+EXPOSE 8000
+
+# 启动命令
+CMD ["python", "app.py", "--api", "--port", "8000"]
+```
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  nkuwiki-api:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - ENV=production
+      - DEBUG=false
+    volumes:
+      - ./data:/data
+      - ./config.json:/app/config.json
+    depends_on:
+      - mysql
+      - redis
+      - qdrant
+    restart: unless-stopped
+    networks:
+      - nkuwiki-network
+
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: nkuwiki
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./etl/load/mysql_tables:/docker-entrypoint-initdb.d
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
+    networks:
+      - nkuwiki-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    networks:
+      - nkuwiki-network
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    restart: unless-stopped
+    networks:
+      - nkuwiki-network
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/nginx/ssl
+    depends_on:
+      - nkuwiki-api
+    restart: unless-stopped
+    networks:
+      - nkuwiki-network
+
+volumes:
+  mysql_data:
+  redis_data:
+  qdrant_data:
+
+networks:
+  nkuwiki-network:
+    driver: bridge
+```
+
+### 2. 环境配置管理
+```python
+# infra/deploy/environment.py
+import os
+from typing import Dict, Any
+from pathlib import Path
+
+class EnvironmentManager:
+    """环境配置管理器"""
+    
+    def __init__(self):
+        self.env = os.getenv('ENV', 'development')
+        self.config_dir = Path(__file__).parent / 'configs'
+    
+    def get_config(self) -> Dict[str, Any]:
+        """获取环境配置"""
+        base_config = self.load_config('base.json')
+        env_config = self.load_config(f'{self.env}.json')
+        
+        # 合并配置
+        return self.merge_configs(base_config, env_config)
+    
+    def load_config(self, filename: str) -> Dict[str, Any]:
+        """加载配置文件"""
+        import json
+        
+        config_path = self.config_dir / filename
+        if not config_path.exists():
+            return {}
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    
+    def merge_configs(self, base: Dict, override: Dict) -> Dict[str, Any]:
+        """递归合并配置"""
+        result = base.copy()
+        
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self.merge_configs(result[key], value)
+            else:
+                result[key] = value
+        
+        return result
+    
+    def validate_config(self, config: Dict[str, Any]) -> bool:
+        """验证配置完整性"""
+        required_keys = [
+            'etl.data.mysql.host',
+            'etl.data.mysql.database',
+            'etl.data.qdrant.host',
+            'api.host',
+            'api.port'
+        ]
+        
+        for key in required_keys:
+            if not self.get_nested_value(config, key):
+                print(f"缺少必需配置: {key}")
+                return False
+        
+        return True
+    
+    def get_nested_value(self, config: Dict, key: str) -> Any:
+        """获取嵌套配置值"""
+        keys = key.split('.')
+        value = config
+        
+        for k in keys:
+            if isinstance(value, dict) and k in value:
+                value = value[k]
+            else:
+                return None
+        
+        return value
+
+# 环境配置文件示例
+# infra/deploy/configs/production.json
+{
+  "debug": false,
+  "etl": {
+    "data": {
+      "mysql": {
+        "host": "${MYSQL_HOST}",
+        "port": 3306,
+        "database": "nkuwiki",
+        "user": "${MYSQL_USER}",
+        "password": "${MYSQL_PASSWORD}",
+        "pool_size": 20
+      },
+      "qdrant": {
+        "host": "${QDRANT_HOST}",
+        "port": 6333
+      }
+    },
+    "retrieval": {
+      "pagerank_weight": 0.1,
+      "enable_es_rerank": true
+    }
+  },
+  "api": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "cors": {
+      "allow_origins": ["https://api.nkuwiki.com"]
+    }
+  },
+  "logging": {
+    "level": "INFO",
+    "file": "/data/logs/nkuwiki.log"
+  }
+}
+```
+
+### 3. 监控和日志
+```python
+# infra/monitoring/metrics.py
+import time
+import psutil
+from typing import Dict, Any
+from prometheus_client import Counter, Histogram, Gauge, start_http_server
+
+class MetricsCollector:
+    """指标收集器"""
+    
+    def __init__(self):
+        # API指标
+        self.api_requests_total = Counter(
+            'api_requests_total',
+            'API请求总数',
+            ['method', 'endpoint', 'status']
+        )
+        
+        self.api_request_duration = Histogram(
+            'api_request_duration_seconds',
+            'API请求耗时',
+            ['method', 'endpoint']
+        )
+        
+        # 搜索指标
+        self.search_requests_total = Counter(
+            'search_requests_total',
+            '搜索请求总数',
+            ['query_type']
+        )
+        
+        self.search_duration = Histogram(
+            'search_duration_seconds',
+            '搜索耗时',
+            ['query_type']
+        )
+        
+        # 系统指标
+        self.system_cpu_usage = Gauge(
+            'system_cpu_usage_percent',
+            'CPU使用率'
+        )
+        
+        self.system_memory_usage = Gauge(
+            'system_memory_usage_bytes',
+            '内存使用量'
+        )
+        
+        self.database_connections = Gauge(
+            'database_connections_active',
+            '活跃数据库连接数'
+        )
+    
+    def record_api_request(self, method: str, endpoint: str, status: int, duration: float):
+        """记录API请求指标"""
+        self.api_requests_total.labels(
+            method=method,
+            endpoint=endpoint,
+            status=str(status)
+        ).inc()
+        
+        self.api_request_duration.labels(
+            method=method,
+            endpoint=endpoint
+        ).observe(duration)
+    
+    def record_search_request(self, query_type: str, duration: float):
+        """记录搜索请求指标"""
+        self.search_requests_total.labels(query_type=query_type).inc()
+        self.search_duration.labels(query_type=query_type).observe(duration)
+    
+    def update_system_metrics(self):
+        """更新系统指标"""
+        # CPU使用率
+        cpu_percent = psutil.cpu_percent(interval=1)
+        self.system_cpu_usage.set(cpu_percent)
+        
+        # 内存使用量
+        memory = psutil.virtual_memory()
+        self.system_memory_usage.set(memory.used)
+    
+    def start_metrics_server(self, port: int = 9090):
+        """启动指标服务器"""
+        start_http_server(port)
+        print(f"指标服务器启动在端口 {port}")
+
+# 全局指标收集器
+metrics = MetricsCollector()
+
+# FastAPI中间件集成
+from fastapi import Request
+import time
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """指标收集中间件"""
+    start_time = time.time()
+    
+    response = await call_next(request)
+    
+    duration = time.time() - start_time
+    
+    # 记录指标
+    metrics.record_api_request(
+        method=request.method,
+        endpoint=request.url.path,
+        status=response.status_code,
+        duration=duration
+    )
+    
+    return response
+```
+
+### 4. 健康检查
+```python
+# api/routes/health.py
+from fastapi import APIRouter, HTTPException
+from typing import Dict, Any
+import asyncio
+from etl.load import get_connection
+from qdrant_client import QdrantClient
+
+router = APIRouter()
+
+@router.get("/health")
+async def health_check() -> Dict[str, Any]:
+    """系统健康检查"""
+    health_status = {
+        "status": "healthy",
+        "timestamp": datetime.now().isoformat(),
+        "services": {}
+    }
+    
+    # 检查数据库连接
+    try:
+        with get_connection() as connection:
+            cursor = connection.cursor()
+            cursor.execute("SELECT 1")
+            cursor.close()
+        health_status["services"]["mysql"] = "healthy"
+    except Exception as e:
+        health_status["services"]["mysql"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "unhealthy"
+    
+    # 检查Qdrant连接
+    try:
+        config = Config()
+        client = QdrantClient(
+            host=config.get("etl.data.qdrant.host", "localhost"),
+            port=config.get("etl.data.qdrant.port", 6333)
+        )
+        collections = client.get_collections()
+        health_status["services"]["qdrant"] = "healthy"
+    except Exception as e:
+        health_status["services"]["qdrant"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "unhealthy"
+    
+    # 检查Redis连接
+    try:
+        import redis
+        r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+        r.ping()
+        health_status["services"]["redis"] = "healthy"
+    except Exception as e:
+        health_status["services"]["redis"] = f"unhealthy: {str(e)}"
+        health_status["status"] = "unhealthy"
+    
+    if health_status["status"] == "unhealthy":
+        raise HTTPException(status_code=503, detail=health_status)
+    
+    return health_status
+
+@router.get("/health/ready")
+async def readiness_check() -> Dict[str, str]:
+    """就绪检查"""
+    # 检查关键服务是否就绪
+    try:
+        # 检查索引是否可用
+        from etl.rag_pipeline import RAGPipeline
+        pipeline = RAGPipeline()
+        
+        # 执行一个简单搜索测试
+        results = await pipeline.search("health check", top_k=1)
+        
+        return {"status": "ready"}
+    except Exception as e:
+        raise HTTPException(
+            status_code=503, 
+            detail={"status": "not ready", "error": str(e)}
+        )
+
+@router.get("/health/live")
+async def liveness_check() -> Dict[str, str]:
+    """存活检查"""
+    return {"status": "alive"}
+```
+
+### 5. 部署脚本
+```bash
+#!/bin/bash
+# infra/deploy/deploy.sh
+
+set -e
+
+# 配置变量
+PROJECT_NAME="nkuwiki"
+VERSION=${1:-latest}
+ENVIRONMENT=${2:-production}
+
+echo "开始部署 $PROJECT_NAME:$VERSION 到 $ENVIRONMENT 环境"
+
+# 检查环境
+if [[ "$ENVIRONMENT" != "production" && "$ENVIRONMENT" != "staging" ]]; then
+    echo "错误: 环境必须是 production 或 staging"
+    exit 1
+fi
+
+# 构建Docker镜像
+echo "构建Docker镜像..."
+docker build -t $PROJECT_NAME:$VERSION .
+
+# 停止旧容器
+echo "停止旧容器..."
+docker-compose -f docker-compose.$ENVIRONMENT.yml down
+
+# 备份数据库
+echo "备份数据库..."
+docker exec mysql mysqldump -u root -p$MYSQL_ROOT_PASSWORD nkuwiki > backup_$(date +%Y%m%d_%H%M%S).sql
+
+# 启动新容器
+echo "启动新容器..."
+docker-compose -f docker-compose.$ENVIRONMENT.yml up -d
+
+# 等待服务启动
+echo "等待服务启动..."
+sleep 30
+
+# 健康检查
+echo "执行健康检查..."
+max_attempts=5
+attempt=1
+
+while [ $attempt -le $max_attempts ]; do
+    if curl -f http://localhost:8000/api/health; then
+        echo "健康检查通过"
+        break
+    else
+        echo "健康检查失败，尝试 $attempt/$max_attempts"
+        if [ $attempt -eq $max_attempts ]; then
+            echo "部署失败：健康检查超时"
+            exit 1
+        fi
+        sleep 10
+        ((attempt++))
+    fi
+done
+
+# 运行数据库迁移
+echo "运行数据库迁移..."
+docker exec nkuwiki-api python -c "
+from etl.load.migrations import migration_manager
+migration_manager.create_migration_table()
+"
+
+echo "部署完成！"
+echo "API地址: http://localhost:8000"
+echo "健康检查: http://localhost:8000/api/health"
+echo "指标监控: http://localhost:9090"
+```
+
+### 6. CI/CD配置
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy NKUWiki
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: test
+          MYSQL_DATABASE: nkuwiki_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v3
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-asyncio pytest-cov
+    
+    - name: Run tests
+      run: |
+        pytest tests/ -v --cov=./ --cov-report=xml
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Deploy to production
+      env:
+        DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+      run: |
+        echo "$DEPLOY_KEY" > deploy_key
+        chmod 600 deploy_key
+        
+        scp -i deploy_key -o StrictHostKeyChecking=no \
+          ./infra/deploy/deploy.sh $DEPLOY_USER@$DEPLOY_HOST:/tmp/
+        
+        ssh -i deploy_key -o StrictHostKeyChecking=no \
+          $DEPLOY_USER@$DEPLOY_HOST \
+          "cd /opt/nkuwiki && /tmp/deploy.sh latest production"

@@ -615,7 +615,7 @@ class QdrantIndexer:
                 updated_count = 0
                 with tqdm(raw_nodes, desc="补充PageRank分数", unit="节点") as pbar:
                     for node in pbar:
-                        url = node.metadata.get('url', '')
+                        url = node.metadata.get('original_url', '')
                         if url in pagerank_mapping:
                             node.metadata['pagerank_score'] = float(pagerank_mapping[url])
                             updated_count += 1
