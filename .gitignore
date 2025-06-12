@@ -25,6 +25,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+temp/
 
 # IDE和编辑器
 .vscode/
