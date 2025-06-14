@@ -15,7 +15,7 @@ from etl.load.db_core import (
 from core.utils.logger import register_logger
 from api.routes.wxapp.post import batch_enrich_posts_with_user_info
 
-from etl.rag_pipeline import RagPipeline
+from etl.rag_pipeline import RagPipeline, RetrievalStrategy, RerankStrategy
 
 router = APIRouter()
 
@@ -594,11 +594,21 @@ async def search_endpoint(
 async def advanced_search_endpoint(
     query: str = Query(..., description="搜索关键词"),
     openid: str = Query(..., description="用户openid，用于个性化推荐"),
-    platform: Optional[str] = Query(None, description="平台筛选，支持：website_nku,wechat_nku,market_nku等，多个用逗号分隔"),
-    top_k: int = Query(10, description="召回文档数量，默认10"),
+    top_k_retrieve: int = Query(20, description="召回文档数量，建议值[10, 50]"),
+    top_k_rerank: int = Query(10, description="重排文档数量，建议值[5, 20]"),
+    retrieval_strategy: RetrievalStrategy = Query(
+        default=RetrievalStrategy.AUTO, 
+        description="检索策略：auto-自动, hybrid-混合, vector_only-仅向量, bm25_only-仅BM25, es_only-仅ES"
+    ),
+    rerank_strategy: RerankStrategy = Query(
+        default=RerankStrategy.BGE_RERANKER,
+        description="重排策略：no_rerank-不重排, bge_reranker-BGE模型, st_reranker-SentenceTransformer, personalized-个性化"
+    )
 ):
     """
-    使用ES-search召回文档，然后通过LLM生成回答的高级检索接口。
+    高级混合检索接口，调用RAG管道执行检索和重排序，不生成回答。
+    
+    返回经过重排序的文档列表，包含详细的元数据和相关度分数。
     """
     try:
         start_time = time.time()
@@ -606,202 +616,76 @@ async def advanced_search_endpoint(
         if not query:
             return Response.bad_request(details={"message": "查询关键词不能为空"})
         
-        # 步骤1: 使用ES-search召回相关文档
-        logger.debug(f"使用ES召回文档: query='{query}', platform='{platform}', top_k={top_k}")
-        
-        from elasticsearch import Elasticsearch
-        from config import Config
-        
-        config = Config()
-        
-        # 从配置获取ES参数
-        es_host = config.get("etl.data.elasticsearch.host", "localhost")
-        es_port = config.get("etl.data.elasticsearch.port", 9200)
-        index_name = config.get("etl.data.elasticsearch.index_name", "nkuwiki")
-        
-        # 创建ES客户端
-        es_client = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': 'http'}])
-        
-        # 测试连接
-        if not es_client.ping():
-            return Response.error(message=f"无法连接到Elasticsearch ({es_host}:{es_port})", code=503)
-        
-        # 检查索引是否存在
-        if not es_client.indices.exists(index=index_name):
-            return Response.error(message=f"索引 '{index_name}' 不存在", code=404)
-        
-        # 构建ES查询 (复用ES-search的查询逻辑)
-        if '*' in query or '?' in query:
-            # 通配符查询
-            should_queries = []
-            
-            should_queries.extend([
-                {"wildcard": {"title.keyword": {"value": query, "case_insensitive": True}}},
-                {"wildcard": {"content.keyword": {"value": query, "case_insensitive": True}}},
-                {"wildcard": {"title": {"value": query, "case_insensitive": True}}},
-                {"wildcard": {"content": {"value": query, "case_insensitive": True}}}
-            ])
-            
-            if '*' in query:
-                if query.endswith('*') and '*' not in query[:-1]:
-                    prefix = query[:-1]
-                    should_queries.extend([
-                        {"prefix": {"title": {"value": prefix, "case_insensitive": True}}},
-                        {"prefix": {"content": {"value": prefix, "case_insensitive": True}}}
-                    ])
-                elif query.startswith('*') and '*' not in query[1:]:
-                    suffix = query[1:]
-                    should_queries.extend([
-                        {"suffix": {"title": {"value": suffix, "case_insensitive": True}}},
-                        {"suffix": {"content": {"value": suffix, "case_insensitive": True}}}
-                    ])
-            
-            should_queries.append({
-                "query_string": {
-                    "query": query,
-                    "fields": ["title", "content"],
-                    "allow_leading_wildcard": True,
-                    "analyze_wildcard": True,
-                    "lenient": True
-                }
-            })
-            
-            main_query = {
-                "bool": {
-                    "should": should_queries,
-                    "minimum_should_match": 1
-                }
-            }
-        else:
-            # 普通匹配查询
-            main_query = {
-                "bool": {
-                    "should": [
-                        {"match": {"title": {"query": query, "boost": 2.0}}},
-                        {"match": {"content": query}}
-                    ],
-                    "minimum_should_match": 1
-                }
-            }
-        
-        # 添加平台过滤
-        filter_clauses = []
-        if platform:
-            platform_list = [s.strip() for s in platform.split(',') if s.strip()]
-            if platform_list:
-                filter_clauses.append({
-                    "terms": {"platform": platform_list}
-                })
-        
-        # 组合查询和过滤条件
-        if filter_clauses:
-            es_query = {
-                "query": {
-                    "bool": {
-                        "must": [main_query],
-                        "filter": filter_clauses
-                    }
-                }
-            }
-        else:
-            es_query = {"query": main_query}
-        
-        # 执行ES搜索召回文档
-        response = es_client.search(
-            index=index_name,
-            body=es_query,
-            size=top_k
+        logger.debug(
+            f"高级检索开始: query='{query}', openid='{openid}', "
+            f"retrieval_strategy='{retrieval_strategy.value}', rerank_strategy='{rerank_strategy.value}'"
         )
         
-        # 处理召回的文档
-        contexts = []
-        hits = response['hits']['hits']
+        # 1. 初始化 RAG 管道
+        rag_pipeline = RagPipeline()
         
-        for hit in hits:
-            source_data = hit['_source']
-            # 符合API文档规范的字段格式
+        # 2. 执行仅检索和重排序
+        # retrieve_only 内部会调用 run(..., skip_generation=True)
+        results = rag_pipeline.retrieve_only(
+            query=query,
+            top_k_retrieve=top_k_retrieve,
+            top_k_rerank=top_k_rerank,
+            user_id=openid,
+            retrieval_strategy=retrieval_strategy,
+            rerank_strategy=rerank_strategy
+        )
+        
+        # 3. 格式化返回结果
+        reranked_nodes = results.get("reranked_nodes", [])
+        contexts = []
+        for node_with_score in reranked_nodes:
+            node = node_with_score.node
+            metadata = node.metadata or {}
+            
+            # 截断内容
+            content = node.get_content()
+            is_truncated = False
+            max_content_length=500
+            if len(content) > max_content_length:
+                content = content[:max_content_length] + "..."
+                is_truncated = True
+
+            publish_time = metadata.get('publish_time', '')
             context = {
-                "title": source_data.get('title', ''),
-                "content": source_data.get('content', ''),
-                "original_url": source_data.get('original_url', ''),
-                "author": source_data.get('author', ''),
-                "platform": source_data.get('platform', ''),
-                "tag": source_data.get('tag', '') if source_data.get('tag') else "",
-                "create_time": str(source_data.get('publish_time', '')) if source_data.get('publish_time') else "",
-                "update_time": str(source_data.get('publish_time', '')) if source_data.get('publish_time') else "",
-                "relevance": hit['_score'],
-                "is_official": source_data.get('is_official', False)
+                "title": metadata.get('title', '无标题'),
+                "content": content,
+                "original_url": metadata.get('original_url', ''),
+                "author": metadata.get('author', ''),
+                "platform": metadata.get('platform', ''),
+                "tag": metadata.get('tag', '') or "",
+                "relevance": node_with_score.score,
+                "create_time": str(publish_time) if publish_time else "",
+                "update_time": str(publish_time) if publish_time else "",
+                "is_truncated": is_truncated,
+                "is_official": metadata.get('is_official', False),
+                "view_count": metadata.get('view_count', 0),
+                "like_count": metadata.get('like_count', 0),
+                "comment_count": metadata.get('comment_count', 0),
+                "pagerank_score": metadata.get('pagerank_score', 0.0)
             }
             contexts.append(context)
-        
-        logger.debug(f"ES召回文档数量: {len(contexts)}")
-        
-        # 步骤2: 使用LLM生成回答
-        answer = "未能生成答案。"
-        
-        if contexts:
-            try:
-                # 构建上下文文本
-                context_texts = []
-                for i, ctx in enumerate(contexts[:5], 1):  # 只使用前5个最相关的文档
-                    title = ctx.get("title", "")
-                    content = ctx["content"][:500]  # 限制内容长度
-                    context_texts.append(f"文档{i}: {title}\n{content}")
-                
-                combined_context = "\n\n".join(context_texts)
-                
-                # 构建提示词
-                prompt = f"""基于以下文档内容，回答用户的问题。请确保回答准确、简洁且有用。
-
-用户问题：{query}
-
-相关文档：
-{combined_context}
-
-请基于上述文档内容回答用户的问题。如果文档中没有相关信息，请明确说明。"""
-
-                # 这里可以调用LLM API生成回答
-                # 暂时使用简单的回答模板
-                if len(contexts) > 0:
-                    answer = f"根据检索到的{len(contexts)}个相关文档，关于'{query}'的信息如下：\n\n"
-                    
-                    # 提取关键信息
-                    key_points = []
-                    for ctx in contexts[:3]:  # 使用前3个文档
-                        title = ctx.get("title", "")
-                        if title:
-                            key_points.append(f"• {title}")
-                    
-                    if key_points:
-                        answer += "\n".join(key_points)
-                    else:
-                        answer += "请查看具体文档内容获取详细信息。"
-                else:
-                    answer = f"很抱歉，没有找到关于'{query}'的相关信息。"
-                
-            except Exception as e:
-                logger.error(f"生成LLM回答失败: {str(e)}")
-                answer = f"基于检索到的{len(contexts)}个文档，建议您查看具体内容获取关于'{query}'的详细信息。"
-        
-        response_data = {
-            "answer": answer,
-            "contexts": contexts
-        }
-        
+            
         total_time = time.time() - start_time
-        logger.debug(f"高级检索完成: query='{query}', 召回文档数={len(contexts)}, 耗时={total_time:.2f}秒")
+        logger.debug(f"高级检索完成: query='{query}', 耗时={total_time:.2f}秒, 返回结果数={len(contexts)}")
         
-        # 记录搜索历史
+        # 4. 记录搜索历史
         asyncio.create_task(_record_search_history(query, openid))
 
         return Response.success(
-            data=response_data, 
+            data=contexts,
             details={
-                "message": "高级检索成功", 
-                "retrieval_method": "elasticsearch",
-                "documents_retrieved": len(contexts),
-                "response_time": total_time,
-                "platform_filter": platform if platform else "all"
+                "message": "高级检索成功",
+                "query": query,
+                "retrieval_strategy": results.get("retrieval_strategy"),
+                "rerank_strategy": results.get("rerank_strategy"),
+                "documents_retrieved": len(results.get("retrieved_nodes", [])),
+                "documents_reranked": len(contexts),
+                "response_time": total_time
             }
         )
 
@@ -811,182 +695,91 @@ async def advanced_search_endpoint(
         logger.error(f"高级检索失败: {str(e)}\n{error_detail}")
         return Response.error(message=f"高级检索失败: {str(e)}", code=500)
 
-@router.get("/es-search")
-async def elasticsearch_search_endpoint(
-    query: str = Query(..., description="搜索关键词，支持通配符(*,?)"),
-    openid: str = Query(..., description="用户openid"),
-    platform: Optional[str] = Query(None, description="平台筛选，支持：website_nku,wechat_nku,market_nku,wxapp_post等，多个用逗号分隔"),
-    page: int = Query(1, description="分页页码"),
-    page_size: int = Query(10, description="每页结果数"),
-    max_content_length: int = Query(300, description="内容最大长度，超过将被截断")
-):
+async def _elasticsearch_search_internal(
+    query: str,
+    enhanced_query: str = None,
+    platform: Optional[str] = None,
+    size: int = 10,
+    offset: int = 0
+) -> Dict[str, Any]:
     """
-    仅使用Elasticsearch进行检索，支持通配符查询和数据源筛选
+    内部共享的Elasticsearch检索函数
+    """
+    from elasticsearch import Elasticsearch
+    from config import Config
     
-    参数说明：
-    - query: 搜索关键词，支持通配符 * 和 ?
-    - openid: 用户openid，必填
-    - platform: 平台筛选，可选值：website_nku(南开网站), wechat_nku(微信公众号), market_nku(校园集市), wxapp_post(小程序帖子)等，多个用逗号分隔
-    - page: 分页页码，默认1
-    - page_size: 每页结果数，默认10
-    - max_content_length: 内容最大长度，默认300，超过将被截断
+    config = Config()
+    es_host = config.get("etl.data.elasticsearch.host", "localhost")
+    es_port = config.get("etl.data.elasticsearch.port", 9200)
+    index_name = config.get("etl.data.elasticsearch.index_name", "nkuwiki")
     
-    数据源说明：
-    - website_nku: 南开大学官方网站内容
-    - wechat_nku: 微信公众号文章
-    - market_nku: 校园集市信息
-    - wxapp_post: 小程序用户帖子
-    - wxapp_comment: 小程序评论
+    es_client = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': 'http'}])
+    if not es_client.ping():
+        raise HTTPException(status_code=503, detail=f"无法连接到Elasticsearch ({es_host}:{es_port})")
+    if not es_client.indices.exists(index=index_name):
+        raise HTTPException(status_code=404, detail=f"索引 '{index_name}' 不存在")
+        
+    # 构建查询，使用ik_smart分析器
+    should_clauses = []
+    # 优先使用增强查询
+    if enhanced_query:
+        should_clauses.extend([
+            {"match": {"title": {"query": enhanced_query, "analyzer": "ik_smart", "boost": 2.5}}},
+            {"match": {"content": {"query": enhanced_query, "analyzer": "ik_smart", "boost": 1.5}}}
+        ])
     
-    返回格式：
-    {
-        "code": 200,
-        "message": "success",
-        "data": [
-            {
-                "title": "标题",
-                "content": "内容",
-                "original_url": "链接",
-                "author": "作者",
-                "platform": "平台标识",
-                "tag": "标签",
-                "create_time": "创建时间",
-                "update_time": "更新时间",
-                "relevance": 1.5,
-                "is_truncated": false
-            }
-        ],
-        "pagination": {
-            "total": 100,
-            "page": 1,
-            "page_size": 10,
-            "total_pages": 10
+    # 始终包含原始查询以保证广度
+    should_clauses.extend([
+        {"match": {"title": {"query": query, "analyzer": "ik_smart", "boost": 2.0}}},
+        {"match": {"content": {"query": query, "analyzer": "ik_smart", "boost": 1.0}}}
+    ])
+
+    main_query = {
+        "bool": {
+            "should": should_clauses,
+            "minimum_should_match": 1
         }
     }
+    
+    # 添加平台过滤
+    filter_clauses = []
+    if platform and platform != 'all':
+        platform_list = [p.strip() for p in platform.split(',') if p.strip()]
+        if platform_list:
+            filter_clauses.append({"terms": {"platform": platform_list}})
+            
+    es_query = {"query": {"bool": {"must": [main_query], "filter": filter_clauses}} if filter_clauses else main_query}
+    
+    # 执行搜索
+    response = es_client.search(
+        index=index_name,
+        body=es_query,
+        size=size,
+        from_=offset
+    )
+    return response
+
+@router.get("/es-search")
+async def elasticsearch_search_endpoint(
+    query: str = Query(..., description="搜索关键词"),
+    openid: str = Query(..., description="用户openid"),
+    platform: Optional[str] = Query(None, description="平台筛选，多个用逗号分隔"),
+    page: int = Query(1, description="分页页码"),
+    page_size: int = Query(10, description="每页结果数"),
+    max_content_length: int = Query(300, description="内容最大长度")
+):
+    """
+    使用Elasticsearch进行检索，支持通配符和数据源筛选。
     """
     try:
         start_time = time.time()
         
-        if not query:
-            return Response.bad_request(details={"message": "查询关键词不能为空"})
-        
-        from elasticsearch import Elasticsearch
-        from config import Config
-        
-        config = Config()
-        
-        # 从配置获取ES参数
-        es_host = config.get("etl.data.elasticsearch.host", "localhost")
-        es_port = config.get("etl.data.elasticsearch.port", 9200)
-        index_name = config.get("etl.data.elasticsearch.index_name", "nkuwiki")
-        
-        # 创建ES客户端
-        es_client = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': 'http'}])
-        
-        # 测试连接
-        if not es_client.ping():
-            return Response.error(message=f"无法连接到Elasticsearch ({es_host}:{es_port})", code=503)
-        
-        # 检查索引是否存在
-        if not es_client.indices.exists(index=index_name):
-            return Response.error(message=f"索引 '{index_name}' 不存在", code=404)
-        
-        # 构建查询
-        if '*' in query or '?' in query:
-            # 通配符查询
-            should_queries = []
-            
-            # 策略1: 在keyword字段中使用通配符（用于精确匹配完整标题）
-            should_queries.extend([
-                {"wildcard": {"title.keyword": {"value": query, "case_insensitive": True}}},
-                {"wildcard": {"content.keyword": {"value": query, "case_insensitive": True}}}
-            ])
-            
-            # 策略2: 在text字段中使用通配符
-            should_queries.extend([
-                {"wildcard": {"title": {"value": query, "case_insensitive": True}}},
-                {"wildcard": {"content": {"value": query, "case_insensitive": True}}}
-            ])
-            
-            # 策略3: 对于简单的前缀后缀匹配，拆分查询
-            if '*' in query:
-                # 处理前缀匹配 如: "南开*"
-                if query.endswith('*') and '*' not in query[:-1]:
-                    prefix = query[:-1]
-                    should_queries.extend([
-                        {"prefix": {"title": {"value": prefix, "case_insensitive": True}}},
-                        {"prefix": {"content": {"value": prefix, "case_insensitive": True}}}
-                    ])
-                
-                # 处理后缀匹配 如: "*大学"
-                elif query.startswith('*') and '*' not in query[1:]:
-                    suffix = query[1:]
-                    should_queries.extend([
-                        {"suffix": {"title": {"value": suffix, "case_insensitive": True}}},
-                        {"suffix": {"content": {"value": suffix, "case_insensitive": True}}}
-                    ])
-            
-            # 策略4: query_string作为最后的尝试
-            should_queries.append({
-                "query_string": {
-                    "query": query,
-                    "fields": ["title", "content"],
-                    "allow_leading_wildcard": True,
-                    "analyze_wildcard": True,
-                    "lenient": True
-                }
-            })
-            
-            main_query = {
-                "bool": {
-                    "should": should_queries,
-                    "minimum_should_match": 1
-                }
-            }
-        else:
-            # 普通匹配查询
-            main_query = {
-                "bool": {
-                    "should": [
-                        {"match": {"title": {"query": query, "boost": 2.0}}},  # 标题权重更高
-                        {"match": {"content": query}}
-                    ],
-                    "minimum_should_match": 1
-                }
-            }
-        
-        # 添加平台过滤
-        filter_clauses = []
-        if platform:
-            # 处理多个平台
-            platform_list = [s.strip() for s in platform.split(',') if s.strip()]
-            if platform_list:
-                filter_clauses.append({
-                    "terms": {"platform": platform_list}
-                })
-        
-        # 组合查询和过滤条件
-        if filter_clauses:
-            es_query = {
-                "query": {
-                    "bool": {
-                        "must": [main_query],
-                        "filter": filter_clauses
-                    }
-                }
-            }
-        else:
-            es_query = {"query": main_query}
-        
-        # 计算偏移量
         offset = (page - 1) * page_size
-        
-        # 执行搜索
-        response = es_client.search(
-            index=index_name,
-            body=es_query,
+        response = await _elasticsearch_search_internal(
+            query=query,
+            platform=platform,
             size=page_size,
-            from_=offset
+            offset=offset
         )
         
         # 处理结果
@@ -996,15 +789,12 @@ async def elasticsearch_search_endpoint(
         
         for hit in hits:
             source = hit['_source']
-            
-            # 获取内容并截断
             content = source.get('content', '')
             is_truncated = False
             if content and len(content) > max_content_length:
                 content = content[:max_content_length] + "..."
                 is_truncated = True
             
-            # 符合API文档规范的字段格式
             result_item = {
                 "title": source.get('title', '无标题'),
                 "content": content,
@@ -1018,10 +808,8 @@ async def elasticsearch_search_endpoint(
                 "is_truncated": is_truncated,
                 "is_official": source.get('is_official', False)
             }
-            
             results.append(result_item)
-        
-        # 创建分页信息
+            
         pagination = {
             "total": total_hits,
             "page": page,
@@ -1030,32 +818,21 @@ async def elasticsearch_search_endpoint(
         }
         
         total_time = time.time() - start_time
-        logger.debug(f"ES检索完成: query='{query}', platform='{platform}', 耗时={total_time:.2f}秒, 结果数={len(results)}")
+        logger.debug(f"ES检索完成: query='{query}', platform='{platform}', 耗时={total_time:.2f}秒")
         
-        # 记录搜索历史
         asyncio.create_task(_record_search_history(query, openid))
         
-        # 构建详情信息
-        details = {
-            "message": "ES检索成功",
-            "query": query,
-            "response_time": total_time
-        }
+        details = {"message": "ES检索成功", "query": query, "response_time": total_time}
         if platform:
             details["platform_filter"] = platform
         
-        return Response.paged(
-            data=results,
-            pagination=pagination,
-            details=details
-        )
+        return Response.paged(data=results, pagination=pagination, details=details)
         
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
         logger.error(f"ES检索失败: {str(e)}\n{error_detail}")
         return Response.error(message=f"ES检索失败: {str(e)}", code=500)
-
 
 async def _record_search_history(query: str, openid: str):
     """记录搜索历史"""

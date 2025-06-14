@@ -10,12 +10,16 @@ import datetime
 from typing import List, Dict, Any, Optional, Union
 from fastapi import APIRouter
 from api.models.common import Response, Request, validate_params
+from api.routes.knowledge.search import _elasticsearch_search_internal
 from core.agent.coze.coze_agent import CozeAgent
 from fastapi.responses import StreamingResponse
 from core.utils.logger import register_logger
 import urllib.parse
 import http.client
 import asyncio
+from elasticsearch import Elasticsearch
+from config import Config
+from fastapi import HTTPException
 
 # 禁用代理设置
 os.environ['http_proxy'] = ''
@@ -60,28 +64,24 @@ async def rewrite_query(query: str, bot_tag = "queryEnhance") -> str:
 async def generate_answer(query: str, enhanced_query: str, sources: List[Any], bot_tag = "answerGenerate") -> Dict[str, Any]:
     """使用Coze RAG bot生成答案"""
     try:
-        rag_agent = CozeAgent(tag = bot_tag, index = 1)
+        rag_agent = CozeAgent(tag = bot_tag)
         
         sources_text = ""
         for i, source in enumerate(sources):
-            try:
-                # 尝试获取source的各个字段
-                platform = getattr(source, 'platform', '未知平台') if hasattr(source, 'platform') else source.get('platform', '未知平台') if isinstance(source, dict) else '未知平台'
-                title = getattr(source, 'title', '未知标题') if hasattr(source, 'title') else source.get('title', '未知标题') if isinstance(source, dict) else '未知标题'
-                content = getattr(source, 'content', '') if hasattr(source, 'content') else source.get('content', '') if isinstance(source, dict) else str(source)
-                
-                # 精简内容，最多保留100个字符
-                if len(content) > 100:
-                    content = content[:100] + "..."
-                
-                # 更简洁的格式
-                sources_text += f"[{i+1}] 标题：{title}\n来源：{platform}\n内容：{content}\n\n"
-            except Exception as e:
-                logger.error(f"处理source[{i}]失败: {str(e)}")
-                sources_text += f"[{i+1}] 无法处理的来源\n\n"
+            title = source.get('title', '无标题')
+            content = source.get('content', '') # 使用正确的 'content' 字段
+            
+            # 构建单条source的文本，确保换行正确
+            source_item_text = f"[{i+1}] 标题: {title}\n内容: {content}\n\n"
+            sources_text += source_item_text
+            
+        # 如果sources_text为空，可能需要一个提示
+        if not sources_text.strip():
+            sources_text = "没有找到相关的参考资料。"
 
-        # 简化提示词，只包含查询和来源信息
         prompt = f"用户问题：{query}\n\n参考资料：\n{sources_text}"
+        
+        logger.debug(f"发送给RAG Agent的最终prompt (部分):\n{prompt[:1000]}...")
         
         start_time = time.time()
         try:
@@ -226,106 +226,57 @@ async def rag_endpoint(request: Request):
         # 获取请求参数
         query = req_data.get("query")
         openid = req_data.get("openid")
-        platform = req_data.get("platform", "wechat,website,market,wxapp")  # 默认查询所有平台
-        tag = req_data.get("tag", "")  # 标签
-        max_results = req_data.get("max_results", 3)  # 单表检索结果数量
-        request_format = req_data.get("format", "markdown")  # 返回格式
-        request_stream = req_data.get("stream", False)  # 是否流式响应
+        platform = req_data.get("platform") 
+        max_results = req_data.get("max_results", 10)
+        request_format = req_data.get("format", "markdown")
+        request_stream = req_data.get("stream", False)
+        rewrite_query_enabled = req_data.get("rewrite_query", False)  # 新增参数，默认为False
         
+        # 1. 根据参数决定是否查询改写
+        if rewrite_query_enabled:
+            logger.debug(f"开始改写查询: {query}")
+            enhanced_query = await rewrite_query(query)
+            logger.debug(f"查询改写完成: {query} -> {enhanced_query}")
+        else:
+            enhanced_query = query
+            logger.debug(f"查询改写已禁用，使用原始查询: {query}")
+            
+        # 2. 调用共享的Elasticsearch检索函数
+        logger.debug(f"开始使用Elasticsearch检索: query='{query}', enhanced_query='{enhanced_query}'")
+        response = await _elasticsearch_search_internal(
+            query=query,
+            enhanced_query=enhanced_query,
+            platform=platform,
+            size=max_results
+        )
+
+        retrieved_docs = response['hits']['hits']
+        logger.debug(f"ES检索到 {len(retrieved_docs)} 条相关文档")
         
-        
-        # 1. 使用rewrite_bot_id查询改写enhanced_query
-        logger.debug(f"开始改写查询: {query}")
-        enhanced_query = await rewrite_query(query, 'queryEnhance')
-        logger.debug(f"查询改写完成: {query} -> {enhanced_query}")
-        
-        # 2. 使用enhanced_query调用knowledge/search查询相关信息
-        logger.debug(f"开始检索知识: {enhanced_query}")
-        
-        try:
-            # 直接调用search_knowledge函数，无需HTTP请求
-            from api.routes.knowledge.search import search_knowledge
-            
-            # 调整搜索参数，增加返回结果数量
-            search_result = await search_knowledge(
-                query=enhanced_query,
-                openid=openid,
-                platform=platform,
-                tag=tag,
-                max_results=30,  # 显著增加每个表的最大结果数，确保搜索足够多的内容
-                page=1,
-                page_size=max_results * 4,
-                sort_by="relevance",
-                max_content_length=2000       # 增加内容长度限制
-            )
-            
-            # 提取搜索结果
-            sources = search_result.get("data", [])
-            logger.debug(f"获取到 {len(sources)} 条搜索结果")
-            
-            # 添加日志记录搜索结果的详细信息
-            if sources:
-                logger.info(f"搜索结果详情（前5条）:")
-                for i, source in enumerate(sources[:5]):
-                    try:
-                        title = getattr(source, 'title', '未知标题') if hasattr(source, 'title') else '未知标题'
-                        platform = getattr(source, 'platform', '未知平台') if hasattr(source, 'platform') else '未知平台'
-                        content_preview = getattr(source, 'content', '')[:100] if hasattr(source, 'content') else '无内容'
-                        logger.info(f"结果[{i+1}] 标题: {title}, 平台: {platform}")
-                        logger.info(f"内容预览: {content_preview}...")
-                    except Exception as e:
-                        logger.error(f"记录搜索结果详情出错: {str(e)}")
-                if len(sources) > 5:
-                    logger.info(f"... 还有 {len(sources)-5} 条结果未显示")
-            
-            # 如果没有搜索结果
-            if not sources:
-                result = {
-                    "original_query": query,
-                    "rewritten_query": enhanced_query,
-                    "response": "抱歉，没有找到相关信息。",
-                    "sources": [],
-                    "suggested_questions": ["你可以尝试其他问题"],
-                    "format": request_format,
-                    "retrieved_count": 0,
-                    "response_time": time.time() - start_time
-                }
-                if request_stream:
-                    return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
-                return Response.success(data=result, details={"message": "未找到相关信息"})
-            
-            # 3. 使用sources生成答案
-            logger.debug(f"开始生成答案: sources数量={len(sources)}")
-            answer_result = await generate_answer(query, enhanced_query, sources, 'answerGenerate')
-            
-            # 构建返回结果
-            total_time = time.time() - start_time
+        sources = []
+        for hit in retrieved_docs:
+            source_data = hit['_source']
+            content_preview = source_data.get('content', '')
+            if len(content_preview) > 2000:
+                content_preview = content_preview[:2000]
+
+            sources.append({
+                "title": source_data.get('title', '无标题'),
+                "content": content_preview,
+                "author": source_data.get('author', ''),
+                "platform": source_data.get('platform', ''),
+                "original_url": source_data.get('original_url', ''),
+                "relevance": hit['_score']
+            })
+
+        logger.debug(f"从 Elasticsearch 获取到 {len(sources)} 条搜索结果")
+
+        # 如果没有搜索结果
+        if not sources:
             result = {
                 "original_query": query,
                 "rewritten_query": enhanced_query,
-                "response": answer_result["response"],
-                "sources": sources,
-                "suggested_questions": answer_result["suggested_questions"],
-                "format": request_format,
-                "retrieved_count": len(sources),
-                "response_time": total_time
-            }
-            
-            # 记录最终结果信息
-            logger.debug(f"RAG处理完成，耗时: {total_time:.2f}秒")
-            logger.debug(f"最终响应内容:\n{'-'*30}\n{(answer_result['response'] or '')[:500]}...\n{'-'*30}")
-            
-            # 返回结果
-            if request_stream:
-                return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
-            return Response.success(data=result, details={"message": "查询成功"})
-            
-        except Exception as e:
-            logger.error(f"知识库搜索过程异常: {str(e)}\n{traceback.format_exc()}")
-            result = {
-                "original_query": query,
-                "rewritten_query": enhanced_query,
-                "response": f"抱歉，搜索过程发生错误: {str(e)}",
+                "response": "抱歉，没有找到相关信息。",
                 "sources": [],
                 "suggested_questions": ["你可以尝试其他问题"],
                 "format": request_format,
@@ -334,7 +285,31 @@ async def rag_endpoint(request: Request):
             }
             if request_stream:
                 return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
-            return Response.success(data=result, details={"message": f"搜索过程错误: {str(e)}"})
+            return Response.success(data=result, details={"message": "未找到相关信息"})
+        
+        # 3. 使用sources生成答案
+        logger.debug(f"开始生成答案: sources数量={len(sources)}")
+        answer_result = await generate_answer(query, enhanced_query, sources, 'answerGenerate')
+        
+        # 构建返回结果
+        total_time = time.time() - start_time
+        result = {
+            "original_query": query,
+            "rewritten_query": enhanced_query,
+            "response": answer_result["response"],
+            "sources": sources,
+            "suggested_questions": answer_result["suggested_questions"],
+            "format": request_format,
+            "retrieved_count": len(sources),
+            "response_time": total_time
+        }
+        
+        logger.debug(f"RAG处理完成，耗时: {total_time:.2f}秒")
+        logger.debug(f"最终响应内容:\n{'-'*30}\n{(answer_result['response'] or '')[:500]}...\n{'-'*30}")
+        
+        if request_stream:
+            return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
+        return Response.success(data=result, details={"message": "查询成功"})
     
     except Exception as e:
         import traceback

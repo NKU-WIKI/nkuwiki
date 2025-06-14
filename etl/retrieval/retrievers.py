@@ -654,13 +654,13 @@ class ElasticsearchRetriever(BaseRetriever):
                 }
             }
         else:
-            # 如果没有通配符，使用普通的匹配查询
+            # 如果没有通配符，使用普通的匹配查询，指定使用ik_smart分析器
             es_query = {
                 "query": {
                     "bool": {
                         "should": [
-                                {"match": {"title": query}},
-                                {"match": {"content": query}}
+                            {"match": {"title": {"query": query, "analyzer": "ik_smart", "boost": 2.0}}},
+                            {"match": {"content": {"query": query, "analyzer": "ik_smart", "boost": 1.0}}}
                         ],
                         "minimum_should_match": 1
                     }

@@ -1585,7 +1585,6 @@ GET /api/agent/search?query=南开&openid=test&sort_by=time
 GET /api/agent/search?query=南开&openid=test&page=2&page_size=20
 ```
 
-
 ### 6.2 搜索建议
 
 **接口**：`GET /api/knowledge/suggestion`  
@@ -2234,5 +2233,126 @@ data: [DONE]
 ```json
 {
   "type": "done"
+}
+```
+
+## 三、Agent智能体API
+
+### 3.1 RAG检索增强生成
+
+**接口**：`POST /api/agent/rag`  
+**描述**：提供完整的检索增强生成（RAG）功能。该接口首先对用户查询进行智能改写，然后调用Elasticsearch进行高效的相关文档检索（不进行重排），最后将检索结果作为上下文，交由Coze AI生成流畅、准确的自然语言回答。  
+**核心流程**：
+1.  **查询改写**：使用AI模型优化用户原始查询，提升检索意图的准确性。
+2.  **Elasticsearch检索**：仅使用Elasticsearch进行文档检索，支持通配符查询，并按相关度分数排序。
+3.  **Coze答案生成**：将检索到的文档作为上下文，调用Coze模型生成最终答案和相关建议问题。
+
+**请求体**：
+
+```json
+{
+  "query": "南开大学的校训是什么？",   // 必填，用户原始查询
+  "openid": "用户的openid",         // 必填，用于个性化和记录
+  "platform": "website,wechat",    // 可选，指定检索的平台，多个用逗号分隔，不传则检索所有平台
+  "max_results": 10,               // 可选，检索文档的总数上限，默认10
+  "rewrite_query": false,          // 可选，是否对查询进行AI改写，默认false
+  "stream": false                    // 可选，是否使用流式响应，默认false
+}
+```
+
+**响应** (`stream: false`):
+```json
+{
+  "code": 200,
+  "message": "查询成功",
+  "data": {
+    "original_query": "南开大学的校训是什么？",
+    "rewritten_query": "南开大学的官方校训是什么",
+    "response": "南开大学的校训是"允公允能，日新月异"。",
+    "sources": [
+      {
+        "title": "校训",
+        "content": "允公允能，日新月异",
+        "author": "未知",
+        "platform": "website",
+        "original_url": "http://nankai.edu.cn/111/list.htm",
+        "relevance": 15.8
+      }
+    ],
+    "suggested_questions": [
+      "南开大学的建校历史是怎样的？",
+      "介绍一下南开大学的知名校友"
+    ],
+    "retrieved_count": 1,
+    "response_time": 3.45
+  }
+}
+```
+
+**流式响应** (`stream: true`):
+如果设置 `stream: true`，接口将以 `text/event-stream` 的形式返回一系列事件：
+- **query**: 包含原始查询和改写后查询
+- **content**: 包含生成答案的文本块
+- **sources**: 包含引用的来源文档列表
+- **suggestions**: 包含建议的相关问题
+- **end**: 标志着响应结束
+- **error**: 如果发生错误，会发送此事件
+
+---
+
+## 四、知识库API
+
+### 4.1 高级混合检索
+
+**接口**: `GET /api/knowledge/advanced-search`  
+**描述**: 调用后端RAG管道执行高级检索。此接口集成了多种检索与重排序策略，专注于提供高质量的文档检索结果，**不生成AI回答**。它允许调用者灵活组合不同的策略，以应对多样的查询需求。
+
+**核心特性**:
+- **多策略检索**: 支持混合检索（向量+BM25）、纯向量、纯BM25、Elasticsearch等多种检索方式。
+- **智能重排**: 支持BGE-Reranker、个性化排序等多种重排序算法，显著提升结果相关性。
+- **灵活配置**: 可通过参数动态选择检索和重排策略，满足不同场景下的性能和质量要求。
+
+**请求参数** (Query Parameters):
+
+| 参数 | 类型 | 必须 | 默认值 | 描述 |
+| --- | --- | --- | --- | --- |
+| `query` | `string` | 是 | - | 搜索关键词。 |
+| `openid` | `string` | 是 | - | 用户openid，用于个性化推荐。 |
+| `top_k_retrieve` | `integer` | 否 | `20` | 召回（Retrieve）阶段返回的文档数量，建议值10-50。 |
+| `top_k_rerank` | `integer` | 否 | `10` | 重排（Rerank）阶段返回的文档数量，建议值5-20。 |
+| `retrieval_strategy` | `string` | 否 | `auto` | 检索策略。可选值: `auto`, `hybrid`, `vector_only`, `bm25_only`, `es_only`。 |
+| `rerank_strategy` | `string` | 否 | `bge_reranker` | 重排策略。可选值: `bge_reranker`, `st_reranker`, `personalized`, `no_rerank`。 |
+
+**响应**:
+返回一个经过检索和重排序的文档对象列表。
+```json
+{
+  "code": 200,
+  "message": "高级检索成功",
+  "data": [
+    {
+      "title": "文档标题",
+      "content": "文档内容摘要...",
+      "original_url": "http://example.com/doc1",
+      "author": "作者",
+      "platform": "website",
+      "tag": "标签",
+      "relevance": 18.5,
+      "create_time": "2023-10-01T10:00:00",
+      "update_time": "2023-10-01T10:00:00",
+      "is_truncated": true,
+      "is_official": true,
+      "view_count": 120,
+      "like_count": 15,
+      "comment_count": 3,
+      "pagerank_score": 0.85
+    }
+  ],
+  "details": {
+    "retrieval_strategy": "hybrid",
+    "rerank_strategy": "bge_reranker",
+    "documents_retrieved": 20,
+    "documents_reranked": 10
+  }
 }
 ```
