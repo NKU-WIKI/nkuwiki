@@ -96,10 +96,10 @@ async def generate_answer(query: str, enhanced_query: str, sources: List[Any], b
                 
                 return response
                 
-            response = await asyncio.wait_for(_generate_with_timeout(), timeout=30.0)
+            response = await asyncio.wait_for(_generate_with_timeout(), timeout=60.0)
             
         except asyncio.TimeoutError:
-            logger.warning(f"生成回答请求超时（>30秒）")
+            logger.warning(f"生成回答请求超时（>60秒）")
             return {
                 "response": "抱歉，回答生成超时，请稍后再试。",
                 "suggested_questions": []

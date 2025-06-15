@@ -718,6 +718,33 @@ async def _elasticsearch_search_internal(
         raise HTTPException(status_code=503, detail=f"无法连接到Elasticsearch ({es_host}:{es_port})")
     if not es_client.indices.exists(index=index_name):
         raise HTTPException(status_code=404, detail=f"索引 '{index_name}' 不存在")
+    
+    # 分析查询分词结果
+    try:
+        # 获取原始查询的分词结果
+        analyze_response = es_client.indices.analyze(
+            index=index_name,
+            body={
+                "analyzer": "ik_smart",
+                "text": query
+            }
+        )
+        tokens = [token['token'] for token in analyze_response['tokens']]
+        logger.debug(f"ES分词结果 - 原始查询: '{query}' -> 分词: {tokens}")
+        
+        # 如果有增强查询，也分析其分词结果
+        if enhanced_query and enhanced_query != query:
+            enhanced_analyze_response = es_client.indices.analyze(
+                index=index_name,
+                body={
+                    "analyzer": "ik_smart",
+                    "text": enhanced_query
+                }
+            )
+            enhanced_tokens = [token['token'] for token in enhanced_analyze_response['tokens']]
+            logger.debug(f"ES分词结果 - 增强查询: '{enhanced_query}' -> 分词: {enhanced_tokens}")
+    except Exception as e:
+        logger.warning(f"获取分词结果失败: {str(e)}")
         
     # 构建查询，使用ik_smart分析器
     should_clauses = []
@@ -747,8 +774,12 @@ async def _elasticsearch_search_internal(
         platform_list = [p.strip() for p in platform.split(',') if p.strip()]
         if platform_list:
             filter_clauses.append({"terms": {"platform": platform_list}})
+            logger.debug(f"ES平台过滤: {platform_list}")
             
     es_query = {"query": {"bool": {"must": [main_query], "filter": filter_clauses}} if filter_clauses else main_query}
+    
+    # 记录ES查询结构
+    logger.debug(f"ES查询结构: {es_query}")
     
     # 执行搜索
     response = es_client.search(
@@ -757,6 +788,13 @@ async def _elasticsearch_search_internal(
         size=size,
         from_=offset
     )
+    
+    # 记录检索统计信息
+    total_hits = response['hits']['total']['value']
+    max_score = response['hits']['max_score']
+    actual_hits = len(response['hits']['hits'])
+    logger.debug(f"ES检索统计: 总匹配={total_hits}, 最高分={max_score}, 返回数量={actual_hits}")
+    
     return response
 
 @router.get("/es-search")
@@ -787,24 +825,39 @@ async def elasticsearch_search_endpoint(
         hits = response['hits']['hits']
         total_hits = response['hits']['total']['value']
         
-        for hit in hits:
+        logger.debug(f"ES检索到的文档详情:")
+        for i, hit in enumerate(hits):
             source = hit['_source']
+            score = hit['_score']
+            doc_id = hit.get('_id', 'unknown')
+            
+            # 记录每个文档的详细信息
+            title = source.get('title', '无标题')
+            platform = source.get('platform', '')
+            author = source.get('author', '')
+            original_content_length = len(source.get('content', ''))
+            
+            logger.debug(f"  文档#{i+1}: ID={doc_id}, 分数={score:.4f}, 平台={platform}")
+            logger.debug(f"    标题: {title[:50]}{'...' if len(title) > 50 else ''}")
+            logger.debug(f"    作者: {author}, 内容长度: {original_content_length}字符")
+            
             content = source.get('content', '')
             is_truncated = False
             if content and len(content) > max_content_length:
                 content = content[:max_content_length] + "..."
                 is_truncated = True
+                logger.debug(f"    内容已截断: {original_content_length} -> {max_content_length}字符")
             
             result_item = {
-                "title": source.get('title', '无标题'),
+                "title": title,
                 "content": content,
                 "original_url": source.get('original_url', ''),
-                "author": source.get('author', ''),
-                "platform": source.get('platform', ''),
+                "author": author,
+                "platform": platform,
                 "tag": source.get('tag', '') if source.get('tag') else "",
                 "create_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
                 "update_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
-                "relevance": hit['_score'],
+                "relevance": score,
                 "is_truncated": is_truncated,
                 "is_official": source.get('is_official', False)
             }
@@ -818,7 +871,21 @@ async def elasticsearch_search_endpoint(
         }
         
         total_time = time.time() - start_time
-        logger.debug(f"ES检索完成: query='{query}', platform='{platform}', 耗时={total_time:.2f}秒")
+        
+        # 汇总日志
+        platform_stats = {}
+        for result in results:
+            result_platform = result.get('platform', 'unknown')
+            platform_stats[result_platform] = platform_stats.get(result_platform, 0) + 1
+        
+        logger.debug(f"ES检索完成汇总:")
+        logger.debug(f"  查询: '{query}', 平台过滤: {platform}")
+        logger.debug(f"  检索耗时: {total_time:.2f}秒")
+        logger.debug(f"  命中总数: {total_hits}, 返回数量: {len(results)}")
+        logger.debug(f"  平台分布: {platform_stats}")
+        if results:
+            scores = [r['relevance'] for r in results]
+            logger.debug(f"  分数范围: {min(scores):.4f} ~ {max(scores):.4f}")
         
         asyncio.create_task(_record_search_history(query, openid))
         
