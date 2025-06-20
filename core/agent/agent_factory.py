@@ -64,8 +64,12 @@ def create_agent(agent_type: str = "coze", **kwargs) -> Agent:
     try:
         if agent_type == "coze":
             from core.agent.coze.coze_agent import CozeAgent
+            # 如果提供了bot_id，则优先使用bot_id初始化
+            if "bot_id" in kwargs:
+                return CozeAgent(bot_id=kwargs["bot_id"])
+            # 否则，使用tag
             tag = kwargs.get("tag", "default")
-            return CozeAgent(tag)
+            return CozeAgent(tag=tag)
         elif agent_type == "chatgpt":
             from core.agent.chatgpt.chat_gpt_agent import ChatGPTAgent
             return ChatGPTAgent()

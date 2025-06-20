@@ -166,21 +166,25 @@ banwordManager.clearCache();
 
 ### 初始化敏感词库
 
-1. 运行迁移脚本：
-```bash
-python scripts/migrate_banwords.py
+`banwords.json` 文件包含了所有的敏感词数据，后端服务依赖此文件来加载词库。
+
+如果项目根目录下不存在 `banwords.json` 文件，你需要手动创建它。你可以创建一个空的词库文件，内容如下:
+
+```json
+{
+  "description": "敏感词库配置文件",
+  "version": "1.0.0",
+  "lastUpdate": "2024-01-01 12:00:00",
+  "library": {}
+}
 ```
 
-2. 或手动创建：
-```bash
-cp banwords-template.json banwords.json
-# 编辑 banwords.json 添加实际敏感词
-```
+随后，你可以通过API或直接编辑此文件来添加敏感词。
 
 ### 安全注意事项
 
-1. **敏感词库文件** (`banwords.json`) 已被 `.gitignore` 忽略
-2. **不要将敏感词库提交到版本控制系统**
+1.  **敏感词库文件** (`banwords.json`) 已被 `.gitignore` 忽略，以防敏感内容泄露。
+2.  **不要将敏感词库提交到版本控制系统**。
 3. **定期备份敏感词库文件**
 4. **生产环境请使用更严格的访问控制**
 

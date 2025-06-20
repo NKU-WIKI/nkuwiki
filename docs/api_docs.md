@@ -2356,3 +2356,166 @@ data: [DONE]
   }
 }
 ```
+
+### GET /knowledge/insights
+
+分页获取结构化的洞察信息。洞察信息是系统通过RAG模型分析每日新增内容后自动生成的结构化报告。
+
+- **URL**: `/api/knowledge/insights`
+- **Method**: `GET`
+- **Auth Required**: No
+
+**Query Parameters**:
+
+| Parameter   | Type   | Description                | Default | Required |
+|-------------|--------|----------------------------|---------|----------|
+| `page`      | `int`  | 页码，从1开始。             | `1`     | No       |
+| `page_size` | `int`  | 每页数量，范围[1, 100]。    | `10`    | No       |
+| `category`  | `str`  | 按分类筛选，例如 `website_official`。 | `null`  | No       |
+
+**Success Response (200 OK)**:
+
+```json
+{
+    "code": 200,
+    "message": "成功",
+    "data": [
+        {
+            "id": 1,
+            "title": "南开大学2024年廉洁教育活动与硕士研究生招生调整",
+            "content": "近期，南开大学启动了"廉洁润初心"系列教育活动，旨在加强校园廉洁文化建设。同时，学校公布了2024年硕士研究生招生专业的调整方案，部分专业方向有小幅变动，并对复试流程进行了优化。",
+            "tags": ["廉洁教育", "研究生招生", "招生调整"],
+            "relevance_score": 0.8,
+            "category": "website_official",
+            "insight_date": "2024-06-18",
+            "source_node_ids": ["c841b852-900f-423a-af56-56f88ae23392", "a1b2c3d4..."],
+            "create_time": "2025-06-19T13:49:29",
+            "update_time": "2025-06-19T13:49:29",
+            "used_rerank_strategy": "bge_reranker"
+        }
+    ],
+    "pagination": {
+        "total": 6,
+        "page": 1,
+        "page_size": 10,
+        "total_pages": 1,
+        "has_more": false
+    }
+}
+```
+
+---
+
+## 2. 小程序接口 (`/api/wxapp`)
+
+这部分接口主要服务于微信小程序前端，包含了用户、帖子、评论、操作等核心功能。
+
+### GET /wxapp/user/profile
+
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "id": 1,
+    "openid": "微信用户唯一标识",
+    "unionid": "微信开放平台唯一标识",
+    "nickname": "用户昵称",
+    "avatar": "头像URL",
+    "gender": 0,
+    "bio": "个人简介",
+    "country": "国家",
+    "province": "省份",
+    "city": "城市",
+    "language": "语言",
+    "birthday": "2004-06-28",
+    "wechatId": "微信号",
+    "qqId": "QQ号",
+    "phone": "手机号",
+    "university": "大学",
+    "token_count": 0,
+    "like_count": 0,
+    "favorite_count": 0,
+    "post_count": 0,
+    "follower_count": 0,
+    "following_count": 0,
+    "create_time": "2023-01-01 12:00:00",
+    "update_time": "2023-01-01 12:00:00",
+    "last_login": "2023-01-01 12:00:00",
+    "platform": "wxapp",
+    "status": 1,
+    "is_deleted": 0,
+    "extra": {},
+    "role": "admin"
+  },
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
+```
+
+### 获取结构化洞察列表
+
+- **路径**: `GET /knowledge/insights`
+- **描述**: 分页获取经过ETL处理后生成的结构化洞G察信息。
+- **标签**: `Knowledge`
+- **认证**: 无
+
+#### 请求参数 (Query)
+
+| 参数名      | 类型   | 是否必须 | 默认值 | 描述                                       |
+| ----------- | ------ | -------- | ------ | ------------------------------------------ |
+| `page`      | `integer` | 否       | `1`    | 页码，从1开始。                            |
+| `page_size` | `integer` | 否       | `10`   | 每页数量，范围在1到100之间。               |
+| `category`  | `string`  | 否       | `null` | 按分类筛选，例如: `官方`, `社区`, `集市`。 |
+| `date`      | `string`  | 否       | `null` | 按日期筛选，格式为 `YYYY-MM-DD`。          |
+
+#### 成功响应 (200 OK)
+
+响应体为一个 `ApiResponse` 对象，其中 `data` 字段是一个 `Insight` 对象数组。
+
+**Insight 对象结构**:
+
+| 字段名         | 类型     | 描述                                     |
+| -------------- | -------- | ---------------------------------------- |
+| `id`           | `integer`| 洞察信息的唯一ID。                       |
+| `title`        | `string` | 洞察标题。                               |
+| `content`      | `string` | 洞察的主体内容。                         |
+| `category`     | `string` | 洞察分类 (官方, 社区, 集市)。          |
+| `insight_date` | `string` | 洞察相关的日期 (ISO 8601 格式)。         |
+| `create_time`  | `string` | 记录创建时间 (ISO 8601 格式)。           |
+| `update_time`  | `string` | 记录最后更新时间 (ISO 8601 格式)。       |
+
+#### 响应示例
+
+```json
+{
+  "code": 200,
+  "message": "成功",
+  "data": [
+    {
+      "create_time": "2025-06-20T12:00:00",
+      "update_time": "2025-06-20T12:00:00",
+      "id": 1,
+      "title": "校园招聘季高峰来临",
+      "content": "本周，多家知名企业在校内举办宣讲会，提供了大量优质岗位...",
+      "category": "官方",
+      "insight_date": "2025-06-20T00:00:00"
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 1,
+    "has_more": false
+  }
+}
+```
+
+---
+
+## Agent 相关接口
+
+### RAG 智能问答
+
+- **路径**: `POST /agent/rag`

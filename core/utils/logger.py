@@ -71,7 +71,11 @@ def filter_noise(record):
         
         # 特定过滤 __main__ 模块中的非错误日志
         if record["name"] == "__main__" and record_level < error_level:
-            return False
+            # 只有当它不是一个被我们特别注册过的etl任务时，才过滤它
+            # 这允许etl脚本在终端显示INFO日志，同时保持主应用(app.py)的终端清爽
+            extra_name = record["extra"].get("name", "")
+            if not extra_name.startswith("etl"):
+                return False
     except (TypeError, ValueError, KeyError):
         # 如果出现任何类型转换问题，让日志通过
         pass

@@ -1,6 +1,109 @@
 # nkuwiki 部署指南
 
-本文档提供了nkuwiki项目的部署说明，包括运行项目、部署MySQL和Qdrant服务等内容。
+本文档提供 `nkuwiki` 项目的标准化部署流程，推荐使用 `Docker` 和 `docker-compose` 来管理后端依赖服务，以确保环境的一致性和简化部署过程。
+
+## 1. 先决条件
+
+在开始之前，请确保你的系统已经安装了以下软件：
+
+- **Git**: 用于克隆项目代码。
+- **Python 3.10+**: 项目运行环境。
+- **Docker**: 用于运行容器化服务。
+- **Docker Compose**: 用于编排多容器应用。（通常随 Docker Desktop 一起安装）。
+
+如果你的系统中没有安装 Docker 和 Docker Compose，请参考官方文档进行安装：
+- [安装 Docker Engine](https://docs.docker.com/engine/install/)
+- [安装 Docker Compose](https://docs.docker.com/compose/install/)
+
+## 2. 获取项目代码
+
+详细步骤请参考 `README.md` 中的 [环境准备](#-快速开始) 部分。核心命令如下：
+
+```bash
+git clone https://github.com/NKU-WIKI/nkuwiki.git
+cd nkuwiki
+git submodule update --init --recursive
+```
+
+## 3. 使用 Docker Compose 启动后端服务
+
+项目根目录下的 `docker-compose.yml` 文件已经预先配置好了所有必需的后端服务，包括 `MySQL`, `Qdrant`, 和 `Redis`。
+
+**启动所有服务:**
+
+在项目根目录下，执行以下命令：
+
+```bash
+docker-compose up -d
+```
+`-d` 参数会使容器在后台运行。
+
+**验证服务状态:**
+
+你可以使用以下命令检查所有容器是否正在正常运行：
+
+```bash
+docker-compose ps
+```
+你应该能看到 `mysql`, `qdrant`, `redis` 等服务的状态为 `Up` 或 `Running`。
+
+## 4. 配置项目
+
+`docker-compose` 启动的服务使用的是默认的配置。你需要更新本地的 `config.json` 文件，使其能够连接到这些由Docker启动的服务。
+
+在你的 `config.json` 文件中，确保数据库相关的配置如下：
+
+```json
+{
+  "etl": {
+    "data": {
+      "mysql": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "user": "root",
+        "password": "your_mysql_root_password", // 替换为docker-compose.yml中设置的密码
+        "database": "nkuwiki",
+        "charset": "utf8mb4"
+      },
+      "qdrant": {
+        "host": "127.0.0.1",
+        "port": 6333
+      },
+      "redis": {
+          "host": "127.0.0.1",
+          "port": 6379,
+          "password": "",
+          "db": 0
+      }
+    }
+  }
+}
+```
+**注意**:
+- `host` 应为 `127.0.0.1` 或 `localhost`，因为你是从主机连接到Docker容器暴露的端口。
+- `password` 必须与 `docker-compose.yml` 文件中为MySQL设置的 `MYSQL_ROOT_PASSWORD` 环境变量的值完全一致。
+
+## 5. 运行应用
+
+当所有后端服务通过 Docker 正常运行，并且 `config.json` 配置正确后，你就可以像在 `README.md` 中描述的那样启动应用了。
+
+**启动API服务:**
+```bash
+python app.py --api --port 8000
+```
+
+**运行ETL流程:**
+```bash
+python etl/daily_pipeline.py
+```
+
+## 6. 管理服务
+
+- **停止服务**: `docker-compose stop`
+- **停止并删除容器**: `docker-compose down`
+- **查看日志**: `docker-compose logs -f <service_name>` (例如: `docker-compose logs -f mysql`)
+
+通过遵循本指南，你可以快速、可靠地部署和运行 `nkuwiki` 项目。
 
 ## 运行项目
 
@@ -143,57 +246,3 @@ cd qdrant
 # 启动qdrant服务
 ./qdrant
 ```
-
-##### Windows系统
-
-1. 下载Qdrant：https://github.com/qdrant/qdrant/releases
-2. 解压下载的文件
-3. 运行qdrant.exe
-
-##### macOS系统
-
-```bash
-curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-apple-darwin.tar.gz -o qdrant.tar.gz
-tar -xvf qdrant.tar.gz
-cd qdrant
-
-# 启动qdrant服务
-./qdrant
-```
-
-#### 配置MySQL服务
-
-```bash
-# mysql配置（根据需要修改）
-# linux/macos
-sudo mysql
-CREATE USER 'your_user'@'localhost' IDENTIFIED BY 'your_password';
-GRANT ALL PRIVILEGES ON *.* TO 'your_user'@'localhost';
-FLUSH PRIVILEGES;
-```
-
-## 开发指南
-
-### 添加新爬虫
-
-1. 在`etl/crawler`目录创建新的爬虫类，继承`BaseCrawler`
-2. 添加`self.platform`, `self.base_url`, `self.content_type`等配置
-3. 实现`login_for_cookies`方法（如果需要登录）, `scrape`和`download`方法
-
-### 添加新服务通道
-
-1. 在`services`目录创建新的通道类
-2. 在`services/channel_factory.py`中注册新通道
-
-### 添加新AI智能体
-
-1. 在`core/agent/`目录下添加新的AI提供商目录
-2. 实现继承自`Agent`类的自定义智能体
-3. 在`agent_factory.py`中注册您的智能体
-
-### 调试
-
-- 建议使用`services/terminal`模块进行命令行调试，配置`channel_type = terminal`
-- 查看`logs/`目录下的日志文件排查问题
-
-更详细的开发文档请参考[docs](../docs)目录。 

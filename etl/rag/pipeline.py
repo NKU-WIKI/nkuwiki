@@ -155,7 +155,6 @@ from pathlib import Path
 import logging
 from typing import List, Optional, Dict, Any
 import jieba
-from enum import Enum
 import nest_asyncio
 
 # LlamaIndex核心组件
@@ -167,12 +166,10 @@ from qdrant_client import QdrantClient, models
 
 # 项目依赖
 sys.path.append(str(Path(__file__).resolve().parent.parent))
-from etl.embedding.hf_embeddings import HuggingFaceEmbedding
-from etl.retrieval.rerankers import SentenceTransformerRerank, LLMRerank
-from etl.retrieval.retrievers import QdrantRetriever, BM25Retriever, HybridRetriever, ElasticsearchRetriever
 from config import Config
 from core.utils import register_logger
-from core.agent.agent_factory import get_agent
+from . import components
+from .strategies import RetrievalStrategy, RerankStrategy
 
 # 配置日志和全局设置
 logger = register_logger(__name__)
@@ -186,27 +183,6 @@ Settings.callback_manager = CallbackManager([
 Settings.num_output = 512
 Settings.chunk_size = config.get("etl.embedding.chunking.chunk_size", 512)
 Settings.chunk_overlap = config.get("etl.embedding.chunking.chunk_overlap", 200)
-
-
-class RetrievalStrategy(Enum):
-    """检索策略枚举"""
-    VECTOR_ONLY = "vector_only"           # 仅向量检索
-    BM25_ONLY = "bm25_only"              # 仅BM25检索
-    HYBRID = "hybrid"                     # 混合检索（向量+BM25）
-    ELASTICSEARCH_ONLY = "es_only"        # 仅Elasticsearch检索
-    AUTO = "auto"                         # 自动选择（基于查询特征）
-
-
-class RerankStrategy(Enum):
-    """重排序策略枚举"""
-    NO_RERANK = "no_rerank"              # 不重排序
-    BGE_RERANKER = "bge_reranker"        # BGE重排序器
-    SENTENCE_TRANSFORMER = "st_reranker" # SentenceTransformer重排序器
-    PAGERANK_ONLY = "pagerank_only"      # 仅PageRank排序
-    PERSONALIZED = "personalized"        # 个性化排序
-
-
-# 移除未使用的工具函数，这些功能已集成到相应的类方法中
 
 
 nest_asyncio.apply()
@@ -231,7 +207,7 @@ class RagPipeline:
     """
     
     def __init__(self,
-                 llm_model_name: str = "deepseek-chat",
+                 llm_model_name: str = None,
                  embedding_model_name: str = "BAAI/bge-large-zh-v1.5",
                  rerank_model_name: str = "BAAI/bge-reranker-base",
                  collection_name: str = None,
@@ -239,7 +215,8 @@ class RagPipeline:
                  pagerank_weight: float = None,
                  enable_es_rerank: bool = None,
                  default_retrieval_strategy: RetrievalStrategy = RetrievalStrategy.AUTO,
-                 default_rerank_strategy: RerankStrategy = RerankStrategy.BGE_RERANKER
+                 default_rerank_strategy: RerankStrategy = RerankStrategy.BGE_RERANKER,
+                 mode: str = "full"  # 新增mode参数, full:完整模式, generation:仅生成模式
                  ):
         """
         初始化RAG管道。
@@ -250,163 +227,61 @@ class RagPipeline:
             rerank_model_name: 重排序模型名称
             collection_name: Qdrant集合名称
             es_index_name: Elasticsearch索引名称
-            pagerank_weight: PageRank权重
-            enable_es_rerank: 是否对ES结果重排序
+            pagerank_weight: PageRank重排序权重
+            enable_es_rerank: 是否在ES检索后启用BGE重排序
             default_retrieval_strategy: 默认检索策略
             default_rerank_strategy: 默认重排序策略
+            mode: "full"为完整模式，"generation"为仅生成模式
         """
-        logger.info("Initializing RAG pipeline...")
-        self.collection_name = collection_name or config.get('etl.data.qdrant.collection', 'website_nku')
-        self.es_index_name = es_index_name or config.get('etl.data.elasticsearch.index', 'nkuwiki')
+        self.logger = register_logger(f"{__name__}.{self.__class__.__name__}")
+        self.logger.info("Initializing RAG pipeline...")
         
-        # 策略配置
+        self.pagerank_weight = pagerank_weight if pagerank_weight is not None else config.get("etl.retrieval.pagerank_weight", 0.1)
+        self.enable_es_rerank = enable_es_rerank if enable_es_rerank is not None else config.get("etl.retrieval.enable_es_rerank", True)
+        
+        # 初始化模型和配置
+        self.llm = components.init_llm(llm_model_name)
+        
+        if mode == "full":
+            self.embed_model = components.init_embedding_model(embedding_model_name)
+            self.reranker = components.init_reranker(rerank_model_name, self.pagerank_weight)
+            
+            # 初始化Qdrant客户端
+            qdrant_url = config.get("etl.data.qdrant.url")
+            qdrant_api_key = config.get("etl.data.qdrant.api_key")
+            self.qdrant_client = QdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=True)
+            self.collection_name = collection_name or config.get("etl.data.qdrant.collection", "main_index")
+            self.es_index_name = es_index_name or config.get("etl.data.elasticsearch.index", "nkuwiki")
+
+            # 初始化检索器
+            self.vector_retriever = components.init_vector_retriever(self.collection_name, self.embed_model)
+            self.bm25_retriever = components.init_bm25_retriever()
+            self.hybrid_retriever = components.init_hybrid_retriever(self.vector_retriever, self.bm25_retriever, self.pagerank_weight)
+            self.es_retriever = components.init_es_retriever(self.es_index_name)
+            
+            # 检查可用检索器
+            self.available_retrievers = self._check_available_retrievers()
+
+        elif mode == "generation":
+            self.logger.info("Generation-only mode is active. Skipping retriever and reranker initialization.")
+            self.embed_model = None
+            self.reranker = None
+            self.qdrant_client = None
+            self.collection_name = None
+            self.vector_retriever = None
+            self.bm25_retriever = None
+            self.hybrid_retriever = None
+            self.es_retriever = None
+            self.available_retrievers = {}
+
         self.default_retrieval_strategy = default_retrieval_strategy
         self.default_rerank_strategy = default_rerank_strategy
         
-        # PageRank和重排序配置
-        self.pagerank_weight = pagerank_weight if pagerank_weight is not None else config.get('etl.retrieval.pagerank_weight', 0.1)
-        self.enable_es_rerank = enable_es_rerank if enable_es_rerank is not None else config.get('etl.retrieval.enable_es_rerank', True)
-        
-        logger.info(f"Default retrieval strategy: {self.default_retrieval_strategy.value}")
-        logger.info(f"Default rerank strategy: {self.default_rerank_strategy.value}")
-        logger.info(f"PageRank weight: {self.pagerank_weight}, ES rerank enabled: {self.enable_es_rerank}")
+        self.logger.info(f"Default retrieval strategy: {self.default_retrieval_strategy.value}")
+        self.logger.info(f"Default rerank strategy: {self.default_rerank_strategy.value}")
+        self.logger.info(f"PageRank weight: {self.pagerank_weight}, ES rerank enabled: {self.enable_es_rerank}")
 
-        # 1. 初始化语言模型 (LLM)
-        self.llm = self._init_llm(llm_model_name)
-        
-        # 2. 初始化嵌入模型 (Embedding)
-        self.embed_model = self._init_embedding_model(embedding_model_name)
-        Settings.embed_model = self.embed_model
-
-        # 3. 初始化重排模型 (Reranker)
-        self.reranker = self._init_reranker(rerank_model_name)
-
-        # 4. 初始化检索器 (Retrievers)
-        self.vector_retriever = self._init_vector_retriever()
-        self.bm25_retriever = self._init_bm25_retriever()
-        self.hybrid_retriever = self._init_hybrid_retriever()
-        self.es_retriever = self._init_es_retriever()
-        
-        # 5. 记录可用的检索器
-        self.available_retrievers = self._check_available_retrievers()
-        logger.info(f"Available retrievers: {list(self.available_retrievers.keys())}")
-        
-        logger.info("RAG pipeline initialized successfully.")
-
-    def _init_llm(self, model_name: str):
-        logger.info(f"Initializing LLM: {model_name}")
-        # 使用coze agent替代llama-index的OpenAI LLM，指定使用answerGenerate_bot_id
-        return get_agent("coze", tag="answerGenerate")
-
-    def _init_embedding_model(self, model_name: str):
-        logger.info(f"Initializing embedding model: {model_name}")
-        # 根据配置文件逻辑：base_path + models.path
-        import os
-        base_path = config.get('etl.data.base_path', '/data')
-        models_subpath = config.get('etl.data.models.path', '/models')
-        models_path = base_path + models_subpath
-        
-        # 全局设置HuggingFace缓存目录
-        os.environ['HF_HOME'] = models_path
-        os.environ['TRANSFORMERS_CACHE'] = models_path
-        os.environ['HF_HUB_CACHE'] = models_path
-        os.environ['SENTENCE_TRANSFORMERS_HOME'] = models_path
-        # 确保目录存在
-        os.makedirs(models_path, exist_ok=True)
-        logger.info(f"Models cache directory set to: {models_path}")
-        
-        # 使用项目的 HuggingFaceEmbedding 类，它已经继承自 BaseEmbedding
-        from etl.embedding.hf_embeddings import HuggingFaceEmbedding
-        import torch
-        
-        # 强制使用CPU以避免内存不足问题
-        device = 'cpu'
-        logger.info("强制使用CPU设备")
-        
-        logger.info(f"Loading model {model_name} from {models_path} on {device}")
-        try:
-            return HuggingFaceEmbedding(
-                model_name=model_name,
-                device=device
-            )
-        except Exception as e:
-            logger.error(f"Failed to initialize embedding model: {e}")
-            raise
-
-    def _init_reranker(self, model_name: str):
-        logger.info(f"Initializing reranker: {model_name}")
-        # 根据模型名称选择合适的重排序器
-        if "bge-reranker" in model_name.lower():
-            return LLMRerank(model=model_name, top_n=10, pagerank_weight=self.pagerank_weight)
-        else:
-            return SentenceTransformerRerank(model=model_name, top_n=10, pagerank_weight=self.pagerank_weight)
-
-    def _load_stopwords(self):
-        """加载停用词文件"""
-        stopwords_path = config.get('etl.retrieval.bm25.stopwords_path')
-        try:
-            with open(stopwords_path, 'r', encoding='utf-8') as f:
-                return [line.strip() for line in f.readlines()]
-        except FileNotFoundError:
-            logger.warning(f"Stopwords file not found at {stopwords_path}. Returning empty list.")
-            return []
-
-    def _init_vector_retriever(self):
-        logger.info("Initializing QdrantRetriever.")
-        qdrant_url = config.get('etl.data.qdrant.url', 'http://localhost:6333')
-        qdrant_client = QdrantClient(url=qdrant_url)
-        vector_store = QdrantVectorStore(client=qdrant_client, collection_name=self.collection_name)
-        return QdrantRetriever(vector_store=vector_store, embed_model=self.embed_model, similarity_top_k=10)
-
-    def _init_bm25_retriever(self):
-        logger.info("Initializing BM25Retriever using fast mode.")
-        nodes_path = config.get('etl.retrieval.bm25.nodes_path')
-        
-        # 检查预构建的节点文件是否存在
-        if not nodes_path or not os.path.exists(nodes_path):
-            logger.warning(f"BM25节点文件不存在: {nodes_path}. BM25检索器将被禁用.")
-            return None
-        
-        try:
-            # 使用快速加载方法
-            stopwords = self._load_stopwords()
-            return BM25Retriever.from_pickle_fast(
-                nodes_path=nodes_path,
-                tokenizer=jieba,
-                stopwords=stopwords,
-                similarity_top_k=10
-            )
-        except Exception as e:
-            logger.error(f"BM25检索器快速加载失败: {e}")
-            return None
-
-    def _init_hybrid_retriever(self):
-        """初始化混合检索器"""
-        if self.vector_retriever and self.bm25_retriever:
-            logger.info("Initializing HybridRetriever with vector and BM25 retrievers.")
-            return HybridRetriever(
-                dense_retriever=self.vector_retriever,
-                sparse_retriever=self.bm25_retriever,
-                pagerank_weight=self.pagerank_weight
-            )
-        logger.warning("Cannot initialize HybridRetriever: missing vector or BM25 retriever.")
-        return None
-
-    def _init_es_retriever(self):
-        """初始化Elasticsearch检索器"""
-        logger.info("Initializing ElasticsearchRetriever.")
-        es_host = config.get('etl.data.elasticsearch.host', 'localhost')
-        es_port = config.get('etl.data.elasticsearch.port', 9200)
-        try:
-            return ElasticsearchRetriever(
-                index_name=self.es_index_name, 
-                es_host=es_host, 
-                es_port=es_port, 
-                similarity_top_k=10
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize ElasticsearchRetriever: {e}. Wildcard search will be disabled.")
-            return None
+        self.logger.info("RAG pipeline initialized successfully.")
 
     def _check_available_retrievers(self) -> Dict[str, bool]:
         """检查可用的检索器"""
@@ -619,10 +494,10 @@ class RagPipeline:
         prompt = f"用户问题：{query}\n\n参考资料：\n{sources_text}"
         
         try:
-            # 使用与rag.py相同的调用方式，添加超时控制
+            # 使用与rag.py相同的调用方式
             import asyncio
             
-            async def _generate_with_timeout():
+            async def _generate_async():
                 loop = asyncio.get_event_loop()
                 return await loop.run_in_executor(
                     None, 
@@ -633,14 +508,8 @@ class RagPipeline:
                     )
                 )
             
-            # 设置30秒超时
-            try:
-                result = asyncio.run(asyncio.wait_for(_generate_with_timeout(), timeout=30.0))
-            except asyncio.TimeoutError:
-                logger.warning("生成答案超时（>30秒），返回基于上下文的摘要")
-                if context_nodes:
-                    return f"根据找到的相关信息：{sources_text[:300]}..."
-                return "抱歉，回答生成超时，请稍后再试。"
+            # 移除超时控制
+            result = asyncio.run(_generate_async())
             
             if isinstance(result, dict) and "response" in result:
                 answer = result.get("response", "")

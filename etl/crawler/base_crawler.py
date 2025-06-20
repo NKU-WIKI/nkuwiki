@@ -10,8 +10,8 @@ from collections import Counter
 from playwright.async_api import async_playwright
 from typing import List, Dict, Any
 from pathlib import Path
-from datetime import datetime, timedelta
-
+from datetime import datetime
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl.crawler import crawler_logger, RAW_PATH, default_user_agents, default_locale, default_timezone
 from etl.utils.file import clean_filename
 
@@ -45,7 +45,7 @@ class BaseCrawler():
         self.update_f = open(self.base_dir / self.update_file, 'a+', encoding='utf-8')  # 打开更新文件
         self.scraped_original_urls_file = 'scraped_original_urls.json'  # 已抓取链接文件
         self.cookies_file = 'cookies.txt'  # cookies文件，用于保存登录信息
-        self.tz = pytz.timezone(DEFAULT_TIMEZONE)  # 设置时区
+        self.tz = pytz.timezone(default_timezone)  # 设置时区
          # 将在async_init方法中初始化
         self._playwright_context = None 
         self.playwright = None
@@ -72,6 +72,11 @@ class BaseCrawler():
         }
         random.seed(int(time.time()))
 
+    @property
+    def cookie_file_path(self) -> Path:
+        """返回cookies文件的完整路径"""
+        return self.base_dir / self.cookies_file
+
     async def async_init(self):
         """异步初始化playwright和浏览器"""
         self._playwright_context = await async_playwright().start()
@@ -95,8 +100,8 @@ class BaseCrawler():
             await self.rotate_proxy()
         self.context = await self.browser.new_context(
             user_agent=self.headers['User-Agent'],
-            locale=DEFAULT_LOCALE,
-            timezone_id=DEFAULT_TIMEZONE,
+            locale=default_locale,
+            timezone_id=default_timezone,
             color_scheme='light', 
             device_scale_factor=random.choice([1, 1.25, 1.5]),
             is_mobile=False,
@@ -164,7 +169,7 @@ class BaseCrawler():
         """
         从文件中读取cookies，timeout为cookies有效期，默认6小时
         """
-        f = self.base_dir / self.cookies_file
+        f = self.cookie_file_path
         if f.exists():
             cookies = {}
             lines = f.read_text().split('\n')
@@ -183,7 +188,7 @@ class BaseCrawler():
     
     def save_cookies(self, cookies):
         # 保存cookies到文件
-        f = self.base_dir / self.cookies_file
+        f = self.cookie_file_path
         now_ts = int(time.time())
         lines = f'{now_ts}\n'
         for k, v in cookies.items():
@@ -292,6 +297,8 @@ class BaseCrawler():
                     with open(temp_path.with_suffix('.json'), 'w', encoding='utf-8', errors='ignore') as f:
                         json.dump(meta, f, ensure_ascii=False, indent=2)
                 scraped_original_urls.append(article['original_url'])
+            else:
+                self.counter['noneed'] += 1
         total_f = self.base_dir / self.scraped_original_urls_file
         total_f.write_text(json.dumps(scraped_original_urls, ensure_ascii=False, indent=0))
 
@@ -436,8 +443,8 @@ class BaseCrawler():
                     "bypass": "127.0.0.1,localhost"
                 },
                 user_agent=self.headers['User-Agent'],
-                locale=DEFAULT_LOCALE,
-                timezone_id=DEFAULT_TIMEZONE
+                locale=default_locale,
+                timezone_id=default_timezone
             )
             
             # 创建新页面

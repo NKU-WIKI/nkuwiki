@@ -52,58 +52,90 @@
 ```bash
 git clone https://github.com/NKU-WIKI/nkuwiki.git
 cd nkuwiki
+git submodule update --init --recursive
 ```
 
-2. **安装依赖**
+2. **环境准备 (推荐)**
+    - 确保你已安装 Python 3.10+。
+    - 为了避免依赖冲突，强烈建议在 Python 虚拟环境中安装项目。
+
+    <details>
+    <summary>点击查看如何创建虚拟环境</summary>
+
+    **方法一: 使用 venv (Python自带)**
+    ```bash
+    # 在项目根目录创建名为 .venv 的虚拟环境
+    python3 -m venv .venv
+
+    # 激活虚拟环境
+    # Linux/MacOS
+    source .venv/bin/activate
+    # Windows
+    .venv\\Scripts\\activate
+    ```
+
+    **方法二: 使用 conda**
+    ```bash
+    # 创建名为 nkuwiki 的环境
+    conda create -n nkuwiki python=3.10 -y
+
+    # 激活环境
+    conda activate nkuwiki
+    ```
+    </details>
+
+3. **安装依赖**
 ```bash
 pip install -r requirements.txt
+
+# 安装 Playwright 的浏览器依赖
+playwright install chromium
 ```
 
-3. **配置项目**
-- 复制配置模板：`cp config-template/config-terminal.json config.json`
-- 编辑 `config.json`，填入必要的配置项（API密钥等）
+4. **配置项目**
+    - 在项目根目录创建 `config.json` 文件，并填入必要的配置，例如你的大模型API Key。
+    - 更多详细信息，请参考 `docs/configuration_guide.md`。
 
-4. **启动服务**
+5. **启动问答服务**
 
-以下为应用示例，更多功能详见[文档](./docs)
+    本项目支持多种渠道与用户交互，核心启动命令是 `python app.py`。
 
-**终端问答模式（流式输出支持）**
+    **a. 终端模式 (默认)**
 
-```bash
-python app.py
-```
+    直接在命令行中与智能体进行对话，适合开发和快速测试。
 
-![终端模式效果](./docs/assets/terminal-qa.png)
+    ```bash
+    python app.py
+    ```
+    ![终端模式效果](./docs/assets/terminal-qa.png)
 
-**api模式**
+    **b. API服务模式**
 
-```bash
-python app.py --api --port 8000
+    将问答能力封装为RESTful API，供前端或其他服务调用。
 
-# 检查服务状态
-curl -X GET "http://localhost:8000/api/health"
+    ```bash
+    # 启动API服务，监听在8000端口
+    python app.py --api --port 8000
 
-# 一键部署服务集群（在linux服务器上）
-nkuwiki_service_manager.sh deploy 8000
-```
+    # 检查服务健康状态
+    curl -X GET "http://localhost:8000/api/health"
+    ```
 
-**爬虫模式**
+6.  **运行ETL与爬虫**
 
-```bash
-# 运行微信公众号爬虫
-python -m etl.crawler.wechat
+    ETL（数据提取、转换、加载）是保证知识库持续更新的核心。
 
-# 运行校园集市爬虫
-python -m etl.crawler.market
+    ```bash
+    # 运行ETL全流程（扫描、索引、洞察），处理过去24小时的数据
+    python etl/daily_pipeline.py
 
-# 运行小红书爬虫
-python -m etl.crawler.xhs_spider
+    # 仅运行微信公众号爬虫
+    python -m etl.crawler.wechat
 
-# 运行抖音爬虫
-python -m etl.crawler.douyin_spider
-```
-
-更多爬虫使用说明请参考[爬虫模块使用指南](./docs/crawler_guide.md)
+    # 仅运行校园集市爬虫
+    python -m etl.crawler.market
+    ```
+    - 更多关于ETL和爬虫的使用说明，请参考 [ETL流程指南](./docs/etl_pipeline_guide.md) 和 [爬虫开发指南](./docs/crawler_guide.md)。
 
 ## 🏗 系统架构
 
@@ -181,7 +213,13 @@ python -m etl.crawler.douyin_spider
 
 ## 🔧 开发指南
 
-详见[飞书开发文档](https://nankai.feishu.cn/wiki/U3hSweEsUiJDHKkQtVycuNSMnMe)。
+- **API文档**: [API Documentation](./docs/api_docs.md)
+- **ETL流程**: [ETL Pipeline Guide](./docs/etl_pipeline_guide.md)
+- **爬虫开发**: [Crawler Development Guide](./docs/crawler_guide.md)
+- **RAG架构**: [RAG Strategy](./docs/rag.md)
+- **详细配置**: [Configuration Guide](./docs/configuration_guide.md)
+
+或参考完整的[飞书开发文档](https://nankai.feishu.cn/wiki/U3hSweEsUiJDHKkQtVycuNSMnMe)。
 
 ## 🤝 如何参与
 

@@ -1,919 +1,157 @@
 ---
-description: 数据库操作规范
+description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 # 数据库操作规范
 
-## 数据库连接管理
+## 1. 数据库连接管理 (`db_pool_manager.py`)
 
-### 1. 连接池配置
+项目采用基于 `mysql-connector-python` 的高级数据库连接池，具备多实例协调和动态调整能力。
+
+### 核心特性
+- **多实例协调**：使用 Redis 在多个服务实例间同步连接池状态，避免超出数据库最大连接数。
+- **动态池大小**：根据活跃实例数量和系统负载动态计算并调整每个实例的连接池大小。
+- **文件锁**：通过 `/tmp/nkuwiki_db_lock` 确保在多进程环境中只有一个实例负责初始化。
+- **心跳与监控**：每个实例通过 Redis 定期报告心跳和性能指标。
+
+### 获取连接
+
+所有数据库操作都应通过 `get_db_connection` 上下文管理器获取连接，以确保连接的正确获取和释放。
+
 ```python
-# etl/load/db_core.py 
-import mysql.connector.pooling
-from typing import Optional, Dict, List, Any
+# etl/load/db_pool_manager.py
+
 from contextlib import contextmanager
-from config import Config
+from etl.load.db_pool_manager import get_connection as get_pooled_connection, release_connection
+from core.utils.logger import register_logger
 
-class DatabaseManager:
-    """数据库管理器"""
-    
-    def __init__(self, config: Config):
-        self.config = config
-        self.logger = register_logger(__name__)
-        self.pool = None
-        self.init_connection_pool()
-    
-    def init_connection_pool(self):
-        """初始化连接池"""
-        try:
-            pool_config = {
-                'pool_name': 'nkuwiki_pool',
-                'pool_size': self.config.get("etl.data.mysql.pool_size", 10),
-                'pool_reset_session': True,
-                'host': self.config.get("etl.data.mysql.host", "localhost"),
-                'port': self.config.get("etl.data.mysql.port", 3306),
-                'database': self.config.get("etl.data.mysql.database", "nkuwiki"),
-                'user': self.config.get("etl.data.mysql.user", "root"),
-                'password': self.config.get("etl.data.mysql.password", ""),
-                'charset': 'utf8mb4',
-                'collation': 'utf8mb4_unicode_ci',
-                'autocommit': True,
-                'time_zone': '+00:00'
-            }
-            
-            self.pool = mysql.connector.pooling.MySQLConnectionPool(**pool_config)
-            self.logger.info("数据库连接池初始化成功")
-            
-        except Exception as e:
-            self.logger.error("数据库连接池初始化失败: %s", str(e))
-            raise
-    
-    @contextmanager
-    def get_connection(self):
-        """获取数据库连接上下文管理器"""
-        connection = None
-        try:
-            connection = self.pool.get_connection()
-            self.logger.debug("获取数据库连接成功")
-            yield connection
-        except Exception as e:
-            self.logger.error("数据库连接获取失败: %s", str(e))
-            if connection:
-                connection.rollback()
-            raise
-        finally:
-            if connection and connection.is_connected():
-                connection.close()
-                self.logger.debug("数据库连接已释放")
+logger = register_logger(__name__)
 
-# 全局数据库管理器实例
-_db_manager = None
-
-def get_db_manager() -> DatabaseManager:
-    """获取数据库管理器单例"""
-    global _db_manager
-    if _db_manager is None:
-        from config import Config
-        _db_manager = DatabaseManager(Config())
-    return _db_manager
-
-def get_connection():
-    """获取数据库连接"""
-    return get_db_manager().get_connection()
-```
-
-### 2. 基础CRUD操作
-```python
-# etl/load/db_operations.py
-from typing import List, Dict, Any, Optional, Union
-from mysql.connector import Error as MySQLError
-
-class DatabaseOperations:
-    """数据库基础操作类"""
-    
-    def __init__(self):
-        self.logger = register_logger(__name__)
-    
-    def execute_query(
-        self, 
-        connection, 
-        query: str, 
-        params: Optional[tuple] = None,
-        fetch_all: bool = True
-    ) -> Optional[List[Dict[str, Any]]]:
-        """执行查询操作"""
-        try:
-            cursor = connection.cursor(dictionary=True)
-            cursor.execute(query, params or ())
-            
-            if fetch_all:
-                result = cursor.fetchall()
-            else:
-                result = cursor.fetchone()
-            
-            cursor.close()
-            
-            self.logger.debug("查询执行成功，返回%d条记录", len(result) if result else 0)
-            return result
-            
-        except MySQLError as e:
-            self.logger.error("查询执行失败: %s, SQL: %s", str(e), query)
-            raise
-        except Exception as e:
-            self.logger.error("查询执行异常: %s", str(e))
-            raise
-    
-    def execute_insert(
-        self, 
-        connection, 
-        table: str, 
-        data: Dict[str, Any]
-    ) -> int:
-        """执行插入操作"""
-        try:
-            # 构建插入SQL
-            columns = list(data.keys())
-            placeholders = ', '.join(['%s'] * len(columns))
-            query = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
-            
-            cursor = connection.cursor()
-            cursor.execute(query, list(data.values()))
-            
-            last_id = cursor.lastrowid
-            affected_rows = cursor.rowcount
-            
-            cursor.close()
-            
-            self.logger.debug("插入成功，表: %s, 影响行数: %d, 插入ID: %d", 
-                            table, affected_rows, last_id)
-            return last_id
-            
-        except MySQLError as e:
-            self.logger.error("插入失败: %s, 表: %s, 数据: %s", str(e), table, data)
-            raise
-    
-    def execute_batch_insert(
-        self, 
-        connection, 
-        table: str, 
-        data_list: List[Dict[str, Any]],
-        batch_size: int = 1000
-    ) -> int:
-        """批量插入操作"""
-        if not data_list:
-            return 0
-        
-        try:
-            # 获取所有字段名
-            columns = list(data_list[0].keys())
-            placeholders = ', '.join(['%s'] * len(columns))
-            query = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
-            
-            cursor = connection.cursor()
-            total_inserted = 0
-            
-            # 分批插入
-            for i in range(0, len(data_list), batch_size):
-                batch = data_list[i:i + batch_size]
-                values = [list(item.values()) for item in batch]
-                
-                cursor.executemany(query, values)
-                total_inserted += cursor.rowcount
-                
-                self.logger.debug("批次插入完成，表: %s, 当前批次: %d条", 
-                                table, len(batch))
-            
-            cursor.close()
-            
-            self.logger.info("批量插入完成，表: %s, 总计: %d条", table, total_inserted)
-            return total_inserted
-            
-        except MySQLError as e:
-            self.logger.error("批量插入失败: %s, 表: %s", str(e), table)
-            raise
-    
-    def execute_update(
-        self, 
-        connection, 
-        table: str, 
-        data: Dict[str, Any], 
-        where_clause: str, 
-        where_params: tuple = ()
-    ) -> int:
-        """执行更新操作"""
-        try:
-            # 构建更新SQL
-            set_clause = ', '.join([f"{key} = %s" for key in data.keys()])
-            query = f"UPDATE {table} SET {set_clause} WHERE {where_clause}"
-            
-            params = list(data.values()) + list(where_params)
-            
-            cursor = connection.cursor()
-            cursor.execute(query, params)
-            
-            affected_rows = cursor.rowcount
-            cursor.close()
-            
-            self.logger.debug("更新成功，表: %s, 影响行数: %d", table, affected_rows)
-            return affected_rows
-            
-        except MySQLError as e:
-            self.logger.error("更新失败: %s, 表: %s", str(e), table)
-            raise
-    
-    def execute_delete(
-        self, 
-        connection, 
-        table: str, 
-        where_clause: str, 
-        where_params: tuple = ()
-    ) -> int:
-        """执行删除操作"""
-        try:
-            query = f"DELETE FROM {table} WHERE {where_clause}"
-            
-            cursor = connection.cursor()
-            cursor.execute(query, where_params)
-            
-            affected_rows = cursor.rowcount
-            cursor.close()
-            
-            self.logger.debug("删除成功，表: %s, 影响行数: %d", table, affected_rows)
-            return affected_rows
-            
-        except MySQLError as e:
-            self.logger.error("删除失败: %s, 表: %s", str(e), table)
-            raise
-
-# 全局操作实例
-db_ops = DatabaseOperations()
-```
-
-## 表结构管理
-
-### 1. 表结构定义
-```python
-# etl/load/mysql_tables/table_definitions.py
-from typing import Dict, List
-
-class TableDefinitions:
-    """数据库表结构定义"""
-    
-    @staticmethod
-    def get_website_nku_schema() -> str:
-        """网站数据表结构"""
-        return """
-        CREATE TABLE IF NOT EXISTS website_nku (
-            id VARCHAR(32) PRIMARY KEY COMMENT '文档ID（MD5哈希）',
-            title VARCHAR(500) NOT NULL COMMENT '页面标题',
-            content LONGTEXT NOT NULL COMMENT '页面内容',
-            url VARCHAR(1000) NOT NULL COMMENT '页面URL',
-            source VARCHAR(50) NOT NULL DEFAULT 'nku_wiki' COMMENT '数据源',
-            domain VARCHAR(100) COMMENT '域名',
-            path VARCHAR(500) COMMENT 'URL路径',
-            metadata JSON COMMENT '元数据',
-            pagerank_score FLOAT DEFAULT 0.0 COMMENT 'PageRank分数',
-            content_length INT DEFAULT 0 COMMENT '内容长度',
-            word_count INT DEFAULT 0 COMMENT '词数统计',
-            create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-            update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-            
-            INDEX idx_source (source),
-            INDEX idx_domain (domain),
-            INDEX idx_pagerank (pagerank_score DESC),
-            INDEX idx_create_time (create_time),
-            FULLTEXT INDEX ft_title_content (title, content) WITH PARSER ngram
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        COMMENT='南开大学网站数据表';
-        """
-    
-    @staticmethod
-    def get_link_graph_schema() -> str:
-        """链接图表结构"""
-        return """
-        CREATE TABLE IF NOT EXISTS link_graph (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            source_url VARCHAR(1000) NOT NULL COMMENT '源URL',
-            target_url VARCHAR(1000) NOT NULL COMMENT '目标URL',
-            anchor_text VARCHAR(200) COMMENT '锚文本',
-            link_type ENUM('internal', 'external') DEFAULT 'internal' COMMENT '链接类型',
-            create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-            
-            INDEX idx_source_url (source_url(255)),
-            INDEX idx_target_url (target_url(255)),
-            INDEX idx_link_type (link_type),
-            UNIQUE KEY uk_source_target (source_url(255), target_url(255))
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        COMMENT='网页链接关系图';
-        """
-    
-    @staticmethod
-    def get_pagerank_scores_schema() -> str:
-        """PageRank分数表结构"""
-        return """
-        CREATE TABLE IF NOT EXISTS pagerank_scores (
-            url VARCHAR(1000) PRIMARY KEY COMMENT '页面URL',
-            pagerank_score FLOAT NOT NULL DEFAULT 0.0 COMMENT 'PageRank分数',
-            in_degree INT DEFAULT 0 COMMENT '入度（被链接次数）',
-            out_degree INT DEFAULT 0 COMMENT '出度（对外链接次数）',
-            calculation_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '计算时间',
-            
-            INDEX idx_pagerank_score (pagerank_score DESC),
-            INDEX idx_in_degree (in_degree DESC),
-            INDEX idx_calculation_time (calculation_time)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        COMMENT='PageRank分数表';
-        """
-    
-    @staticmethod
-    def get_wxapp_tables_schema() -> List[str]:
-        """微信小程序相关表结构"""
-        return [
-            # 用户表
-            """
-            CREATE TABLE IF NOT EXISTS wxapp_users (
-                openid VARCHAR(50) PRIMARY KEY COMMENT '微信openid',
-                nickname VARCHAR(100) COMMENT '用户昵称',
-                avatar VARCHAR(500) COMMENT '头像URL',
-                gender TINYINT DEFAULT 0 COMMENT '性别：0未知，1男，2女',
-                city VARCHAR(50) COMMENT '城市',
-                province VARCHAR(50) COMMENT '省份',
-                country VARCHAR(50) COMMENT '国家',
-                language VARCHAR(10) DEFAULT 'zh_CN' COMMENT '语言',
-                session_key VARCHAR(100) COMMENT '会话密钥',
-                unionid VARCHAR(50) COMMENT 'unionid',
-                is_active BOOLEAN DEFAULT TRUE COMMENT '是否活跃',
-                last_login_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '最后登录时间',
-                create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-                
-                INDEX idx_nickname (nickname),
-                INDEX idx_last_login (last_login_time),
-                INDEX idx_create_time (create_time)
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            COMMENT='微信小程序用户表';
-            """,
-            
-            # 搜索历史表
-            """
-            CREATE TABLE IF NOT EXISTS wxapp_search_history (
-                id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                openid VARCHAR(50) NOT NULL COMMENT '用户openid',
-                query VARCHAR(200) NOT NULL COMMENT '搜索关键词',
-                result_count INT DEFAULT 0 COMMENT '搜索结果数量',
-                search_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '搜索时间',
-                
-                INDEX idx_openid (openid),
-                INDEX idx_query (query),
-                INDEX idx_search_time (search_time),
-                FOREIGN KEY (openid) REFERENCES wxapp_users(openid) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            COMMENT='搜索历史记录表';
-            """,
-            
-            # 帖子表
-            """
-            CREATE TABLE IF NOT EXISTS wxapp_posts (
-                id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                openid VARCHAR(50) NOT NULL COMMENT '发布者openid',
-                title VARCHAR(200) NOT NULL COMMENT '帖子标题',
-                content TEXT NOT NULL COMMENT '帖子内容',
-                images JSON COMMENT '图片URL列表',
-                category VARCHAR(50) COMMENT '分类',
-                tags JSON COMMENT '标签列表',
-                like_count INT DEFAULT 0 COMMENT '点赞数',
-                comment_count INT DEFAULT 0 COMMENT '评论数',
-                view_count INT DEFAULT 0 COMMENT '浏览数',
-                is_public BOOLEAN DEFAULT TRUE COMMENT '是否公开',
-                is_featured BOOLEAN DEFAULT FALSE COMMENT '是否精选',
-                status ENUM('published', 'draft', 'deleted') DEFAULT 'published' COMMENT '状态',
-                create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-                update_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-                
-                INDEX idx_openid (openid),
-                INDEX idx_category (category),
-                INDEX idx_status (status),
-                INDEX idx_create_time (create_time),
-                INDEX idx_like_count (like_count DESC),
-                FULLTEXT INDEX ft_title_content (title, content) WITH PARSER ngram,
-                FOREIGN KEY (openid) REFERENCES wxapp_users(openid) ON DELETE CASCADE
-            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-            COMMENT='帖子表';
-            """
-        ]
-```
-
-### 2. 表初始化和维护
-```python
-# etl/load/table_manager.py
-class TableManager:
-    """数据库表管理器"""
-    
-    def __init__(self):
-        self.logger = register_logger(__name__)
-        self.table_definitions = TableDefinitions()
-    
-    def create_all_tables(self) -> bool:
-        """创建所有表"""
-        try:
-            with get_connection() as connection:
-                # 创建主要业务表
-                self._create_table(connection, 'website_nku', 
-                                 self.table_definitions.get_website_nku_schema())
-                
-                self._create_table(connection, 'link_graph', 
-                                 self.table_definitions.get_link_graph_schema())
-                
-                self._create_table(connection, 'pagerank_scores', 
-                                 self.table_definitions.get_pagerank_scores_schema())
-                
-                # 创建微信小程序表
-                wxapp_schemas = self.table_definitions.get_wxapp_tables_schema()
-                for i, schema in enumerate(wxapp_schemas):
-                    table_name = ['wxapp_users', 'wxapp_search_history', 'wxapp_posts'][i]
-                    self._create_table(connection, table_name, schema)
-                
-                self.logger.info("所有数据表创建完成")
-                return True
-                
-        except Exception as e:
-            self.logger.error("创建数据表失败: %s", str(e))
-            return False
-    
-    def _create_table(self, connection, table_name: str, schema: str):
-        """创建单个表"""
-        try:
-            cursor = connection.cursor()
-            cursor.execute(schema)
-            cursor.close()
-            
-            self.logger.info("数据表创建成功: %s", table_name)
-            
-        except MySQLError as e:
-            self.logger.error("创建表%s失败: %s", table_name, str(e))
-            raise
-    
-    def check_table_exists(self, table_name: str) -> bool:
-        """检查表是否存在"""
-        try:
-            with get_connection() as connection:
-                query = """
-                SELECT COUNT(*) as count 
-                FROM information_schema.tables 
-                WHERE table_schema = DATABASE() AND table_name = %s
-                """
-                
-                result = db_ops.execute_query(connection, query, (table_name,), fetch_all=False)
-                return result['count'] > 0 if result else False
-                
-        except Exception as e:
-            self.logger.error("检查表存在性失败: %s", str(e))
-            return False
-    
-    def get_table_info(self, table_name: str) -> Optional[Dict]:
-        """获取表信息"""
-        try:
-            with get_connection() as connection:
-                # 获取表结构
-                query = "DESCRIBE " + table_name
-                columns = db_ops.execute_query(connection, query)
-                
-                # 获取表状态
-                query = """
-                SELECT table_rows, data_length, index_length, auto_increment
-                FROM information_schema.tables 
-                WHERE table_schema = DATABASE() AND table_name = %s
-                """
-                
-                status = db_ops.execute_query(connection, query, (table_name,), fetch_all=False)
-                
-                return {
-                    'table_name': table_name,
-                    'columns': columns,
-                    'row_count': status['table_rows'] if status else 0,
-                    'data_size': status['data_length'] if status else 0,
-                    'index_size': status['index_length'] if status else 0,
-                    'auto_increment': status['auto_increment'] if status else None
-                }
-                
-        except Exception as e:
-            self.logger.error("获取表信息失败: %s", str(e))
-            return None
-    
-    def optimize_table(self, table_name: str) -> bool:
-        """优化表"""
-        try:
-            with get_connection() as connection:
-                cursor = connection.cursor()
-                cursor.execute(f"OPTIMIZE TABLE {table_name}")
-                result = cursor.fetchall()
-                cursor.close()
-                
-                self.logger.info("表优化完成: %s, 结果: %s", table_name, result)
-                return True
-                
-        except Exception as e:
-            self.logger.error("表优化失败: %s", str(e))
-            return False
-
-# 全局表管理器
-table_manager = TableManager()
-```
-
-## 数据访问层（DAO）
-
-### 1. 基础DAO类
-```python
-# etl/load/dao/base_dao.py
-from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
-
-class BaseDAO(ABC):
-    """数据访问对象基类"""
-    
-    def __init__(self, table_name: str):
-        self.table_name = table_name
-        self.logger = register_logger(f"{__name__}.{table_name}")
-    
-    def create(self, data: Dict[str, Any]) -> int:
-        """创建记录"""
-        try:
-            with get_connection() as connection:
-                return db_ops.execute_insert(connection, self.table_name, data)
-        except Exception as e:
-            self.logger.error("创建记录失败: %s", str(e))
-            raise
-    
-    def batch_create(self, data_list: List[Dict[str, Any]], batch_size: int = 1000) -> int:
-        """批量创建记录"""
-        try:
-            with get_connection() as connection:
-                return db_ops.execute_batch_insert(
-                    connection, self.table_name, data_list, batch_size
-                )
-        except Exception as e:
-            self.logger.error("批量创建记录失败: %s", str(e))
-            raise
-    
-    def find_by_id(self, record_id: Any) -> Optional[Dict[str, Any]]:
-        """根据ID查找记录"""
-        try:
-            with get_connection() as connection:
-                query = f"SELECT * FROM {self.table_name} WHERE id = %s"
-                result = db_ops.execute_query(connection, query, (record_id,), fetch_all=False)
-                return result
-        except Exception as e:
-            self.logger.error("根据ID查找记录失败: %s", str(e))
-            raise
-    
-    def find_all(self, limit: int = 1000, offset: int = 0) -> List[Dict[str, Any]]:
-        """查找所有记录"""
-        try:
-            with get_connection() as connection:
-                query = f"SELECT * FROM {self.table_name} LIMIT %s OFFSET %s"
-                result = db_ops.execute_query(connection, query, (limit, offset))
-                return result or []
-        except Exception as e:
-            self.logger.error("查找所有记录失败: %s", str(e))
-            raise
-    
-    def update_by_id(self, record_id: Any, data: Dict[str, Any]) -> int:
-        """根据ID更新记录"""
-        try:
-            with get_connection() as connection:
-                return db_ops.execute_update(
-                    connection, self.table_name, data, "id = %s", (record_id,)
-                )
-        except Exception as e:
-            self.logger.error("更新记录失败: %s", str(e))
-            raise
-    
-    def delete_by_id(self, record_id: Any) -> int:
-        """根据ID删除记录"""
-        try:
-            with get_connection() as connection:
-                return db_ops.execute_delete(
-                    connection, self.table_name, "id = %s", (record_id,)
-                )
-        except Exception as e:
-            self.logger.error("删除记录失败: %s", str(e))
-            raise
-    
-    def count(self, where_clause: str = "", where_params: tuple = ()) -> int:
-        """统计记录数"""
-        try:
-            with get_connection() as connection:
-                query = f"SELECT COUNT(*) as count FROM {self.table_name}"
-                if where_clause:
-                    query += f" WHERE {where_clause}"
-                
-                result = db_ops.execute_query(connection, query, where_params, fetch_all=False)
-                return result['count'] if result else 0
-        except Exception as e:
-            self.logger.error("统计记录数失败: %s", str(e))
-            raise
-```
-
-### 2. 具体DAO实现
-```python
-# etl/load/dao/website_dao.py
-class WebsiteDAO(BaseDAO):
-    """网站数据DAO"""
-    
-    def __init__(self):
-        super().__init__('website_nku')
-    
-    def find_by_url(self, url: str) -> Optional[Dict[str, Any]]:
-        """根据URL查找记录"""
-        try:
-            with get_connection() as connection:
-                query = "SELECT * FROM website_nku WHERE url = %s"
-                result = db_ops.execute_query(connection, query, (url,), fetch_all=False)
-                return result
-        except Exception as e:
-            self.logger.error("根据URL查找记录失败: %s", str(e))
-            raise
-    
-    def find_by_source(self, source: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        """根据数据源查找记录"""
-        try:
-            with get_connection() as connection:
-                query = "SELECT * FROM website_nku WHERE source = %s LIMIT %s"
-                result = db_ops.execute_query(connection, query, (source, limit))
-                return result or []
-        except Exception as e:
-            self.logger.error("根据数据源查找记录失败: %s", str(e))
-            raise
-    
-    def search_by_content(self, keywords: str, limit: int = 20) -> List[Dict[str, Any]]:
-        """全文搜索"""
-        try:
-            with get_connection() as connection:
-                query = """
-                SELECT *, MATCH(title, content) AGAINST(%s IN NATURAL LANGUAGE MODE) as score
-                FROM website_nku 
-                WHERE MATCH(title, content) AGAINST(%s IN NATURAL LANGUAGE MODE)
-                ORDER BY score DESC, pagerank_score DESC
-                LIMIT %s
-                """
-                
-                result = db_ops.execute_query(connection, query, (keywords, keywords, limit))
-                return result or []
-        except Exception as e:
-            self.logger.error("全文搜索失败: %s", str(e))
-            raise
-    
-    def update_pagerank_scores(self, url_score_mapping: Dict[str, float]) -> int:
-        """批量更新PageRank分数"""
-        try:
-            with get_connection() as connection:
-                updated_count = 0
-                
-                for url, score in url_score_mapping.items():
-                    affected = db_ops.execute_update(
-                        connection, 
-                        self.table_name,
-                        {'pagerank_score': score},
-                        'url = %s',
-                        (url,)
-                    )
-                    updated_count += affected
-                
-                self.logger.info("PageRank分数更新完成，更新数量: %d", updated_count)
-                return updated_count
-                
-        except Exception as e:
-            self.logger.error("更新PageRank分数失败: %s", str(e))
-            raise
-    
-    def get_top_pages_by_pagerank(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """获取PageRank分数最高的页面"""
-        try:
-            with get_connection() as connection:
-                query = """
-                SELECT url, title, pagerank_score, content_length
-                FROM website_nku 
-                WHERE pagerank_score > 0
-                ORDER BY pagerank_score DESC
-                LIMIT %s
-                """
-                
-                result = db_ops.execute_query(connection, query, (limit,))
-                return result or []
-        except Exception as e:
-            self.logger.error("获取高分页面失败: %s", str(e))
-            raise
-
-# etl/load/dao/search_history_dao.py
-class SearchHistoryDAO(BaseDAO):
-    """搜索历史DAO"""
-    
-    def __init__(self):
-        super().__init__('wxapp_search_history')
-    
-    def add_search_record(self, openid: str, query: str, result_count: int = 0) -> int:
-        """添加搜索记录"""
-        data = {
-            'openid': openid,
-            'query': query,
-            'result_count': result_count
-        }
-        return self.create(data)
-    
-    def get_user_search_history(
-        self, 
-        openid: str, 
-        limit: int = 20,
-        days: int = 30
-    ) -> List[Dict[str, Any]]:
-        """获取用户搜索历史"""
-        try:
-            with get_connection() as connection:
-                query = """
-                SELECT query, COUNT(*) as search_count, MAX(search_time) as last_search_time
-                FROM wxapp_search_history 
-                WHERE openid = %s AND search_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                GROUP BY query
-                ORDER BY last_search_time DESC
-                LIMIT %s
-                """
-                
-                result = db_ops.execute_query(connection, query, (openid, days, limit))
-                return result or []
-        except Exception as e:
-            self.logger.error("获取用户搜索历史失败: %s", str(e))
-            raise
-    
-    def get_hot_searches(self, limit: int = 10, days: int = 7) -> List[Dict[str, Any]]:
-        """获取热门搜索"""
-        try:
-            with get_connection() as connection:
-                query = """
-                SELECT query, COUNT(*) as search_count, COUNT(DISTINCT openid) as user_count
-                FROM wxapp_search_history 
-                WHERE search_time >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                GROUP BY query
-                HAVING search_count >= 2
-                ORDER BY search_count DESC, user_count DESC
-                LIMIT %s
-                """
-                
-                result = db_ops.execute_query(connection, query, (days, limit))
-                return result or []
-        except Exception as e:
-            self.logger.error("获取热门搜索失败: %s", str(e))
-            raise
-
-# 创建DAO实例
-website_dao = WebsiteDAO()
-search_history_dao = SearchHistoryDAO()
-```
-
-## 事务管理
-
-### 1. 事务装饰器
-```python
-# etl/load/transaction.py
-from functools import wraps
-from typing import Callable, Any
-
-def transactional(isolation_level: str = 'READ_COMMITTED'):
-    """事务装饰器"""
-    def decorator(func: Callable) -> Callable:
-        @wraps(func)
-        def wrapper(*args, **kwargs) -> Any:
-            with get_connection() as connection:
-                try:
-                    # 设置隔离级别
-                    if isolation_level:
-                        connection.cmd_query(f"SET SESSION TRANSACTION ISOLATION LEVEL {isolation_level}")
-                    
-                    # 开始事务
-                    connection.start_transaction()
-                    
-                    # 执行函数
-                    result = func(connection, *args, **kwargs)
-                    
-                    # 提交事务
-                    connection.commit()
-                    
-                    return result
-                    
-                except Exception as e:
-                    # 回滚事务
-                    connection.rollback()
-                    logger = register_logger(__name__)
-                    logger.error("事务执行失败，已回滚: %s", str(e))
-                    raise
-        
-        return wrapper
-    return decorator
+@contextmanager
+def get_db_connection():
+    """
+    推荐使用的数据库连接上下文管理器。
+    自动处理连接的获取和释放。
+    """
+    connection = None
+    try:
+        # 从高级连接池获取连接
+        connection = get_pooled_connection()
+        yield connection
+    except Exception as e:
+        logger.error(f"数据库连接上下文管理器出错: {str(e)}")
+        # 异常时也应尝试释放连接
+        if connection:
+            release_connection(connection, has_error=True)
+        raise
+    finally:
+        # 正常退出时释放连接
+        if connection:
+            release_connection(connection)
 
 # 使用示例
-@transactional()
-def batch_import_with_pagerank(connection, documents: List[Dict], pagerank_scores: Dict[str, float]):
-    """带事务的批量导入和PageRank更新"""
-    
-    # 批量插入文档
-    website_dao.batch_create(documents)
-    
-    # 更新PageRank分数
-    website_dao.update_pagerank_scores(pagerank_scores)
-    
-    # 更新统计信息
-    stats = {
-        'total_documents': len(documents),
-        'pagerank_updated': len(pagerank_scores),
-        'import_time': datetime.now().isoformat()
-    }
-    
-    return stats
+try:
+    with get_db_connection() as conn:
+        with conn.cursor(dictionary=True) as cursor:
+            cursor.execute("SELECT * FROM some_table LIMIT 1")
+            result = cursor.fetchone()
+            print(result)
+except Exception as e:
+    logger.error(f"数据库操作失败: {e}")
 ```
 
-### 2. 数据库迁移
-```python
-# etl/load/migrations.py
-class DatabaseMigration:
-    """数据库迁移管理"""
-    
-    def __init__(self):
-        self.logger = register_logger(__name__)
-    
-    def create_migration_table(self):
-        """创建迁移记录表"""
-        schema = """
-        CREATE TABLE IF NOT EXISTS migrations (
-            id BIGINT AUTO_INCREMENT PRIMARY KEY,
-            migration_name VARCHAR(100) NOT NULL UNIQUE,
-            executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            success BOOLEAN DEFAULT TRUE,
-            error_message TEXT,
-            
-            INDEX idx_migration_name (migration_name),
-            INDEX idx_executed_at (executed_at)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-        COMMENT='数据库迁移记录表';
-        """
-        
-        with get_connection() as connection:
-            cursor = connection.cursor()
-            cursor.execute(schema)
-            cursor.close()
-    
-    def run_migration(self, migration_name: str, migration_sql: str) -> bool:
-        """执行数据库迁移"""
-        try:
-            # 检查迁移是否已执行
-            if self.is_migration_executed(migration_name):
-                self.logger.info("迁移已执行: %s", migration_name)
-                return True
-            
-            with get_connection() as connection:
-                connection.start_transaction()
-                
-                try:
-                    # 执行迁移SQL
-                    cursor = connection.cursor()
-                    for statement in migration_sql.split(';'):
-                        if statement.strip():
-                            cursor.execute(statement)
-                    cursor.close()
-                    
-                    # 记录迁移
-                    self.record_migration(connection, migration_name, True)
-                    
-                    connection.commit()
-                    self.logger.info("迁移执行成功: %s", migration_name)
-                    return True
-                    
-                except Exception as e:
-                    connection.rollback()
-                    self.record_migration(connection, migration_name, False, str(e))
-                    raise
-                    
-        except Exception as e:
-            self.logger.error("迁移执行失败: %s, 错误: %s", migration_name, str(e))
-            return False
-    
-    def is_migration_executed(self, migration_name: str) -> bool:
-        """检查迁移是否已执行"""
-        try:
-            with get_connection() as connection:
-                query = "SELECT COUNT(*) as count FROM migrations WHERE migration_name = %s AND success = TRUE"
-                result = db_ops.execute_query(connection, query, (migration_name,), fetch_all=False)
-                return result['count'] > 0 if result else False
-        except:
-            return False
-    
-    def record_migration(self, connection, migration_name: str, success: bool, error_message: str = None):
-        """记录迁移结果"""
-        data = {
-            'migration_name': migration_name,
-            'success': success,
-            'error_message': error_message
-        }
-        db_ops.execute_insert(connection, 'migrations', data)
+## 2. 核心数据库异步操作 (`db_core.py`)
 
-# 迁移管理器实例
-migration_manager = DatabaseMigration()
+数据库核心操作层 (`db_core.py`) 被设计为**异步优先**。所有操作均在独立的线程池 (`ThreadPoolExecutor`) 中执行，以防止阻塞主应用的 `asyncio` 事件循环。
+
+### 常用异步函数
+
+- `execute_custom_query(query, params, fetch)`: 执行任意自定义SQL。
+- `insert_record(table_name, data)`: 插入单条记录。
+- `update_record(table_name, record_id, data)`: 根据ID更新记录。
+- `query_records(table_name, conditions, fields, order_by, limit, offset)`: 功能强大的查询函数。
+- `batch_insert(table_name, records, batch_size)`: 高效的批量插入。
+- `get_all_tables()`: 获取所有表名。
+
+### 使用示例
+
+所有 `db_core` 函数都必须使用 `await` 调用。
+
+```python
+import asyncio
+from etl.load import db_core
+
+async def main():
+    # 示例1: 插入一条记录
+    new_user_data = {"nickname": "async_user", "openid": "test_openid_12345"}
+    user_id = await db_core.insert_record("wxapp_users", new_user_data)
+    print(f"插入用户成功，ID: {user_id}")
+
+    # 示例2: 查询记录
+    query_conditions = {"nickname": "async_user"}
+    result = await db_core.query_records(
+        table_name="wxapp_users",
+        conditions=query_conditions,
+        fields=["openid", "nickname", "create_time"],
+        limit=1
+    )
+    if result['data']:
+        print("查询结果:", result['data'][0])
+
+    # 示例3: 批量插入
+    new_posts = [
+        {"openid": "test_openid_12345", "title": "帖子A", "content": "内容A"},
+        {"openid": "test_openid_12345", "title": "帖子B", "content": "内容B"},
+    ]
+    inserted_count = await db_core.batch_insert("wxapp_posts", new_posts)
+    print(f"批量插入 {inserted_count} 条帖子成功")
+
+    # 示例4: 执行自定义SQL
+    custom_sql = "SELECT COUNT(*) as count FROM wxapp_posts WHERE openid = %s"
+    count_result = await db_core.execute_custom_query(custom_sql, ["test_openid_12345"])
+    print("帖子总数:", count_result[0]['count'])
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## 3. 表结构管理 (`table_manager.py`)
+
+表结构的管理由 `TableManager` 负责，其设计同样是异步的，并支持通过命令行进行操作。
+
+### 核心特性
+- **SQL文件驱动**：表结构定义在 `etl/load/mysql_tables/` 目录下的各个 `.sql` 文件中，文件名即表名（如 `wxapp_users.sql`）。
+- **异步操作**：所有管理功能（创建、删除、查询信息）都是 `async` 方法。
+- **命令行支持**：可作为脚本运行，方便地进行数据库初始化和维护。
+
+### 使用示例
+
+```python
+import asyncio
+from etl.load.table_manager import TableManager
+
+async def manage_tables():
+    manager = TableManager()
+
+    # 获取所有可用的表定义
+    available_tables = manager.get_available_table_definitions()
+    print("可用的表定义:", available_tables)
+
+    # 检查 'wxapp_users' 表是否存在
+    exists = await manager.table_exists('wxapp_users')
+    print(f"'wxapp_users' 表是否存在: {exists}")
+
+    # 获取表信息
+    if exists:
+        info = await manager.get_table_info('wxapp_users')
+        if info:
+            print(f"'wxapp_users' 表信息: {info.get('record_count', 0)} 条记录")
+
+    # 重新创建所有表（危险操作！）
+    # await manager.recreate_tables(force=True)
+    # print("所有表已重建")
+
+if __name__ == "__main__":
+    asyncio.run(manage_tables())
+```

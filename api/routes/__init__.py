@@ -7,9 +7,12 @@ from api.routes.agent import chat, rag
 from api.routes.wxapp import about, comment, feedback, notification, post, user, action, banwords
 from api.routes.admin import system
 from api.routes.knowledge import search
+from api.routes.knowledge import insights
+
 router = APIRouter()
 
 router.include_router(search.router, prefix="/knowledge", tags=["knowledge"])
+router.include_router(insights.router, prefix="/knowledge", tags=["knowledge"])
 router.include_router(chat.router, prefix="/agent", tags=["agent"])
 router.include_router(rag.router, prefix="/agent", tags=["agent"])
 router.include_router(about.router, prefix="/wxapp", tags=["wxapp"])

@@ -39,7 +39,7 @@ config = Config()
 class CozeAgent(Agent):
     """CozeAgent类，使用官方 coze-py SDK 的精简实现"""
     
-    def __init__(self, tag="default", index=0):
+    def __init__(self, tag="default", index=0, bot_id=None):
         """初始化Coze智能体"""
         super().__init__()
         self.sessions = SessionManager(ChatGPTSession, model=config.get("model") or "coze")
@@ -53,15 +53,17 @@ class CozeAgent(Agent):
         if not self.api_key:
             raise ValueError("API 密钥未配置")
         
-
-        bot_id_list = config.get(f"core.agent.coze.{tag}_bot_id")
-        
-        if(isinstance(bot_id_list, list)):
-            self.bot_id = bot_id_list[index]
+        if bot_id:
+            self.bot_id = bot_id
         else:
-            self.bot_id = bot_id_list
+            bot_id_list = config.get(f"core.agent.coze.{tag}_bot_id")
+            
+            if(isinstance(bot_id_list, list)):
+                self.bot_id = bot_id_list[index]
+            else:
+                self.bot_id = bot_id_list
 
-        logger.info(f"CozeAgent初始化，输入tag: {tag},bot_id: {self.bot_id}")
+        logger.info(f"CozeAgent初始化，输入tag: {tag}, bot_id: {self.bot_id}")
 
         # 初始化Coze客户端
         self.client = Coze(
@@ -572,12 +574,17 @@ class CozeAgent(Agent):
             else:
                 # 非流式响应
                 logger.debug(f"创建新对话并发送消息(非流式): {query[:30]}...")
+                
+                # 在调用前打印日志
+                messages_to_send = [
+                    Message.build_user_question_text(query, meta_data=meta_data)
+                ]
+                logger.debug(f"即将发送给 create_and_poll 的消息: {messages_to_send}")
+
                 chat_poll = self.client.chat.create_and_poll(
                     bot_id=self.bot_id,
                     user_id=openid,
-                    additional_messages=[
-                        Message.build_user_question_text(query, meta_data=meta_data)
-                    ]
+                    additional_messages=messages_to_send
                 )
                 
                 # 提取回复内容

@@ -15,7 +15,11 @@ from etl.load.db_core import (
 from core.utils.logger import register_logger
 from api.routes.wxapp.post import batch_enrich_posts_with_user_info
 
-from etl.rag_pipeline import RagPipeline, RetrievalStrategy, RerankStrategy
+from etl.rag.pipeline import RagPipeline
+from etl.rag.strategies import RetrievalStrategy, RerankStrategy
+
+from api.common.auth import get_current_user
+from api.models.common import BasicResponse, RAGQuery, User
 
 router = APIRouter()
 

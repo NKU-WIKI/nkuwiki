@@ -7,7 +7,10 @@ import hmac
 import asyncio
 from datetime import datetime
 from pathlib import Path
-from etl.crawler import crawler_logger, MARKET_TOKEN
+import sys
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+
+from etl.crawler import crawler_logger, market_token
 from etl.crawler.base_crawler import BaseCrawler
 
 
@@ -65,7 +68,7 @@ class Market(BaseCrawler):
 
         self.headers.update({
             "X-Sc-Nd": m,
-            "X-Sc-Od": MARKET_TOKEN,
+            "X-Sc-Od": market_token,
             "X-Sc-Ah": self._generate_ah(m, timestamp),
             "X-Sc-Td": str(timestamp),
             'X-Sc-Alias': self.university,
@@ -75,7 +78,7 @@ class Market(BaseCrawler):
 
     async def _get_latest_list_async(self, timestamp):
         """异步获取最新列表"""
-        try:
+        try:        
             response = await self.page.request.post(
                 self.api_urls["list"],
                 headers=self._generate_headers(timestamp),
@@ -212,6 +215,30 @@ class Market(BaseCrawler):
             self.counter['error'] += 1
             return []
 
+    async def scrape(self, **kwargs):
+        """
+        执行单次市场数据抓取。
+        通过调用内部的 _get_latest_list_async 方法获取最新信息，
+        并使用基类的 update_scraped_articles 方法进行存储。
+        """
+        start_time = time.time()
+        self.logger.info("开始单次市场数据抓取...")
+        timestamp = int(time.time())
+        try:
+            latest_items = await self._get_latest_list_async(timestamp)
+            if latest_items:
+                self.logger.info(f"抓取到 {len(latest_items)} 条新内容。")
+                # 使用基类的方法来处理和保存抓取到的文章
+                self.update_scraped_articles(self.get_scraped_original_urls(), latest_items)
+                self.counter['scrape'] += len(latest_items)
+            else:
+                self.logger.info("未抓取到新内容。")
+        except Exception as e:
+            self.logger.error(f"单次市场抓取失败: {e}", exc_info=True)
+            self.counter['error'] += 1
+        finally:
+            self.save_counter(start_time) # 保存计数器
+
     async def _run_async_impl(self, keywords=[]):
         """异步执行完整爬取流程"""
         start_time = time.time()
@@ -311,40 +338,26 @@ class Market(BaseCrawler):
             loop.close()
 
 if __name__ == "__main__":
-    # 使用异步主函数
     async def main():
+        """
+        主执行函数，用于执行单次市场数据抓取。
+        被cron或systemd等外部调度器调用。
+        """
         market = None
         try:
-            market = Market(debug=True, headless=True)
-            
-            # 初始化
+            # 初始化爬虫，headless=True表示在后台运行
+            market = Market(debug=False, headless=True)
             await market.async_init()
             
-            # 获取30分钟前的帖子 - 注意:在异步环境中直接使用异步方法
-            latest_list = await market._get_latest_list_async(market._generate_td()-60*0)
+            # 调用封装好的单次抓取方法
+            await market.scrape()
             
-            for item in latest_list:
-                print(item['original_url'])
-                
-            # 可以取消注释以测试其他功能
-            # headers = market._generate_headers()
-            # hot_list = await market._get_hot_list_async(headers)
-            # for item in hot_list:
-            #     print(item['title'])
+            market.logger.info("Market crawler single run finished successfully.")
             
-            # headers = market._generate_headers()
-            # headers.update({"Referer": "https://servicewechat.com/wx3921ddb0258ff14f/57/page-frame.html"})
-            # search_results = await market._search_posts_async(headers, "考研")
-            # for item in search_results:
-            #     print(item['title'])
-                
         except Exception as e:
-            import traceback
-            print(f"错误: {str(e)}")
-            traceback.print_exc()
+            crawler_logger.error(f"An error occurred during market crawl: {e}", exc_info=True)
         finally:
-            # 确保关闭browser和playwright
-            if market and market.page:
+            if market:
                 await market.close()
     
     # 运行异步主函数

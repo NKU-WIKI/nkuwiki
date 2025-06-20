@@ -244,7 +244,7 @@ class RequirementTester:
         """测试基本站内查询"""
         try:
             # 测试RAG管道直接调用
-            from etl.rag_pipeline import RagPipeline
+            from etl.rag.pipeline import RagPipeline
             
             pipeline = RagPipeline()
             
@@ -252,7 +252,7 @@ class RequirementTester:
             test_queries = ["南开大学", "计算机学院", "图书馆"]
             
             # 需要导入枚举类
-            from etl.rag_pipeline import RetrievalStrategy, RerankStrategy
+            from etl.rag.strategies import RetrievalStrategy, RerankStrategy
             
             success_count = 0
             for query in test_queries:
@@ -283,7 +283,7 @@ class RequirementTester:
     async def _test_document_search(self):
         """测试文档查询"""
         try:
-            from etl.rag_pipeline import RagPipeline
+            from etl.rag.pipeline import RagPipeline
             pipeline = RagPipeline()
             
             # 查询文档相关内容
@@ -321,7 +321,7 @@ class RequirementTester:
     async def _test_phrase_search(self):
         """测试短语查询"""
         try:
-            from etl.rag_pipeline import RagPipeline
+            from etl.rag.pipeline import RagPipeline
             pipeline = RagPipeline()
             
             # 测试短语查询（用引号表示短语）
@@ -368,7 +368,7 @@ class RequirementTester:
     async def _test_wildcard_search(self):
         """测试通配符查询"""
         try:
-            from etl.rag_pipeline import RagPipeline
+            from etl.rag.pipeline import RagPipeline
             pipeline = RagPipeline()
             
             # 测试通配符查询
@@ -456,7 +456,7 @@ class RequirementTester:
         print("\n👤 测试个性化查询功能...")
         
         try:
-            from etl.rag_pipeline import RagPipeline, RetrievalStrategy, RerankStrategy
+            from etl.rag.pipeline import RagPipeline, RetrievalStrategy, RerankStrategy
             pipeline = RagPipeline()
             
             # 测试个性化查询（需要用户ID和历史记录）
@@ -548,7 +548,7 @@ class RequirementTester:
         print("\n🎯 测试个性化推荐功能...")
         
         try:
-            from etl.rag_pipeline import RagPipeline
+            from etl.rag.pipeline import RagPipeline
             pipeline = RagPipeline()
             
             # 1. 测试搜索联想

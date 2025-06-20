@@ -186,7 +186,7 @@ class Wechat(BaseCrawler):
                         self.logger.error(f'Failed to search and select account after {self.max_retries} retries: {author}, error: {e}')
                         break
                     self.logger.warning(f'Retry {retry_count}/{self.max_retries} for account: {author}, error: {e}')
-                    await self.random_sleep(2)  # 失败后多等待一会
+                    await self.random_sleep()  # 失败后多等待一会
             
             if retry_count >= self.max_retries:
                 if pbar:
@@ -285,36 +285,40 @@ class Wechat(BaseCrawler):
             time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
             recruitment_keywords: 可选的招聘关键词列表，只抓取标题包含关键词的文章
         """
-        try:
-            # 先获取已经抓取的链接
-            scraped_original_urls = self.get_scraped_original_urls()
-            # 检查cookies是否存在，不存在则登录获取
-            cookie_ts, cookies = self.read_cookies(timeout=3*24*3600)  
-            if cookies is None:
-                cookies = await self.login_for_cookies()  
-                self.save_cookies(cookies)  
-            else:
-                await self.init_cookies(cookies, go_base_url=True)
+        # lock_path = self.base_dir / self.lock_file
+        # if not self.debug and lock_path.exists():
+        #     self.logger.warning(f"Lock file {lock_path} exists, another instance may be running. Exiting.")
+        #     return
 
-            start_time = time.time()
-            if self.debug == False:
-                lock_path = self.base_dir / self.lock_file
-                lock_path.write_text(str(int(start_time)))  # 写入锁文件
-                scraped_original_urls = self.get_scraped_original_urls()  # 获取已抓取链接
-                with tqdm(total=len(self.authors), desc="抓取公众号", unit="个") as pbar:
-                    articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords, pbar)
-                self.update_scraped_articles([article['original_url'] for article in articles], articles)
-                lock_path.unlink()  # 删除锁文件
-            else:
-                with tqdm(total=len(self.authors), desc="抓取公众号", unit="个") as pbar:
-                    articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords, pbar)
-                self.update_scraped_articles([article['original_url'] for article in articles], articles)
+        # try:
+        #     if not self.debug:
+        #         lock_path.touch()  # 创建锁文件
+
+        scraped_original_urls = self.get_scraped_original_urls()
+        # 检查cookies是否存在，不存在则登录获取
+        cookie_ts, cookies = self.read_cookies(timeout=3*24*3600)
+        if cookies is None:
+            cookies = await self.login_for_cookies()
+            self.save_cookies(cookies)
+        else:
+            await self.init_cookies(cookies, go_base_url=True)
+
+        start_time = time.time()
+        with tqdm(total=len(self.authors), desc="抓取公众号", unit="个") as pbar:
+            articles = await self.scrape_articles_from_authors(scraped_original_urls, max_article_num, total_max_article_num, time_range, recruitment_keywords, pbar)
         
-            self.save_counter(start_time)  
-            self.update_f.close()  
-            
-        except Exception as e:
-            self.logger.error(f"抓取出错: {e}")
+        # 这里使用 all_articles_urls 来更新，而不是 scraped_original_urls
+        all_articles_urls = [article['original_url'] for article in articles]
+        self.update_scraped_articles(list(set(all_articles_urls)), articles)
+
+        self.save_counter(start_time)
+        self.update_f.close()
+
+        # except Exception as e:
+        #     self.logger.error(f"抓取出错: {e}")
+        # finally:
+        #     if not self.debug and lock_path.exists():
+        #         lock_path.unlink()  # 删除锁文件
 
     async def download_article(self, article: dict, save_dir: Path = None, bot_tag: str = 'abstract', enable_abstract: bool = True) -> None:
         """下载单篇文章内容
@@ -407,11 +411,11 @@ class Wechat(BaseCrawler):
         data_dir = self.data_dir
         data_dir.mkdir(parents=True, exist_ok=True)
         
-                  # 获取可用的bot_id数量（仅在启用摘要时需要）
-          if enable_abstract:
-             from etl.processors.abstract import get_bot_ids_by_tag
-             bot_ids = get_bot_ids_by_tag(bot_tag)
-             max_concurrency = len(bot_ids)
+        # 获取可用的bot_id数量（仅在启用摘要时需要）
+        if enable_abstract:
+            from etl.processors.abstract import get_bot_ids_by_tag
+            bot_ids = get_bot_ids_by_tag(bot_tag)
+            max_concurrency = len(bot_ids)
             if max_concurrency == 0:
                 self.logger.error(f"没有找到可用的bot_id(标签:{bot_tag})")
                 return
@@ -549,24 +553,34 @@ class Wechat(BaseCrawler):
 if __name__ == "__main__":
     async def main():
         """异步主函数"""
-        accounts = school_official_accounts + club_official_accounts + company_accounts
-        # accounts = university_official_accounts + school_official_accounts + club_official_accounts + company_accounts
-        wechat = Wechat(authors=accounts, debug=True, headless=True, use_proxy=True)
-        await wechat.async_init()  # 确保在调用download前初始化
+        # accounts = school_official_accounts + club_official_accounts + company_accounts
+        accounts = university_official_accounts + school_official_accounts + club_official_accounts + unofficial_accounts
+        wechat = Wechat(authors=accounts, debug=False, headless=True, use_proxy=True)
         
-        start_time = "2025-03-13"
-        end_time = "2025-06-06"
-        enable_abstract = False
         try:
-            await wechat.scrape(max_article_num=100, total_max_article_num=1e10, time_range=(start_time, end_time))
+            await wechat.async_init()  # 确保在调用download前初始化
+            
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            start_time = today_str
+            end_time = today_str
+            enable_abstract = False
+            try:
+                await wechat.scrape(max_article_num=100, total_max_article_num=1e10, time_range=(start_time, end_time))
+            finally:
+                # 清理cookies并关闭当前页面
+                if wechat.context:
+                    await wechat.context.clear_cookies()
+                if wechat.page and not wechat.page.is_closed():
+                    await wechat.page.close()
+                # 开新页面
+                if wechat.context:
+                    wechat.page = await wechat.context.new_page()
+            
+            await wechat.download(time_range=(start_time, end_time), enable_abstract=enable_abstract)
         finally:
-            # 清理cookies并关闭当前页面
-            await wechat.context.clear_cookies()
-            await wechat.page.close()
-            # 开新页面
-            wechat.page = await wechat.context.new_page()
-        
-        await wechat.download(time_range=(start_time, end_time), enable_abstract=enable_abstract)
+            # 优雅地关闭浏览器和playwright资源，防止事件循环错误
+            if wechat:
+                await wechat.async_close()
 
     # 运行异步主函数
     asyncio.run(main())
