@@ -31,6 +31,7 @@ from core.utils.logger import register_logger
 from etl.indexing.bm25_indexer import BM25Indexer
 from etl.indexing.qdrant_indexer import QdrantIndexer
 from etl.load import db_core
+from etl.load.db_pool_manager import close_db_pool, init_db_pool
 from etl.processors.chunk_cache import ChunkCacheManager
 from etl import QDRANT_COLLECTION
 from etl.utils.const import (
@@ -392,28 +393,43 @@ async def generate_and_save_insights(
             )
             generated_data = await generate_structured_json(prompt)
 
-            if not generated_data or "insights" not in generated_data:
-                logger.warning(
-                    f"从LLM返回的数据格式不正确或为空，缺少'insights'，跳过分类 '{category}' 的存储。"
+            if not generated_data or not isinstance(generated_data, dict) or "insights" not in generated_data:
+                logger.error(
+                    f"LLM返回的数据格式不正确或缺少'insights'键，跳过分类 '{category}' 的存储。",
+                    extra={"llm_response": generated_data},
                 )
                 # 记录可能导致问题的文档路径
                 problematic_files = [doc.get("_file_path", "未知路径") for doc in doc_list]
                 logger.warning(f"触发问题的文档列表 (共 {len(problematic_files)} 个): {problematic_files}")
                 continue
+            
+            insights_list = generated_data.get("insights", [])
+            if not insights_list or not isinstance(insights_list, list):
+                logger.warning(
+                    f"LLM返回的'insights'为空列表或格式不正确，跳过分类 '{category}' 的存储。",
+                    extra={"llm_response": generated_data},
+                )
+                continue
 
             # 准备存入数据库的数据
             db_records = []
-            for insight in generated_data.get("insights", []):
-                db_records.append({
-                    "title": insight.get("title"),
-                    "content": insight.get("content"),
-                    "category": category,
-                    "insight_date": end_time.date(),
-                })
+            for insight in insights_list:
+                # 确保 insight 是一个字典，并且有 title 和 content
+                if isinstance(insight, dict) and "title" in insight and "content" in insight:
+                    db_records.append({
+                        "title": insight.get("title"),
+                        "content": insight.get("content"),
+                        "category": category,
+                        "insight_date": end_time.date(),
+                    })
+                else:
+                    logger.warning(f"分类 '{category}' 中有一条洞察格式不正确，已跳过: {insight}")
 
             if db_records:
                 inserted_count = await db_core.batch_insert("insights", db_records)
                 logger.info(f"成功为分类 '{category}' 插入 {inserted_count} 条洞察到数据库。")
+            else:
+                logger.warning(f"为分类 '{category}' 准备了 0 条有效的洞察记录，未执行数据库插入。")
 
         except Exception as e:
             logger.error(f"为分类 '{category}' 生成或存储洞察失败: {e}", exc_info=True)
@@ -451,72 +467,74 @@ def get_time_window(args: argparse.Namespace) -> Tuple[datetime, datetime]:
 
 async def main(args: argparse.Namespace):
     """ETL管道主函数"""
-    start_time, end_time = get_time_window(args)
-    steps = {s.strip() for s in args.steps.split(",")}
+    await init_db_pool()
+    try:
+        start_time, end_time = get_time_window(args)
+        steps = {s.strip() for s in args.steps.split(",")}
 
-    if "all" in steps:
-        steps.update(["scan", "qdrant", "es", "bm25", "insight"])
-    # 兼容旧的 'index' 步骤
-    if "index" in steps:
-        steps.update(["qdrant", "es", "bm25"])
-        steps.discard("index")
+        if "all" in steps:
+            steps.update(["scan", "qdrant", "es", "bm25", "insight"])
+        # 兼容旧的 'index' 步骤
+        if "index" in steps:
+            steps.update(["qdrant", "es", "bm25"])
+            steps.discard("index")
 
-    logger.info("=" * 60)
-    logger.info(f"🚀 启动增量ETL管道，时间窗口: {start_time.isoformat()} -> {end_time.isoformat()}")
-    logger.info(f"🔩 执行步骤: {', '.join(sorted(list(steps)))}")
-    logger.info(f"📚 数据源目录: {args.data_dir}")
-    logger.info("=" * 60)
+        logger.info("=" * 60)
+        logger.info(f"🚀 启动增量ETL管道，时间窗口: {start_time.isoformat()} -> {end_time.isoformat()}")
+        logger.info(f"🔩 执行步骤: {', '.join(sorted(list(steps)))}")
+        logger.info(f"📚 数据源目录: {args.data_dir}")
+        logger.info("=" * 60)
 
-    # --- 步骤 1: 扫描新文件 ---
-    file_paths = []
-    downstream_steps = {"qdrant", "es", "bm25", "insight"}
-    # 如果用户明确要求扫描，或要求执行任何需要文件的下游步骤，则必须扫描
-    if "scan" in steps or any(s in steps for s in downstream_steps):
-        logger.info("========== 步骤 1: 扫描新文件 ==========")
-        file_paths = await find_new_files_in_timespan(
-            args.data_dir, start_time, end_time, args.platform
-        )
-        logger.info(f"扫描完成，找到 {len(file_paths)} 个新文件。")
-        if not file_paths:
-            logger.info("没有找到新文件，流程提前结束。")
-            return
-    else:
-        logger.info("未指定需要处理数据的步骤 (如 qdrant, insight)，流程结束。")
-        return
-
-    # --- (隐式) 步骤 2: 转换文件为节点 ---
-    nodes = []
-    # 如果任何下游步骤被请求，则必须处理节点
-    if any(s in steps for s in downstream_steps):
-        logger.info(f"========== 步骤 2: 为 {len(file_paths)} 个文件转换节点 ==========")
-        nodes = await process_files_to_nodes(file_paths)
-        if not nodes:
-            logger.info("未能从文件转换出任何节点，流程提前结束。")
+        # --- 步骤 1: 扫描新文件 ---
+        file_paths = []
+        downstream_steps = {"qdrant", "es", "bm25", "insight"}
+        # 如果用户明确要求扫描，或要求执行任何需要文件的下游步骤，则必须扫描
+        if "scan" in steps or any(s in steps for s in downstream_steps):
+            logger.info("========== 步骤 1: 扫描新文件 ==========")
+            file_paths = await find_new_files_in_timespan(
+                args.data_dir, start_time, end_time, args.platform
+            )
+            logger.info(f"扫描完成，找到 {len(file_paths)} 个新文件。")
+            if not file_paths:
+                logger.info("没有找到新文件，流程提前结束。")
+                return
+        else:
+            logger.info("未指定需要处理数据的步骤 (如 qdrant, insight)，流程结束。")
             return
 
-    # --- 步骤 3: 建立各类索引 ---
-    if "qdrant" in steps:
-        logger.info(f"========== 步骤 3a: 为 {len(nodes)} 个节点建立Qdrant索引 ==========")
-        await build_qdrant_indexes(nodes)
-    
-    if "es" in steps:
-        logger.info(f"========== 步骤 3b: 为 {len(nodes)} 个节点建立Elasticsearch索引 ==========")
-        await build_es_indexes(nodes)
+        # --- (隐式) 步骤 2: 转换文件为节点 (仅在需要索引时)---
+        nodes = []
+        indexing_steps = {"qdrant", "bm25"}
+        if any(s in steps for s in indexing_steps):
+            logger.info(f"========== 步骤 2: 为 {len(file_paths)} 个文件转换节点 ==========")
+            nodes = await process_files_to_nodes(file_paths)
+            if not nodes:
+                logger.warning("未能从文件转换出任何节点，索引步骤将不会执行。")
 
-    if "bm25" in steps:
-        logger.info(f"========== 步骤 3c: 为 {len(nodes)} 个节点建立BM25索引 ==========")
-        await build_bm25_indexes(nodes)
+        # --- 步骤 3: 建立各类索引 ---
+        if "qdrant" in steps:
+            logger.info(f"========== 步骤 3a: 为 {len(nodes)} 个节点建立Qdrant索引 ==========")
+            await build_qdrant_indexes(nodes)
+        
+        if "es" in steps:
+            logger.info(f"========== 步骤 3b: 为 {len(nodes)} 个节点建立Elasticsearch索引 ==========")
+            await build_es_indexes(nodes)
 
-    # --- 步骤 4: 生成洞察 ---
-    if "insight" in steps:
-        logger.info(f"========== 步骤 4: 为 {len(file_paths)} 个文件生成洞察 ==========")
-        # 洞察生成需要原始文件内容
-        raw_docs = await read_raw_documents(file_paths)
-        await generate_and_save_insights(raw_docs, end_time, args.insight_char_limit)
+        if "bm25" in steps:
+            logger.info(f"========== 步骤 3c: 为 {len(nodes)} 个节点建立BM25索引 ==========")
+            await build_bm25_indexes(nodes)
 
-    logger.info("✅ ETL管道所有指定步骤执行完毕。")
+        # --- 步骤 4: 生成洞察 ---
+        if "insight" in steps:
+            logger.info(f"========== 步骤 4: 为 {len(file_paths)} 个文件生成洞察 ==========")
+            # 洞察生成需要原始文件内容
+            raw_docs = await read_raw_documents(file_paths)
+            await generate_and_save_insights(raw_docs, end_time, args.insight_char_limit)
 
-# /opt/venvs/base/bin/python '/mnt/c/Users/aokimi/Code/nkuwiki/etl/daily_pipeline.py' --steps=scan,insight
+        logger.info("✅ ETL管道所有指定步骤执行完毕。")
+    finally:
+        await close_db_pool()
+
 def main_cli():
     """命令行接口"""
     parser = argparse.ArgumentParser(description="增量ETL处理管道")
@@ -551,7 +569,7 @@ def main_cli():
         "--platform", type=str, help="只扫描特定平台 (例如 'wechat', 'website')"
     )
     parser.add_argument(
-        "--insight_char_limit", type=int, default=8000, help="生成洞察时输入给LLM的字符数限制"
+        "--insight_char_limit", type=int, default=64 * 1000, help="生成洞察时输入给LLM的字符数限制"
     )
 
     args = parser.parse_args()

@@ -67,18 +67,28 @@ async def batch_insert(table_name: str, records: List[Dict[str, Any]], batch_siz
     placeholders = ", ".join(["%s"] * len(cols))
     query = f"INSERT INTO {table_name} ({cols_sql}) VALUES ({placeholders})"
     
-    for i in range(0, len(records), batch_size):
-        batch = records[i:i+batch_size]
-        data_to_insert = [tuple(r[c] for c in cols) for r in batch]
-        try:
-            async with get_db_connection() as conn:
-                async with conn.cursor() as cursor:
-                    await cursor.executemany(query, data_to_insert)
-                    total_inserted += cursor.rowcount
-        except Exception as e:
-            logger.error(f"批量插入失败 (批次 {i//batch_size + 1}): {e}", exc_info=True)
-            # 可以选择继续或中断
-            # raise e
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cursor:
+                for i in range(0, len(records), batch_size):
+                    batch = records[i:i+batch_size]
+                    data_to_insert = [tuple(r[c] for c in cols) for r in batch]
+                    try:
+                        await cursor.executemany(query, data_to_insert)
+                        total_inserted += cursor.rowcount
+                    except Exception as e:
+                        logger.error(f"批量插入的子批次失败 (起始索引 {i}): {e}", exc_info=True)
+                        # 如果一个批次失败，可以选择回滚并中断，或者记录日志并继续
+                        # 这里选择中断
+                        await conn.rollback()
+                        raise e
+                await conn.commit() # 所有批次成功后提交事务
+    except Exception as e:
+        logger.error(f"批量插入事务整体失败: {e}", exc_info=True)
+        # 异常会由 get_db_connection 上下文管理器自动处理回滚
+        total_inserted = 0 # 事务失败，重置计数
+        # 根据需要可以重新抛出异常
+        # raise e
     
     logger.info(f"批量插入 {total_inserted} 条记录到表 {table_name}")
     return total_inserted
@@ -107,34 +117,38 @@ async def query_records(
     count_query = f"SELECT COUNT(*) as total FROM `{table_name}`"
     
     params = []
-    count_params = []
     
     if conditions:
-        # 特殊处理预构建的SQL条件
-        if "where_condition" in conditions and "params" in conditions:
-            where_sql = " WHERE " + conditions["where_condition"]
+        where_clauses = []
+        
+        # 1. 处理常规的键值对条件
+        for key, value in conditions.items():
+            if key in ["where_condition", "params"]:
+                continue  # 跳过特殊键，稍后处理
+            
+            if isinstance(value, list):
+                if not value: continue
+                placeholders = ', '.join(['%s'] * len(value))
+                where_clauses.append(f"`{key}` IN ({placeholders})")
+                params.extend(value)
+            else:
+                where_clauses.append(f"`{key}`=%s")
+                params.append(value)
+        
+        # 2. 处理自定义的 where_condition
+        if "where_condition" in conditions:
+            where_clauses.append(conditions["where_condition"])
+            if "params" in conditions:
+                params.extend(conditions["params"])
+
+        # 3. 组合所有条件
+        if where_clauses:
+            where_sql = " WHERE " + " AND ".join(where_clauses)
             query += where_sql
             count_query += where_sql
-            params.extend(conditions["params"])
-            count_params.extend(conditions["params"])
-        else:
-            where_clauses = []
-            for key, value in conditions.items():
-                if isinstance(value, list):
-                    if not value: continue
-                    placeholders = ', '.join(['%s'] * len(value))
-                    where_clauses.append(f"`{key}` IN ({placeholders})")
-                    params.extend(value)
-                else:
-                    where_clauses.append(f"`{key}`=%s")
-                    params.append(value)
-            
-            if where_clauses:
-                where_sql = " WHERE " + " AND ".join(where_clauses)
-                query += where_sql
-                count_query += where_sql
-                # count_params 与 params 相同
-                count_params.extend(params)
+
+    # 为总数查询准备参数
+    count_params = list(params)
 
     if order_by:
         order_by_clauses = [f"`{k}` {v.upper()}" for k, v in order_by.items()]

@@ -40,7 +40,9 @@ async def get_insight(
         if target_date.lower() != 'all':
             try:
                 datetime.strptime(target_date, "%Y-%m-%d")
-                conditions['insight_date'] = target_date
+                # 使用 DATE() 函数进行比较，忽略时间部分
+                conditions['where_condition'] = "DATE(insight_date) = %s"
+                conditions['params'] = [target_date]
             except ValueError:
                 raise HTTPException(status_code=400, detail="日期格式无效，请使用 YYYY-MM-DD 格式，或传入 'all'。")
 
