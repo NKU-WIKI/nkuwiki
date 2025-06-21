@@ -17,7 +17,6 @@ from typing import Dict, List, Tuple
 # 添加项目根目录到路径
 sys.path.append(str(Path(__file__).resolve().parent))
 
-from config import Config
 from etl.load import db_core
 
 # 配置日志

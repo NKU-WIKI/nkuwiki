@@ -8,8 +8,8 @@
 - 节点工具
 """
 
-from etl import BASE_PATH, RAW_PATH, CACHE_PATH, config
-from core.utils import register_logger
+from etl import BASE_PATH, RAW_PATH, CACHE_PATH
+from core.utils.logger import register_logger
 
 # 从常量模块导入处理相关常量
 from etl.utils.const import (
@@ -22,8 +22,7 @@ from .document import DocumentProcessor
 from .text import TextSplitter, HierarchicalNodeParser
 from .compress import ContextCompressor
 from .nodes import get_node_content, merge_strings, extract_node_metadata, generate_doc_id
-from .wechat import WechatProcessor, wechatmp2md, wechatmp2md_async
-from .abstract import AbstractProcessor, generate_abstract, generate_abstract_async
+from .wechat import WechatProcessor, wechatmp2md, wechatmp2md_async 
 from .summarize import SummarizeProcessor, summarize_markdown_file, summarize_markdown_directory
 from .utils import (
     DataTransformationProcessor, 
@@ -54,7 +53,6 @@ __all__ = [
     # 微信处理向后兼容函数
     'wechatmp2md', 'wechatmp2md_async',
     # 摘要生成
-    'AbstractProcessor', 'generate_abstract', 'generate_abstract_async',
     'SummarizeProcessor', 'summarize_markdown_file', 'summarize_markdown_directory',
     # 通用数据处理
     'DataTransformationProcessor', 'OCRDataProcessor',

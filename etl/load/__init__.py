@@ -1,60 +1,30 @@
 """
 加载模块，负责数据库操作和配置加载
 """
-import os
-from etl import config, DATA_PATH
-from core.utils.logger import register_logger
-
-# 创建模块专用日志记录器
-logger = register_logger("etl.load")
-
 # 导入新的数据库核心模块
 from etl.load import db_core
+from core.utils.logger import register_logger
 
-# 从新的连接池管理模块导入所需功能
-try:
-    from etl.load.db_pool_manager import (
-        get_pool_stats as _get_pool_stats,
-        get_db_connection as _get_db_connection,
-        resize_pool_if_needed,
-        cleanup_pool as _cleanup_pool
-    )
-except ImportError:
-    logger.warning("无法导入db_pool_manager模块，连接池功能将不可用")
-    _get_pool_stats = lambda: {"error": "连接池管理模块未加载"}
-    _get_db_connection = None
-    resize_pool_if_needed = lambda force_size=None: None
-    _cleanup_pool = lambda: None
+# 相对导入，避免循环依赖问题
+from . import db_pool_manager
 
-def close_conn_pool():
-    """关闭连接池，应用退出时调用"""
-    _cleanup_pool()
+logger = register_logger('etl.load')
 
-def get_connection_stats():
-    """获取连接统计信息"""
-    return _get_pool_stats()
+# 定义要导出的连接池相关函数
+init_db_pool = db_pool_manager.init_db_pool
+close_db_pool = db_pool_manager.close_db_pool
+get_pool_stats = lambda: None # get_pool_stats 尚未在 db_pool_manager 中实现
 
 # 导入异步数据库核心函数 (所有函数现在都是异步的)
 from etl.load.db_core import (
-    execute_query,
+    execute_custom_query,
     insert_record,
     update_record,
-    delete_record,
-    get_record_by_id,
     query_records,
     count_records,
-    execute_custom_query,
     batch_insert,
     get_all_tables,
-    # 兼容性别名
-    async_query,
-    async_insert,
-    async_update,
-    async_delete,
-    async_get_by_id,
-    async_query_records,
-    async_count_records,            
-    async_execute_custom_query
+    get_by_id
 )
 
 # 导入统一表管理器
@@ -104,18 +74,13 @@ __version__ = "2.0.0"
 # 导出模块API
 __all__ = [
     # 连接管理
-    'logger',
     'close_conn_pool', 'get_connection_stats',
     'resize_pool_if_needed',
     
     # 异步数据库操作 (主要接口)
-    'execute_query', 'insert_record', 'update_record', 'delete_record',
-    'get_record_by_id', 'query_records', 'count_records', 'execute_custom_query',
-    'batch_insert', 'get_all_tables',
-    
-    # 兼容性别名
-    'async_query', 'async_insert', 'async_update', 'async_delete', 'async_get_by_id',
-    'async_query_records', 'async_count_records', 'async_execute_custom_query',
+    'execute_custom_query', 'insert_record', 'update_record',
+    'query_records', 'count_records', 'batch_insert', 
+    'get_all_tables', 'get_by_id',
     
     # 表管理
     'TableManager', 'get_table_manager',
@@ -123,5 +88,6 @@ __all__ = [
     'check_table_health', 'list_tables_with_info',
     
     # 核心模块
-    'db_core'
+    'db_core', 'db_pool_manager',
+    'init_db_pool', 'close_db_pool', 'get_pool_stats',
 ]

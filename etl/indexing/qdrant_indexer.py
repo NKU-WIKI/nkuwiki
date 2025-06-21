@@ -24,11 +24,9 @@ from qdrant_client.http.models import UpdateStatus
 from etl.embedding.hf_embeddings import HuggingFaceEmbedding
 from config import Config
 from core.utils.logger import register_logger
+from etl import QDRANT_URL, QDRANT_API_KEY, EMBEDDING_MODEL_PATH, CHUNK_SIZE, CHUNK_OVERLAP, MODELS_PATH, QDRANT_BATCH_SIZE
 
-# 新增每日数据临时路径
-DAILY_PATH = Path(__file__).resolve().parent.parent / "etl_temp" / "daily_data"
-
-logger = logging.getLogger(__name__)
+logger = register_logger("etl.indexing.qdrant_indexer")
 
 
 class QdrantIndexer:
@@ -37,23 +35,30 @@ class QdrantIndexer:
     负责从MySQL数据构建Qdrant向量检索索引，支持语义嵌入和文本分块。
     """
     
-    def __init__(self, config: Config):
+    def __init__(self, collection_name: str):
+        """
+        初始化QdrantIndexer。
+
+        Args:
+            collection_name (str): 要操作的Qdrant集合的名称。
+        """
+        if not collection_name:
+            raise ValueError("集合名称不能为空")
+
+        self.collection_name = collection_name
+
+        if not QDRANT_URL:
+            raise ValueError("Qdrant URL未在配置中设置")
+        if not EMBEDDING_MODEL_PATH:
+            raise ValueError("嵌入模型路径未在配置中设置")
+
         self.logger = register_logger(f"{__name__}.{self.__class__.__name__}")
-        self.config = config
         
-        # 从配置中读取Qdrant设置
-        qdrant_url = config.get("etl.data.qdrant.url")
-        qdrant_api_key = config.get("etl.data.qdrant.api_key")
-        self.collection_name = config.get("etl.data.qdrant.collection", "main_index")
-        
-        # 初始化异步客户端
-        self.client = AsyncQdrantClient(url=qdrant_url, api_key=qdrant_api_key, prefer_grpc=True)
-        
-        # 模型和解析器设置
-        self.embedding_model = config.get('etl.embedding.model', 'BAAI/bge-large-zh-v1.5')
+        self.client = AsyncQdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, prefer_grpc=True)
+        self.embedding_model_name = EMBEDDING_MODEL_PATH
         self.parser = JSONNodeParser()
-        self.chunk_size = config.get('etl.chunking.chunk_size', 512)
-        self.chunk_overlap = config.get('etl.chunking.chunk_overlap', 200)
+        self.chunk_size = CHUNK_SIZE
+        self.chunk_overlap = CHUNK_OVERLAP
         self.splitter = SentenceSplitter(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
 
         # 将嵌入模型初始化推迟到实际需要时
@@ -142,10 +147,6 @@ class QdrantIndexer:
                 print(f"📂 从自定义路径递归加载数据: {source_path}")
                 nodes = await self._load_nodes_recursively(source_path, limit)
                 self.logger.info(f"从自定义路径 {source_path} 加载了 {len(nodes)} 个节点")
-            elif data_source == "daily_files":
-                print("📅 从每日增量文件加载数据...")
-                nodes = await self._load_nodes_from_daily_files(limit)
-                self.logger.info(f"从每日增量文件加载了 {len(nodes)} 个节点")
             else:
                 print("📁 默认混合模式：从原始文件+PageRank数据...")
                 nodes = await self._load_nodes_hybrid(limit)
@@ -181,7 +182,7 @@ class QdrantIndexer:
                 "success": True,
                 "collection_name": self.collection_name,
                 "vector_size": self.chunk_size,
-                "embedding_model": self.embedding_model,
+                "embedding_model": self.embedding_model_name,
                 "data_source": data_source,
                 "message": f"成功构建Qdrant索引，包含 {len(nodes)} 个向量"
             }
@@ -302,9 +303,9 @@ class QdrantIndexer:
                 os.environ['HF_HUB_CACHE'] = models_path
                 os.environ['SENTENCE_TRANSFORMERS_HOME'] = models_path
                 
-                self.logger.info(f"初始化嵌入模型: {self.embedding_model}")
+                self.logger.info(f"初始化嵌入模型: {self.embedding_model_name}")
                 embed_model = HuggingFaceEmbedding(
-                    model_name=self.embedding_model,
+                    model_name=self.embedding_model_name,
                     device='cpu'  # 强制使用CPU
                 )
                 
@@ -762,44 +763,6 @@ class QdrantIndexer:
         finally:
             await client.close()
 
-    async def _load_nodes_from_daily_files(self, limit: int = None) -> List[BaseNode]:
-        """从每日增量数据目录加载节点"""
-        self.logger.info(f"从每日增量数据目录加载节点: {DAILY_PATH}")
-        if not await aiofiles.os.path.exists(DAILY_PATH):
-            self.logger.warning(f"每日增量目录不存在: {DAILY_PATH}")
-            return []
-
-        all_nodes = []
-        source_files = list(DAILY_PATH.rglob("*.json"))
-        
-        if not source_files:
-            self.logger.warning(f"在 {DAILY_PATH} 中未找到 .json 文件")
-            return []
-            
-        self.logger.info(f"找到 {len(source_files)} 个每日增量数据文件")
-
-        for file_path in tqdm(source_files, desc="处理每日增量文件"):
-            try:
-                platform = file_path.stem  # 使用文件名作为平台标识
-                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
-                    record = json.loads(await f.read())
-                
-                node = await self._create_node_from_record(record, platform, file_path)
-                if node:
-                    all_nodes.append(node)
-                
-                if limit and len(all_nodes) >= limit:
-                    break
-            except Exception as e:
-                self.logger.error(f"处理文件 {file_path} 时出错: {e}")
-            
-            if limit and len(all_nodes) >= limit:
-                self.logger.info(f"已达到记录数限制: {limit}")
-                break
-        
-        self.logger.info(f"总共从每日增量文件加载了 {len(all_nodes)} 个节点")
-        return all_nodes
-
     async def _load_nodes_recursively(self, data_path: Path, limit: int = None) -> List[BaseNode]:
         """
         从指定的目录递归加载所有.json文件作为节点。
@@ -856,6 +819,63 @@ class QdrantIndexer:
                 
         self.logger.info(f"从目录 {data_path} 的 {len(json_files)} 个文件中加载了 {len(nodes)} 个节点")
         return nodes
+
+    async def build_from_nodes(self,
+                             nodes: List[BaseNode],
+                             batch_size: int = QDRANT_BATCH_SIZE,
+                             test_mode: bool = False) -> Dict[str, Any]:
+        """
+        从预先加载的节点列表构建Qdrant向量索引。
+
+        Args:
+            nodes: 要处理的TextNode节点列表
+            batch_size: 批处理大小
+            test_mode: 测试模式，不实际创建索引
+
+        Returns:
+            构建结果统计
+        """
+        self.logger.info(f"开始从 {len(nodes)} 个预加载节点构建Qdrant索引，集合: {self.collection_name}")
+
+        try:
+            await self._ensure_collection_exists()
+
+            if not nodes:
+                self.logger.warning("节点列表为空，无需建立索引。")
+                return {"success": True, "nodes": [], "message": "节点列表为空"}
+
+            if test_mode:
+                self.logger.info("测试模式：已接收节点，跳过索引构建。")
+                return {"success": True, "nodes": nodes}
+
+            if self.embed_model is None:
+                self.embed_model = await self._init_embedding_model()
+                if self.embed_model is None:
+                    return {"success": False, "error": "嵌入模型初始化失败"}
+
+            vector_store = QdrantVectorStore(
+                aclient=self.client,
+                collection_name=self.collection_name
+            )
+
+            self.logger.info("🔮 生成向量嵌入...")
+            nodes = await self._generate_embeddings_with_progress(self.embed_model, nodes, batch_size)
+
+            self.logger.info("📤 上传向量到Qdrant...")
+            await self._upload_to_qdrant_with_progress(vector_store, nodes, batch_size)
+
+            self.logger.info(f"Qdrant向量索引构建完成，集合: {self.collection_name}")
+
+            return {
+                "total_nodes": len(nodes),
+                "success": True,
+                "collection_name": self.collection_name,
+                "message": f"成功从 {len(nodes)} 个预加载节点构建了索引"
+            }
+
+        except Exception as e:
+            self.logger.exception(f"从预加载节点构建Qdrant索引时出错: {e}")
+            return {"success": False, "error": str(e)}
 
     async def build_indexes_from_files(self,
                                      file_paths: List[Path],

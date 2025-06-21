@@ -1,7 +1,9 @@
 import time
+from typing import Optional, Dict, Any, List
+
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.responses import Response
+from starlette.responses import Response, StreamingResponse
 import urllib.parse
 
 # 添加项目根目录以便导入
@@ -9,7 +11,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-from etl.load.db_core import async_execute_custom_query
+from etl.load.db_core import execute_custom_query
 from core.utils.logger import register_logger
 
 logger = register_logger('api.middleware')
@@ -30,8 +32,8 @@ class SearchLoggingMiddleware(BaseHTTPMiddleware):
                     decoded_query_text = urllib.parse.unquote_plus(query_text)
                     
                     # 使用正确的表名和字段名
-                    sql = "INSERT INTO wxapp_search_history (openid, keyword) VALUES (%s, %s)"
-                    await async_execute_custom_query(sql, (user_id, decoded_query_text), fetch=False)
+                    sql = "INSERT INTO wxapp_search_history (openid, query) VALUES (%s, %s)"
+                    await execute_custom_query(sql, (user_id, decoded_query_text), fetch=False)
                     logger.debug(f"Logged search query for user {user_id} into wxapp_search_history: '{decoded_query_text}'")
                 except Exception as e:
                     logger.error(f"Failed to log search history: {e}")

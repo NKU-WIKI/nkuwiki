@@ -28,9 +28,11 @@ from tqdm.asyncio import tqdm as aio_tqdm
 from config import Config
 from core.agent.text_generator import generate_structured_json
 from core.utils.logger import register_logger
+from etl.indexing.bm25_indexer import BM25Indexer
 from etl.indexing.qdrant_indexer import QdrantIndexer
 from etl.load import db_core
 from etl.processors.chunk_cache import ChunkCacheManager
+from etl import QDRANT_COLLECTION
 from etl.utils.const import (
     university_official_accounts,
     school_official_accounts,
@@ -189,17 +191,37 @@ async def process_files_to_nodes(file_paths: List[Path]) -> List[TextNode]:
     return all_nodes
 
 
-async def build_qdrant_indexes(nodes: List[TextNode], config: Config):
+async def build_qdrant_indexes(nodes: List[TextNode]):
     """为新节点建立Qdrant索引"""
     if not nodes:
-        logger.warning("没有节点需要索引，跳过此步骤。")
+        logger.warning("没有节点需要索引，跳过Qdrant索引步骤。")
         return
-        
-    collection_name = config.get("qdrant.collection_name")
-    qdrant_indexer = QdrantIndexer(collection_name)
-    logger.info(f"开始向Qdrant集合 '{collection_name}' 中添加 {len(nodes)} 个节点...")
+    qdrant_indexer = QdrantIndexer(QDRANT_COLLECTION)
+    logger.info(f"开始向Qdrant集合 '{QDRANT_COLLECTION}' 中添加 {len(nodes)} 个节点...")
     await qdrant_indexer.build_from_nodes(nodes)
     logger.info("Qdrant索引建立完成。")
+
+
+async def build_es_indexes(nodes: List[TextNode]):
+    """为新节点建立Elasticsearch索引"""
+    if not nodes:
+        logger.warning("没有节点需要索引，跳过Elasticsearch索引步骤。")
+        return
+    es_indexer = ElasticsearchIndexer()
+    logger.info(f"开始为 {len(nodes)} 个节点建立Elasticsearch索引...")
+    await es_indexer.build_from_nodes(nodes)
+    logger.info("Elasticsearch索引建立完成。")
+
+
+async def build_bm25_indexes(nodes: List[TextNode]):
+    """为新节点建立BM25索引"""
+    if not nodes:
+        logger.warning("没有节点需要索引，跳过BM25索引步骤。")
+        return
+    bm25_indexer = BM25Indexer()
+    logger.info(f"开始为 {len(nodes)} 个节点建立BM25索引...")
+    await bm25_indexer.build_from_nodes(nodes)
+    logger.info("BM25索引建立完成。")
 
 
 async def read_raw_documents(file_paths: List[Path]) -> List[Dict[str, Any]]:
@@ -317,7 +339,6 @@ def build_insight_prompt(docs: List[Dict[str, Any]], category: InsightCategory, 
 
 async def generate_and_save_insights(
     docs: List[Dict[str, Any]],
-    config: Config,
     end_time: datetime,
     insight_char_limit: Optional[int] = None,
 ):
@@ -429,15 +450,16 @@ def get_time_window(args: argparse.Namespace) -> Tuple[datetime, datetime]:
 
 
 async def main(args: argparse.Namespace):
-    """主执行函数"""
-    try:
-        start_time, end_time = get_time_window(args)
-    except ValueError as e:
-        logger.error(e)
-        return
+    """ETL管道主函数"""
+    start_time, end_time = get_time_window(args)
+    steps = {s.strip() for s in args.steps.split(",")}
 
-    steps = {s.strip() for s in args.steps.lower().split(",")}
-    run_all = "all" in steps
+    if "all" in steps:
+        steps.update(["scan", "qdrant", "es", "bm25", "insight"])
+    # 兼容旧的 'index' 步骤
+    if "index" in steps:
+        steps.update(["qdrant", "es", "bm25"])
+        steps.discard("index")
 
     logger.info("=" * 60)
     logger.info(f"🚀 启动增量ETL管道，时间窗口: {start_time.isoformat()} -> {end_time.isoformat()}")
@@ -445,86 +467,97 @@ async def main(args: argparse.Namespace):
     logger.info(f"📚 数据源目录: {args.data_dir}")
     logger.info("=" * 60)
 
-    config = Config()
-    nodes: List[TextNode] = []
-    
-    # 步骤 1: 扫描文件
-    if run_all or "scan" in steps:
-        logger.info("========== 步骤 1: 扫描文件 ==========")
+    # --- 步骤 1: 扫描新文件 ---
+    file_paths = []
+    downstream_steps = {"qdrant", "es", "bm25", "insight"}
+    # 如果用户明确要求扫描，或要求执行任何需要文件的下游步骤，则必须扫描
+    if "scan" in steps or any(s in steps for s in downstream_steps):
+        logger.info("========== 步骤 1: 扫描新文件 ==========")
         file_paths = await find_new_files_in_timespan(
-            Path(args.data_dir), start_time, end_time, platform_filter=args.platform
+            args.data_dir, start_time, end_time, args.platform
         )
+        logger.info(f"扫描完成，找到 {len(file_paths)} 个新文件。")
+        if not file_paths:
+            logger.info("没有找到新文件，流程提前结束。")
+            return
+    else:
+        logger.info("未指定需要处理数据的步骤 (如 qdrant, insight)，流程结束。")
+        return
 
-    # --- 步骤 2: 读取原始文件 (洞察步骤需要) ---
+    # --- (隐式) 步骤 2: 转换文件为节点 ---
+    nodes = []
+    # 如果任何下游步骤被请求，则必须处理节点
+    if any(s in steps for s in downstream_steps):
+        logger.info(f"========== 步骤 2: 为 {len(file_paths)} 个文件转换节点 ==========")
+        nodes = await process_files_to_nodes(file_paths)
+        if not nodes:
+            logger.info("未能从文件转换出任何节点，流程提前结束。")
+            return
+
+    # --- 步骤 3: 建立各类索引 ---
+    if "qdrant" in steps:
+        logger.info(f"========== 步骤 3a: 为 {len(nodes)} 个节点建立Qdrant索引 ==========")
+        await build_qdrant_indexes(nodes)
+    
+    if "es" in steps:
+        logger.info(f"========== 步骤 3b: 为 {len(nodes)} 个节点建立Elasticsearch索引 ==========")
+        await build_es_indexes(nodes)
+
+    if "bm25" in steps:
+        logger.info(f"========== 步骤 3c: 为 {len(nodes)} 个节点建立BM25索引 ==========")
+        await build_bm25_indexes(nodes)
+
+    # --- 步骤 4: 生成洞察 ---
     if "insight" in steps:
-        if not file_paths and "scan" not in steps:
-            logger.warning("未执行'scan'步骤，且未提供文件，'insight'步骤将被跳过。")
-        else:
-            logger.info(f"========== 步骤 2 (洞察): 读取 {len(file_paths)} 个原始文件 ==========")
-            docs = await read_raw_documents(file_paths)
-            
-            logger.info(f"========== 步骤 3 (洞察): 生成洞察 ==========")
-            await generate_and_save_insights(
-                docs, config, end_time, insight_char_limit=args.insight_char_limit
-            )
+        logger.info(f"========== 步骤 4: 为 {len(file_paths)} 个文件生成洞察 ==========")
+        # 洞察生成需要原始文件内容
+        raw_docs = await read_raw_documents(file_paths)
+        await generate_and_save_insights(raw_docs, end_time, args.insight_char_limit)
 
-    # --- 步骤 3: 转换和索引 (索引步骤需要) ---
-    if "index" in steps:
-        if not file_paths and "scan" not in steps:
-            logger.warning("未执行'scan'步骤，且未提供文件，'index'步骤将被跳过。")
-        else:
-            logger.info(f"========== 步骤 2 (索引): 转换 {len(file_paths)} 个文件为节点 ==========")
-            nodes = await process_files_to_nodes(file_paths)
-            
-            logger.info(f"========== 步骤 3 (索引): 建立Qdrant索引 ==========")
-            await build_qdrant_indexes(nodes, config)
+    logger.info("✅ ETL管道所有指定步骤执行完毕。")
 
-    logger.info("✅ ETL管道执行完毕。")
-
-# /opt/venv/bin/python etl/daily_pipeline.py --hours 24 --steps scan,index,insight
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="NKUWiki增量ETL管道")
+# /opt/venvs/base/bin/python '/mnt/c/Users/aokimi/Code/nkuwiki/etl/daily_pipeline.py' --steps=scan,insight
+def main_cli():
+    """命令行接口"""
+    parser = argparse.ArgumentParser(description="增量ETL处理管道")
     parser.add_argument(
         "--data_dir",
-        type=str,
-        default="/data/raw",
-        help="原始数据存储目录",
+        type=Path,
+        default=Path("/data/raw"),
+        help="要扫描的根数据目录",
     )
     parser.add_argument(
         "--steps",
         type=str,
-        default="all",
-        help="要执行的步骤，用逗号分隔 (scan, index, insight, all)",
+        default="scan,qdrant,es,bm25,insight",
+        help="要执行的ETL步骤，以逗号分隔。 "
+             "可选值: all, scan, qdrant, es, bm25, insight。 "
+             "'all' 将执行所有步骤。 "
+             "'index' (兼容旧版) 会执行 qdrant, es, bm25。",
     )
     parser.add_argument(
-        "--start_time",
-        type=str,
-        help="处理的开始时间 (支持 'YYYY-MM-DD' 或 ISO格式, e.g., '2023-10-27T00:00:00+08:00')",
+        "--hours", type=int, help="从现在开始回溯的小时数"
     )
     parser.add_argument(
-        "--end_time",
-        type=str,
-        help="处理的结束时间 (支持 'YYYY-MM-DD' 或 ISO格式, e.g., '2023-10-28T00:00:00+08:00')",
+        "--days", type=int, default=1, help="从现在开始回溯的天数（默认1天）"
     )
     parser.add_argument(
-        "--hours",
-        type=int,
-        default=24,
-        help="如果未提供start_time，则从end_time回溯的小时数",
+        "--start_time", type=str, help="开始时间 (格式: 'YYYY-MM-DD HH:MM:SS')"
     )
     parser.add_argument(
-        "--platform",
-        type=str,
-        default=None,
-        help="只处理特定平台的数据 (e.g., 'wechat')",
+        "--end_time", type=str, help="结束时间 (格式: 'YYYY-MM-DD HH:MM:SS')"
     )
     parser.add_argument(
-        "--insight-char-limit",
-        type=int,
-        default=58000,
-        help="生成洞察时输入给大语言模型的最大字符数限制。默认为60000，以适配常见的大模型上下文窗口。",
+        "--platform", type=str, help="只扫描特定平台 (例如 'wechat', 'website')"
+    )
+    parser.add_argument(
+        "--insight_char_limit", type=int, default=8000, help="生成洞察时输入给LLM的字符数限制"
     )
 
     args = parser.parse_args()
     asyncio.run(main(args))
+
+
+if __name__ == "__main__":
+    main_cli()
 

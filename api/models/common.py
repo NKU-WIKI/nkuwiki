@@ -2,7 +2,7 @@
 通用数据模型
 """
 from typing import Dict, List, Any, Optional, TypeVar, Generic, Annotated
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, model_validator
 from enum import Enum, IntEnum
 from datetime import datetime, date
 import json
@@ -73,8 +73,18 @@ class PaginationInfo(BaseAPI):
     total: int = Field(description="总记录数")
     page: int = Field(description="当前页码")
     page_size: int = Field(description="每页数量")
-    total_pages: int = Field(description="总页数")
-    has_more: bool = Field(description="是否还有更多")
+    total_pages: Optional[int] = Field(None, description="总页数")
+    has_more: Optional[bool] = Field(None, description="是否还有更多")
+
+    @model_validator(mode='after')
+    def calculate_pagination_fields(self) -> 'PaginationInfo':
+        if self.page_size > 0:
+            self.total_pages = (self.total + self.page_size - 1) // self.page_size
+        else:
+            self.total_pages = 0
+        
+        self.has_more = self.page * self.page_size < self.total
+        return self
 
 class Request(FastAPIRequest):
     """请求基类，包装FastAPIRequest并添加openid属性"""

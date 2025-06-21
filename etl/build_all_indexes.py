@@ -49,10 +49,9 @@ for handler_id in logger._core.handlers:
 logger.add(sys.stderr, level="INFO")
 
 # 导入配置和ETL路径
-from config import Config
 from etl import BASE_PATH, INDEX_PATH, QDRANT_PATH, MYSQL_PATH, NLTK_PATH, MODELS_PATH
 from etl.indexing.bm25_indexer import BM25Indexer
-from etl.indexing.qdrant_indexer import QdrantIndexer  
+from etl.indexing.qdrant_indexer import QdrantIndexer
 from etl.indexing.elasticsearch_indexer import ElasticsearchIndexer
 from etl.indexing.mysql_indexer import MySQLIndexer
 
@@ -78,7 +77,6 @@ async def build_all_indexes(limit: int = None, test_mode: bool = False, only: st
     Returns:
         所有索引的构建结果
     """
-    config = Config()
     results = {}
     
     logger.info("=" * 60)
@@ -106,7 +104,7 @@ async def build_all_indexes(limit: int = None, test_mode: bool = False, only: st
         logger.info(f"   - 测试模式: {'是' if test_mode else '否'}")
         
         try:
-            mysql_indexer = MySQLIndexer(config, logger)
+            mysql_indexer = MySQLIndexer(logger)
             logger.info("   - 初始化MySQL索引器完成")
             
             # MySQL索引构建（数据导入和表优化）
@@ -141,7 +139,7 @@ async def build_all_indexes(limit: int = None, test_mode: bool = False, only: st
         logger.info(f"   - 测试模式: {'是' if test_mode else '否'}")
         
         try:
-            bm25_indexer = BM25Indexer(config, logger)
+            bm25_indexer = BM25Indexer(logger)
             logger.info("   - 初始化BM25索引器完成")
             
             bm25_result = await bm25_indexer.build_indexes(
@@ -173,43 +171,11 @@ async def build_all_indexes(limit: int = None, test_mode: bool = False, only: st
     
     # 2. 构建Qdrant向量索引  
     if only is None or only == 'qdrant':
-        logger.info("🔮 [2/4] 开始构建Qdrant向量索引...")
-        logger.info(f"   - 记录限制: {limit if limit else '无限制'}")
-        logger.info(f"   - 数据源: {data_source}")
-        logger.info(f"   - 测试模式: {'是' if test_mode else '否'}")
-        logger.info(f"   - 增量构建: {'是' if incremental else '否'}")
-        
-        try:
-            qdrant_indexer = QdrantIndexer(config, logger)
-            logger.info("   - 初始化Qdrant索引器完成")
-            
-            qdrant_result = await qdrant_indexer.build_indexes(
-                limit=limit,
-                test_mode=test_mode,
-                data_source=data_source,
-                batch_size=batch_size,
-                start_batch=start_batch,
-                max_batches=max_batches,
-                incremental=incremental
-            )
-            results['qdrant'] = qdrant_result
-            
-            if qdrant_result['success']:
-                node_count = qdrant_result.get('total_nodes', 0)
-                logger.info(f"✅ Qdrant索引构建成功！处理了 {node_count} 个节点")
-                logger.info(f"   - 详情: {qdrant_result['message']}")
-            else:
-                logger.error(f"❌ Qdrant索引构建失败: {qdrant_result['message']}")
-                if 'error' in qdrant_result:
-                    logger.error(f"   - 错误详情: {qdrant_result['error']}")
-                
-        except Exception as e:
-            logger.error(f"❌ Qdrant索引构建异常: {e}")
-            results['qdrant'] = {"success": False, "error": str(e)}
-            
-        logger.info("🔮 Qdrant索引构建阶段结束\n")
-    else:
-        logger.info("⏭️ 跳过Qdrant索引构建（根据 --only 参数）")
+        # QdrantIndexer的build_indexes也需要改造
+        logger.warning("QdrantIndexer的改造尚未完成，暂时跳过。")
+        # try:
+        #     qdrant_indexer = QdrantIndexer(logger)
+        # ...
     
     # 3. 构建Elasticsearch索引
     if only is None or only == 'elasticsearch':
@@ -219,7 +185,7 @@ async def build_all_indexes(limit: int = None, test_mode: bool = False, only: st
         logger.info(f"   - 测试模式: {'是' if test_mode else '否'}")
         
         try:
-            es_indexer = ElasticsearchIndexer(config, logger)
+            es_indexer = ElasticsearchIndexer(logger)
             logger.info("   - 初始化Elasticsearch索引器完成")
             
             es_result = await es_indexer.build_indexes(
@@ -250,18 +216,65 @@ async def build_all_indexes(limit: int = None, test_mode: bool = False, only: st
     else:
         logger.info("⏭️ 跳过Elasticsearch索引构建（根据 --only 参数）")
     
+    return results
+
+
+async def validate_all_indexes() -> Dict[str, Any]:
+    """
+    验证所有索引的健康状态
+    """
+    results = {}
+    config = Config()
+    
+    logger.info("=" * 60)
+    logger.info("开始验证所有索引")
+    logger.info("=" * 60)
+
+    # 验证MySQL索引
+    try:
+        mysql_indexer = MySQLIndexer(logger)
+        stats = await mysql_indexer.get_statistics()
+        total_records = stats.get('total_records', 0)
+        results['mysql'] = {"success": total_records > 0, "total_records": total_records}
+    except Exception as e:
+        results['mysql'] = {"success": False, "error": str(e)}
+
+    # 验证BM25索引
+    try:
+        bm25_indexer = BM25Indexer(logger)
+        results['bm25'] = await bm25_indexer.validate_index()
+    except Exception as e:
+        results['bm25'] = {"success": False, "error": str(e)}
+
+    # 验证Qdrant索引
+    try:
+        qdrant_indexer = QdrantIndexer(logger)
+        results['qdrant'] = await qdrant_indexer.validate_index()
+    except Exception as e:
+        results['qdrant'] = {"success": False, "error": str(e)}
+
+    # 验证Elasticsearch索引
+    try:
+        es_indexer = ElasticsearchIndexer(logger)
+        results['elasticsearch'] = await es_indexer.validate_index()
+    except Exception as e:
+        results['elasticsearch'] = {"success": False, "error": str(e)}
+        
     # 统计结果
     logger.info("\n" + "=" * 60)
-    logger.info("索引构建完成！")
+    logger.info("索引验证完成！")
     
     success_count = sum(1 for r in results.values() if r.get('success', False))
     total_count = len(results)
     
-    logger.info(f"成功构建: {success_count}/{total_count} 个索引")
+    logger.info(f"健康索引: {success_count}/{total_count}")
     
     for index_type, result in results.items():
         status = "✅" if result.get('success', False) else "❌"
-        message = result.get('message', result.get('error', '未知状态'))
+        message = result.get('message', 'N/A')
+        if not result.get('success', False):
+            message = result.get('error', '未知错误')
+            
         logger.info(f"  {status} {index_type.upper()}: {message}")
     
     logger.info("=" * 60)
@@ -277,85 +290,29 @@ async def build_all_indexes(limit: int = None, test_mode: bool = False, only: st
     }
 
 
-async def validate_all_indexes() -> Dict[str, Any]:
-    """验证所有索引的有效性"""
-    config = Config()
-    results = {}
-    
-    logger.info("开始验证所有索引...")
-    
-    # 验证MySQL索引
-    try:
-        mysql_indexer = MySQLIndexer(config, logger)
-        stats = await mysql_indexer.get_statistics()
-        total_records = stats.get('total_records', 0)
-        results['mysql'] = {
-            "valid": total_records > 0,
-            "message": f"MySQL数据库包含 {total_records} 条记录",
-            "record_count": total_records
-        }
-    except Exception as e:
-        results['mysql'] = {"valid": False, "error": str(e)}
-
-    # 验证BM25索引
-    try:
-        bm25_indexer = BM25Indexer(config, logger)
-        results['bm25'] = await bm25_indexer.validate_index()
-    except Exception as e:
-        results['bm25'] = {"valid": False, "error": str(e)}
-    
-    # 验证Qdrant索引
-    try:
-        qdrant_indexer = QdrantIndexer(config, logger)
-        results['qdrant'] = await qdrant_indexer.validate_index()
-    except Exception as e:
-        results['qdrant'] = {"valid": False, "error": str(e)}
-    
-    # 验证Elasticsearch索引
-    try:
-        es_indexer = ElasticsearchIndexer(config, logger)
-        results['elasticsearch'] = await es_indexer.validate_index()
-    except Exception as e:
-        results['elasticsearch'] = {"valid": False, "error": str(e)}
-    
-    # 输出验证结果
-    for index_type, result in results.items():
-        status = "✅" if result.get('valid', False) else "❌"
-        message = result.get('message', result.get('error', '验证失败'))
-        logger.info(f"{status} {index_type.upper()}: {message}")
-    
-    return results
-
-
 def main():
-    """主函数入口"""
-    parser = argparse.ArgumentParser(description="构建所有类型的索引")
-    parser.add_argument("--limit", type=int, help="限制处理的记录数量")
-    parser.add_argument("--test", action="store_true", help="测试模式，不实际创建索引")
-    parser.add_argument("--only", type=str, choices=['mysql', 'bm25', 'qdrant', 'elasticsearch'], help="只构建指定类型的索引")
-    parser.add_argument("--data-source", type=str, choices=['raw_files', 'mysql', 'raw_only'], 
-                       default='raw_files', help="数据源类型：raw_files=混合模式(推荐), mysql=仅MySQL, raw_only=仅原始文件")
-    parser.add_argument("--validate", action="store_true", help="只验证索引的有效性，不进行构建")
-    parser.add_argument("--batch-size", type=int, default=-1, help="每批处理的记录数量，-1表示不分批（默认-1）")
-    parser.add_argument("--start-batch", type=int, default=0, help="从第几批开始处理（默认0，断点续建）")
-    parser.add_argument("--max-batches", type=int, help="最大批次数，不指定则处理所有批次")
-    parser.add_argument("--incremental", action="store_true", help="增量构建模式，不删除现有索引（仅对Qdrant有效）")
+    """
+    主函数
+    """
+    parser = argparse.ArgumentParser(description='构建所有类型的索引')
+    parser.add_argument('--limit', type=int, default=None, help='限制处理的记录数量')
+    parser.add_argument('--test', action='store_true', help='测试模式，不实际创建索引')
+    parser.add_argument('--only', type=str, default=None, help='只构建指定索引 (mysql, bm25, qdrant, elasticsearch)')
+    parser.add_argument('--data-source', type=str, default='raw_files', help='数据源 (raw_files, mysql, raw_only)')
+    parser.add_argument('--validate', action='store_true', help='验证所有索引的健康状态')
+    parser.add_argument('--batch-size', type=int, default=-1, help='每批处理的记录数量（-1表示不分批）')
+    parser.add_argument('--start-batch', type=int, default=0, help='从第几批开始处理')
+    parser.add_argument('--max-batches', type=int, default=None, help='最大批次数')
+    parser.add_argument('--incremental', action='store_true', help='是否为增量构建（仅Qdrant）')
     
     args = parser.parse_args()
 
     if args.validate:
-        logger.info("开始执行索引验证...")
-        validation_results = asyncio.run(validate_all_indexes())
-        logger.info("\n索引验证结果:")
-        for index_type, result in validation_results.items():
-            status = "✅" if result.get('valid', False) else "❌"
-            message = result.get('message', result.get('error', '未知状态'))
-            logger.info(f"  {status} {index_type.upper()}: {message}")
+        asyncio.run(validate_all_indexes())
     else:
-        logger.info("开始执行索引构建...")
-        build_results = asyncio.run(build_all_indexes(
+        results = asyncio.run(build_all_indexes(
             limit=args.limit, 
-            test_mode=args.test,
+            test_mode=args.test, 
             only=args.only,
             data_source=args.data_source,
             batch_size=args.batch_size,
@@ -363,10 +320,20 @@ def main():
             max_batches=args.max_batches,
             incremental=args.incremental
         ))
-        if not build_results.get('success', False):
-            logger.error("一个或多个索引构建失败，请检查日志。")
-            sys.exit(1)
+        
+        # 打印最终统计结果
+        success_count = sum(1 for r in results.values() if r.get('success', False))
+        total_count = len(results)
+        
+        logger.info("\n" + "=" * 60)
+        logger.info("所有索引构建任务已完成！")
+        logger.info(f"成功构建: {success_count}/{total_count} 个索引类型")
+        
+        for index_type, result in results.items():
+            status = "✅" if result.get('success', False) else "❌"
+            message = result.get('message', result.get('error', '未知状态'))
+            logger.info(f"  {status} {index_type.upper()}: {message}")
+        logger.info("=" * 60)
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main() 

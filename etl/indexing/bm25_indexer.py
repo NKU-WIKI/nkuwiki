@@ -24,7 +24,7 @@ from etl.load import db_core
 from etl.retrieval.retrievers import BM25Retriever
 from llama_index.core.schema import BaseNode, TextNode
 # 导入ETL模块的统一路径配置
-from etl import INDEX_PATH, NLTK_PATH, RAW_PATH
+from etl import (INDEX_PATH, NLTK_PATH, RAW_PATH, BM25_ENABLE_CHUNKING, CHUNK_SIZE, CHUNK_OVERLAP, BM25_NODES_PATH, STOPWORDS_PATH)
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +35,17 @@ class BM25Indexer:
     负责从MySQL数据构建BM25文本检索索引，支持中文分词和停用词过滤。
     """
     
-    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        self.config = config
+    def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
         
         # 使用ETL模块统一配置的路径
-        self.output_path = config.get('etl.retrieval.bm25.nodes_path', 
-                                     str(INDEX_PATH / 'bm25_nodes.pkl'))
-        self.stopwords_path = config.get('etl.retrieval.bm25.stopwords_path', 
-                                        str(NLTK_PATH / 'hit_stopwords.txt'))
+        self.output_path = BM25_NODES_PATH
+        self.stopwords_path = STOPWORDS_PATH
         
         # 分块参数（可选，用于支持长文档）
-        self.enable_chunking = config.get('etl.retrieval.bm25.enable_chunking', False)
-        self.chunk_size = config.get('etl.chunking.chunk_size', 512)
-        self.chunk_overlap = config.get('etl.chunking.chunk_overlap', 200)
+        self.enable_chunking = BM25_ENABLE_CHUNKING
+        self.chunk_size = CHUNK_SIZE
+        self.chunk_overlap = CHUNK_OVERLAP
         
     async def build_indexes(self, 
                      limit: int = None, 
@@ -152,6 +149,55 @@ class BM25Indexer:
                 "message": f"BM25索引构建失败: {str(e)}"
             }
     
+    async def build_from_nodes(self, nodes: List[BaseNode], bm25_type: int = 0, test_mode: bool = False) -> Dict[str, Any]:
+        """
+        从预加载的节点列表构建BM25索引。
+        
+        Args:
+            nodes: 从文件处理阶段传入的TextNode列表
+            bm25_type: BM25算法类型
+            test_mode: 测试模式，不实际保存文件
+            
+        Returns:
+            构建结果统计
+        """
+        self.logger.info(f"开始从 {len(nodes)} 个预加载节点构建BM25索引...")
+        
+        try:
+            if not nodes:
+                self.logger.warning("节点列表为空，无需建立索引。")
+                return {"success": True, "total_nodes": 0}
+
+            # 加载停用词
+            stopwords = await self._load_stopwords()
+            
+            # 创建jieba分词器
+            import jieba
+            
+            # 构建BM25检索器
+            bm25_retriever = await self._build_bm25_retriever_with_progress(
+                nodes, jieba, stopwords, bm25_type
+            )
+            
+            # 保存索引文件
+            if not test_mode:
+                await aiofiles.os.makedirs(os.path.dirname(self.output_path), exist_ok=True)
+                bm25_retriever.save_to_pickle(self.output_path)
+                self.logger.info(f"BM25检索器已保存到: {self.output_path}")
+            else:
+                self.logger.info("测试模式：跳过文件保存")
+            
+            return {
+                "success": True,
+                "total_nodes": len(nodes),
+                "output_path": self.output_path,
+                "message": f"成功从 {len(nodes)} 个节点构建了BM25索引。"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"从节点构建BM25索引时出错: {e}")
+            return {"success": False, "error": str(e)}
+
     async def _load_stopwords(self) -> List[str]:
         """异步加载停用词"""
         stopwords = []

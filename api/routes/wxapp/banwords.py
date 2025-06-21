@@ -26,6 +26,15 @@ class BanwordRequest(BaseModel):
     words: List[str]
     risk: Optional[int] = 3
 
+class UpdateCategoryRequest(BaseModel):
+    """更新分类请求模型"""
+    words: List[str]
+
+class DeleteWordRequest(BaseModel):
+    """删除敏感词请求模型"""
+    category: str
+    word: str
+
 class BanwordLibrary(BaseModel):
     """敏感词库模型"""
     library: Dict[str, BanwordCategory]
@@ -90,7 +99,7 @@ def save_banwords_to_json(library_data: Dict[str, Any]) -> bool:
         logger.error(f"保存敏感词文件失败: {e}")
         return False
 
-@router.get("/banwords")
+@router.get("/")
 async def get_banwords():
     """获取所有敏感词分类和词汇"""
     try:
@@ -114,7 +123,7 @@ async def get_banwords():
         logger.error(f"获取敏感词失败: {e}")
         raise HTTPException(status_code=500, detail="获取敏感词失败")
 
-@router.get("/banwords/categories")
+@router.get("/categories")
 async def get_banword_categories():
     """获取敏感词分类列表"""
     try:
@@ -130,7 +139,7 @@ async def get_banword_categories():
         logger.error(f"获取敏感词分类失败: {e}")
         raise HTTPException(status_code=500, detail="获取敏感词分类失败")
 
-@router.post("/banwords")
+@router.post("/")
 async def add_banwords(request: BanwordRequest):
     """添加敏感词到指定分类"""
     try:
@@ -169,12 +178,15 @@ async def add_banwords(request: BanwordRequest):
         logger.error(f"添加敏感词失败: {e}")
         raise HTTPException(status_code=500, detail="添加敏感词失败")
 
-@router.delete("/banwords/{category}/{word}")
-async def delete_banword(category: str, word: str):
+@router.post("/delete-word")
+async def delete_banword(request: DeleteWordRequest):
     """删除指定分类中的敏感词"""
     try:
         library_data = load_banwords_from_json()
         
+        category = request.category
+        word = request.word
+
         if category not in library_data:
             raise HTTPException(status_code=404, detail=f"分类 {category} 不存在")
         
@@ -199,8 +211,8 @@ async def delete_banword(category: str, word: str):
         logger.error(f"删除敏感词失败: {e}")
         raise HTTPException(status_code=500, detail="删除敏感词失败")
 
-@router.put("/banwords/{category}")
-async def update_banword_category(category: str, words: List[str]):
+@router.post("/update-category/{category}")
+async def update_banword_category(category: str, request: UpdateCategoryRequest):
     """更新指定分类的所有敏感词"""
     try:
         library_data = load_banwords_from_json()
@@ -208,11 +220,11 @@ async def update_banword_category(category: str, words: List[str]):
         if category not in library_data:
             raise HTTPException(status_code=404, detail=f"分类 {category} 不存在")
         
-        library_data[category]['words'] = words
+        library_data[category]['words'] = request.words
         
         if save_banwords_to_json(library_data):
             return Response.success(
-                data={'word_count': len(words)},
+                data={'word_count': len(request.words)},
                 message=f"成功更新分类 {category} 的敏感词"
             )
         else:

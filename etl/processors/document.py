@@ -11,7 +11,7 @@ import requests
 from pypdf import PdfReader
 from docx import Document
 from tenacity import retry, stop_after_attempt, wait_fixed
-from core.utils import register_logger
+from core.utils.logger import register_logger
 
 logger = register_logger("etl.processors.document")
 

@@ -9,7 +9,6 @@ import asyncio
 from pathlib import Path
 from typing import Optional
 from core.utils import register_logger
-from etl import config
 
 logger = register_logger("etl.processors.abstract")
 
@@ -34,7 +33,7 @@ def get_bot_ids_by_tag(bot_tag="abstract"):
                 bot_ids.append(bot_id)
     
     bot_ids = [bid for bid in bot_ids if bid]
-    logger.info(f"为标签 '{bot_tag}' 加载了 {len(bot_ids)} 个有效的bot_id")
+    # logger.info(f"为标签 '{bot_tag}' 加载了 {len(bot_ids)} 个有效的bot_id")
     return bot_ids
 
 
@@ -45,7 +44,7 @@ class BotIdPool:
         self.bot_ids = bot_ids
         self.in_use = set()
         self.lock = asyncio.Lock()
-        self.waiting = asyncio.Queue()
+        self.waiting = asyncio.Queue
         self.usage_count = {bid: 0 for bid in bot_ids}
         self.max_wait_time = 30
 

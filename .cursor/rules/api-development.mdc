@@ -5,57 +5,87 @@ alwaysApply: true
 ---
 # API 开发核心规范
 
-## 1. Pydantic 模型：仅用于文档，严禁校验 (ABSOLUTE RULE)
+## 1. 接口设计与命名
 
-这是本项目 **最重要** 的API开发规则。
+### 1.1 请求方法
+- **GET**: 用于幂等操作（如获取数据）。所有参数必须通过**查询字符串** (`?key=value`) 传递。**禁止**在GET请求中使用路径参数或请求体。
+- **POST**: 用于非幂等操作（如创建或更新数据）。所有参数必须通过**请求体**（JSON格式）传递。**禁止**在POST请求中使用查询参数或路径参数。
 
-- **唯一目的**: 在FastAPI接口中，Pydantic模型（`response_model`）的 **唯一且绝对** 的用途是为Swagger UI (`/docs`) 和 ReDoc (`/redoc`) 自动生成清晰、准确的API文档。
-- **严禁运行时使用**: **严禁** 依赖Pydantic模型在运行时进行任何形式的数据校验、过滤或类型转换。模型的存在不应影响接口的实际行为。
-- **直接返回字典**: 接口 **必须** 直接返回从 `db_core` 或其他服务中获取的原始 `dict` 或 `list[dict]` 数据。**禁止** 将这些字典实例化为Pydantic模型对象再返回。
+### 1.2 路由命名
+- 所有接口路径使用**小写字母**。
+- 单词之间使用**短横线 `-`** 分隔，**禁止**使用下划线 `_`。
+- 示例: `/api/wxapp/notification/mark-read-batch`
 
-### 示例：正确的返回方式
+### 1.3 字段命名
+- **统一单数形式**: 集合类型的字段名应使用单数形式，例如 `image` (图片列表), `tag` (标签列表)。
+- **计数字段规范**:
+  - `like_count`, `favorite_count`, `post_count`, `follower_count`, `following_count`, `comment_count`, `view_count`
+- **严格遵循**: 所有API接口的请求和响应都必须使用规范的字段名。
 
-```python
-# 正确 ✅: 直接返回从数据库获取的字典
-from api.models.common import ApiResponse
-from api.models.knowledge import Insight # Insight模型仅用于文档
-from etl.load import db_core
+## 2. 标准响应格式
 
-@router.get("/insights", response_model=ApiResponse[List[Insight]])
-async def get_insights():
-    result = await db_core.query_records("insights")
-    return ApiResponse(
-        code=200,
-        message="成功",
-        data=result.get("data", []) # 直接传递 list[dict]
-    )
+所有API端点都 **必须** 返回 `api.models.common.Response` 类的实例，例如 `Response.success()` 或 `Response.paged()`。这确保了API响应结构的一致性。
+
+### 2.1 基础响应结构
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": {},
+  "details": null,
+  "timestamp": "2023-01-01 12:00:00"
+}
 ```
 
-### 示例：被禁止的返回方式
+### 2.2 分页响应结构
+对于返回列表数据的接口，必须包含 `pagination` 字段。
+```json
+{
+  "code": 200,
+  "message": "success",
+  "data": [...],
+  "pagination": {
+    "total": 100,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 10,
+    "has_more": true
+  }
+}
+```
+- **分页查询参数**: 客户端请求时应使用 `page` 和 `page_size`。
 
+### 2.3 禁止的操作
+- **不使用 `response_model`**: 接口定义中 **禁止** 使用 `response_model` 参数。文档由FastAPI根据返回类型注解自动生成。
+- **直接传递字典**: 服务层（如 `db_core`）获取的原始 `dict` 或 `list[dict]` 数据应直接传递给 `Response` 对象，**禁止** 将这些字典在接口层实例化为Pydantic模型再传递。
+
+### 示例：正确的返回方式
 ```python
-# 错误 ❌: 对返回数据进行了不必要的模型实例化
-from api.models.knowledge import Insight
+# 正确 ✅: 直接返回 Response 对象，并将原始字典作为数据传递
+from api.models.common import Response, PaginationInfo
+from etl.load import db_core
 
-@router.get("/insights-bad")
-async def get_insights_bad():
-    result = await db_core.query_records("insights")
-    insights_data = result.get("data", [])
+@router.get("/insights")
+async def get_insights(page: int = 1, page_size: int = 10):
+    result = await db_core.query_records("insights", limit=page_size, offset=(page - 1) * page_size)
+    insights_data = result.get('data', [])
+    total = result.get('total', 0)
     
-    # --- 严禁以下操作 ---
-    # FastAPI会自动处理文档，无需手动转换
-    data_models = [Insight(**item) for item in insights_data] 
+    pagination = PaginationInfo(
+        total=total, page=page, page_size=page_size,
+        total_pages=(total + page_size - 1) // page_size if page_size > 0 else 0,
+        has_more=page * page_size < total
+    )
     
-    return ApiResponse(data=data_models)
+    return Response.paged(data=insights_data, pagination=pagination)
 ```
 
 ### 为什么执行此规则？
 1.  **性能**: 避免了将数据库查询结果反序列化为字典后，再序列化为Pydantic模型对象所带来的不必要性能开销。
-2.  **解耦**: 保持API逻辑与数据模型定义的解耦。接口的健壮性不应依赖于模型定义。
-3.  **一致性**: 确保了项目范围内数据处理方式的一致性，所有数据源返回的都是原生Python字典。
+2.  **一致性**: 确保所有API响应都遵循统一的结构（code, message, data, pagination等）。
+3.  **解耦**: 保持API逻辑与数据模型定义的解耦。Pydantic模型仅用于定义数据结构，而不应干预运行时行为。
 
-
-## 2. 数据库交互
+## 3. 数据库交互
 
 - **使用核心模块**: 所有数据库操作都 **必须** 通过 `etl.load.db_core` 中的异步函数进行。
 - **禁止原生SQL**: **严禁** 在API路由中直接编写和执行原生的SQL查询字符串。
@@ -68,14 +98,4 @@ result = await db_core.query_records(
     conditions={"status": "active"},
     limit=10
 )
-```
-
-## 3. 日志记录
-
-- **规范命名**: 每个API模块都 **必须** 使用 `register_logger` 创建独立的日志记录器。
-- **命名模式**: `register_logger('api.routes.module.submodule')`
-
-```python
-from core.utils.logger import register_logger
-logger = register_logger('api.routes.knowledge.insights')
 ```

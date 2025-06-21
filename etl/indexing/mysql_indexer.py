@@ -21,7 +21,6 @@ import aiofiles
 
 # 添加项目根目录到路径
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from config import Config
 from etl import RAW_PATH
 from etl.load import db_core
 from etl.processors.document import DocumentProcessor
@@ -92,8 +91,7 @@ class MySQLIndexer:
     使用异步操作提高性能。
     """
     
-    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        self.config = config
+    def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
         self.document_parser = DocumentProcessor()
         
@@ -116,17 +114,16 @@ class MySQLIndexer:
             self.logger.error(f"创建数据库表失败: {e}")
             return False
     
-    async def import_crawler_data(self, data_dir: str, include_pagerank: bool = False) -> bool:
+    async def import_crawler_data(self, include_pagerank: bool = False) -> bool:
         """异步导入爬虫数据到MySQL数据库
         
         Args:
-            data_dir: 爬虫数据目录
             include_pagerank: 是否包含PageRank分数（第二阶段）
         """
         try:
-            data_path = Path(data_dir)
+            data_path = Path(RAW_PATH)
             if not data_path.exists():
-                self.logger.error(f"数据目录不存在: {data_dir}")
+                self.logger.error(f"数据目录不存在: {RAW_PATH}")
                 return False
             
             # 获取PageRank分数映射（如果需要）
@@ -611,77 +608,35 @@ class MySQLIndexer:
         """按字节数安全截断内容（调用全局函数）"""
         return _truncate_content(content)
     
-    async def build_indexes(self, data_dir: str = None, dry_run: bool = False) -> bool:
+    async def build_indexes(self, dry_run: bool = False) -> bool:
         """
-        异步构建或更新MySQL索引。
-        此方法封装了数据导入和PageRank更新的完整流程。
-
+        构建MySQL索引（包括创建表和导入数据）
+        
         Args:
-            data_dir (str, optional): 包含JSON数据文件的目录。
-                                      如果为None，将导入所有数据源。
-                                      Defaults to None.
-            dry_run (bool, optional): 如果为True，则不执行实际的数据库写入操作。
-                                      Defaults to False.
-
-        Returns:
-            bool: 索引构建是否成功。
+            dry_run: 是否为测试模式，测试模式下不实际写入数据
         """
-        self.logger.info("开始构建MySQL数据库索引...")
         if dry_run:
-            self.logger.info("以试运行模式执行，不会写入数据库。")
-
+            self.logger.info("测试模式，跳过MySQL索引构建")
+            return True
+            
         try:
             # 1. 创建表（如果不存在）
-            if not dry_run:
-                await self.create_tables()
-
-            # 2. 确定要处理的数据源目录
-            data_sources = []
-            if data_dir is None:
-                # 如果未指定目录，处理所有数据源
-                data_sources = [
-                    str(RAW_PATH / 'website'),
-                    str(RAW_PATH / 'wechat'), 
-                    str(RAW_PATH / 'wxapp')
-                ]
-                self.logger.info("将导入所有数据源的数据")
-            else:
-                data_sources = [data_dir]
-                self.logger.info(f"将导入指定目录的数据: {data_dir}")
-
-            # 3. 逐个处理数据源目录
-            overall_success = True
-            for source_dir in data_sources:
-                if Path(source_dir).exists():
-                    self.logger.info(f"开始处理数据源: {source_dir}")
-                    import_success = await self.import_crawler_data(source_dir)
-                    if not import_success:
-                        self.logger.error(f"导入数据源 {source_dir} 失败")
-                        overall_success = False
-                    else:
-                        self.logger.info(f"数据源 {source_dir} 导入成功")
-                else:
-                    self.logger.warning(f"数据源目录不存在，跳过: {source_dir}")
-
-            # 4. 计算并更新PageRank分数
-            if not dry_run:
-                pagerank_success = await self.calculate_pagerank()
-                if not pagerank_success:
-                    self.logger.warning("PageRank计算阶段失败，但这不阻塞整体流程。")
-
-            if overall_success:
-                self.logger.info("MySQL索引构建流程成功完成。")
-            else:
-                self.logger.warning("部分数据源导入失败，但流程已完成。")
+            if not await self.create_tables():
+                return False
             
-            return overall_success
+            # 2. 导入数据
+            if not await self.import_crawler_data(include_pagerank=False):
+                return False
 
+            self.logger.info("MySQL索引构建完成")
+            return True
+            
         except Exception as e:
-            self.logger.error(f"构建MySQL索引过程中发生未预料的错误: {e}", exc_info=True)
+            self.logger.error(f"构建MySQL索引失败: {e}")
             return False
-    
+            
     async def get_statistics(self) -> Dict[str, Any]:
-        """异步获取索引统计信息"""
+        """获取数据库统计信息"""
         try:
             stats = {}
             

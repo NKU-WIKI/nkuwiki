@@ -3,6 +3,7 @@ import sys
 import time
 import pytz
 import requests
+import httpx
 import asyncio
 import random
 import json
@@ -426,7 +427,7 @@ class BaseCrawler():
             return
             
         # 获取健康的代理
-        healthy_proxies = self.get_healthy_proxies()
+        healthy_proxies = await self.get_healthy_proxies()
         if not healthy_proxies:
             self.logger.warning("无健康代理可用，使用随机代理")
             healthy_proxies = self.proxy_pool
@@ -455,11 +456,12 @@ class BaseCrawler():
             # 设置超时
             self.page.set_default_timeout(30000)  # 30秒超时
 
-    def check_proxy_health(self, proxy: str) -> bool:
-        """检查代理健康状态
+    async def check_proxy_health(self, proxy: str, client: httpx.AsyncClient) -> bool:
+        """异步检查代理健康状态
         
         Args:
             proxy: 代理地址
+            client: httpx.AsyncClient 实例
             
         Returns:
             代理是否可用
@@ -467,14 +469,13 @@ class BaseCrawler():
         try:
             # 测试连接百度
             test_url = "http://www.baidu.com"
-            proxies = {"http": proxy, "https": proxy}
-            response = requests.get(test_url, proxies=proxies, timeout=5)
+            response = await client.get(test_url, proxy=proxy, timeout=5)
             return response.status_code == 200
         except Exception:
             return False
 
-    def get_healthy_proxies(self) -> List[str]:
-        """获取健康的代理列表
+    async def get_healthy_proxies(self) -> List[str]:
+        """异步获取健康的代理列表
         
         Returns:
             健康的代理列表
@@ -483,10 +484,14 @@ class BaseCrawler():
             return []
             
         healthy_proxies = []
-        for proxy in self.proxy_pool:
-            if self.check_proxy_health(proxy):
-                healthy_proxies.append(proxy)
-                
+        async with httpx.AsyncClient() as client:
+            tasks = [self.check_proxy_health(proxy, client) for proxy in self.proxy_pool]
+            results = await asyncio.gather(*tasks)
+            
+            for proxy, is_healthy in zip(self.proxy_pool, results):
+                if is_healthy:
+                    healthy_proxies.append(proxy)
+                    
         return healthy_proxies
 
     def safe_write_file(self, path: Path, content: str) -> bool:

@@ -9,16 +9,10 @@ PageRank计算模块
 - 集成到检索排序系统中
 """
 
-from etl import BASE_PATH, config
-from core.utils import register_logger
-
-# 创建模块专用logger
-logger = register_logger("etl.pagerank")
-
 # PageRank计算参数
-PAGERANK_ALPHA = config.get('etl.pagerank.alpha', 0.85)  # 阻尼系数
-PAGERANK_MAX_ITER = config.get('etl.pagerank.max_iter', 100)  # 最大迭代次数
-PAGERANK_TOL = config.get('etl.pagerank.tolerance', 1e-6)  # 收敛阈值
+PAGERANK_ALPHA = 0.85  # 阻尼系数
+PAGERANK_MAX_ITER = 100  # 最大迭代次数
+PAGERANK_TOL = 1e-6  # 收敛阈值
 
 # 导入主要功能函数
 from .calculate_pagerank_mysql import (
@@ -30,7 +24,6 @@ from .calculate_pagerank_mysql import (
 )
 
 __all__ = [
-    'logger',
     'PAGERANK_ALPHA', 'PAGERANK_MAX_ITER', 'PAGERANK_TOL',
     'load_link_graph_from_mysql', 'calculate_pagerank', 
     'save_pagerank_to_mysql', 'update_website_nku_pagerank',

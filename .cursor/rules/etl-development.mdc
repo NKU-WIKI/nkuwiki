@@ -105,7 +105,10 @@ python etl/daily_pipeline.py --steps all # 等同于 scan,index,insight
 ## 4. 开发最佳实践
 
 - **异步优先**: 对于IO密集型操作（如读写文件、数据库访问），应优先使用 `async/await` 范式。
-- **配置驱动**: 数据库连接信息、集合名称、模型路径等易变参数，应通过 `config.py` 读取，禁止硬编码。
+- **配置驱动**: 
+  - 所有配置项（数据库凭据、路径、模型名称等）均通过根目录的 `config.py` 和 `config.json` 进行管理。
+  - **ETL模块的常量配置**：为了方便管理和复用，所有与ETL流程相关的配置都在 `etl/__init__.py` 中被加载、处理，并定义为模块级常量（如 `DB_HOST`, `RAW_PATH`, `EMBEDDING_MODEL_PATH` 等）。
+  - **最佳实践**: 在ETL模块内部，应直接从 `etl` 包导入这些已定义好的常量，而不是重复调用 `Config` 对象。这保证了配置的统一和代码的简洁。
 - **日志记录**: 在关键步骤和异常处理中添加清晰的日志记录，使用 `core/utils/logger.py` 中的 `register_logger`。
 - **依赖注入**: 核心组件（如 `QdrantIndexer`, `ChunkCacheManager`）应在需要时才实例化，而不是作为全局变量。
 - **环境隔离**: 确保本地开发环境与生产环境的数据目录、配置等相互隔离。

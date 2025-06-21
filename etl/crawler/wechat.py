@@ -2,7 +2,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from etl.crawler import (
-    crawler_logger, config, proxy_pool, market_token,
+    crawler_logger, proxy_pool, market_token,
     timedelta, RAW_PATH,
     default_user_agents, default_timezone, default_locale, user_agents
 )
@@ -24,6 +24,9 @@ import json
 import time
 import re
 from datetime import datetime
+from etl.load import db_core
+from etl.processors.document import DocumentProcessor
+from core.agent.abstract import get_bot_ids_by_tag
 
 class Wechat(BaseCrawler):
     """微信公众号爬虫
@@ -413,7 +416,6 @@ class Wechat(BaseCrawler):
         
         # 获取可用的bot_id数量（仅在启用摘要时需要）
         if enable_abstract:
-            from etl.processors.abstract import get_bot_ids_by_tag
             bot_ids = get_bot_ids_by_tag(bot_tag)
             max_concurrency = len(bot_ids)
             if max_concurrency == 0:
@@ -549,6 +551,8 @@ class Wechat(BaseCrawler):
 # 生产环境下设置debug=False！！！一定不要设置为True，debug模式没有反爬机制，很容易被封号！！！ max_article_num = 你想抓取的数量
 # 调试可以设置debug=True，max_article_num <= 5
 # 抓取公众号文章元信息需要cookies（高危操作），下载文章内容不需要cookies，两者分开处理
+
+# /opt/venvs/base/bin/python '/mnt/c/Users/aokimi/Code/nkuwiki/etl/crawler/wechat.py'
 
 if __name__ == "__main__":
     async def main():

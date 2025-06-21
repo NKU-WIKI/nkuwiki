@@ -13,43 +13,81 @@ ETL模块，负责数据抽取、转换和加载
 - retrieval: 实现文档检索和重排功能
 - pagerank: PageRank分数计算
 - utils: 通用工具函数和类
+
+该文件负责加载ETL流程所需的全局配置，并将其定义为可供模块内其他脚本
+直接导入的常量。这种方式有助于集中管理配置，并使各模块的依赖关系更加清晰。
 """
 import os
 from pathlib import Path
 from config import Config
 from core.utils import register_logger
+from typing import Optional
 
 # 创建ETL模块专用日志器
 logger = register_logger("etl")
 
-# 导入配置
-config = Config()
+# 加载全局配置单例
+_config = Config()
 
-# ---------- 全局共享配置项 ----------
-# 基础路径配置
-BASE_PATH = Path(config.get("etl.data.base_path", "/data"))
-# 添加DATA_PATH作为BASE_PATH的别名，为了与其他模块兼容
-DATA_PATH = BASE_PATH
-RAW_PATH = BASE_PATH / config.get("etl.data.raw.path", "/raw").lstrip("/")
-CACHE_PATH = BASE_PATH / config.get("etl.data.cache.path", "/cache").lstrip("/")
-INDEX_PATH = BASE_PATH / config.get("etl.data.index.path", "/index").lstrip("/")
-QDRANT_PATH = BASE_PATH / config.get("etl.data.qdrant.path", "/qdrant").lstrip("/")
-MYSQL_PATH = BASE_PATH / config.get("etl.data.mysql.path", "/mysql").lstrip("/")
-NLTK_PATH = BASE_PATH / config.get("etl.data.nltk.path", "/nltk").lstrip("/")
+# --- 基础路径配置 (必须最先定义) ---
+BASE_PATH = Path(_config.get("etl.data.base_path", "/data"))
 
-# 环境变量配置
-HF_ENDPOINT = config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
-HF_HOME = config.get("etl.data.base_path", "/data") + config.get('etl.data.models.hf_home', '/models')
+# --- 派生路径配置 ---
+RAW_PATH = BASE_PATH / _config.get("etl.data.raw.path", "/raw").lstrip("/")
+INDEX_PATH = BASE_PATH / _config.get("etl.data.index.path", "/index").lstrip("/")
+MYSQL_PATH = BASE_PATH / _config.get("etl.data.mysql.path", "/mysql").lstrip("/")
+CACHE_PATH = BASE_PATH / _config.get("etl.data.cache.path", "/cache").lstrip("/")
+MODELS_PATH = BASE_PATH / _config.get("etl.data.models.path", "/models").lstrip("/")
+NLTK_PATH = BASE_PATH / _config.get("etl.data.nltk.path", "/nltk").lstrip("/")
+QDRANT_PATH = BASE_PATH / _config.get("etl.data.qdrant.path", "/qdrant").lstrip("/")
+
+# --- 数据库与向量存储相关配置 ---
+DB_HOST: str = _config.get('etl.data.mysql.host', 'localhost')
+DB_PORT: int = _config.get('etl.data.mysql.port', 3306)
+DB_USER: str = _config.get('etl.data.mysql.user', 'nkuwiki')
+DB_PASSWORD: str = _config.get('etl.data.mysql.password', '')
+DB_NAME: str = _config.get('etl.data.mysql.name', 'nkuwiki')
+
+# --- 数据库连接池配置 (硬编码默认值，因为它们不应由用户频繁更改) ---
+DB_POOL_RESIZE_INTERVAL: int = 60
+DB_POOL_MIN_SIZE: int = 2
+DB_POOL_MAX_SIZE: int = 16
+DB_POOL_MAX_OVERFLOW: int = 8
+
+REDIS_HOST: str = _config.get('etl.data.redis.host', 'localhost')
+REDIS_PORT: int = _config.get('etl.data.redis.port', 6379)
+REDIS_DB: int = _config.get('etl.data.redis.db', 0)
+REDIS_PASSWORD: Optional[str] = _config.get('etl.data.redis.password')
+
+QDRANT_URL: str = _config.get("etl.data.qdrant.url", "http://localhost:6333")
+QDRANT_API_KEY: Optional[str] = _config.get("etl.data.qdrant.api_key", None)
+QDRANT_COLLECTION: str = _config.get("etl.data.qdrant.collection", "main_index")
+QDRANT_TIMEOUT: float = _config.get("etl.data.qdrant.timeout", 30.0)
+QDRANT_BATCH_SIZE: int = _config.get("etl.data.qdrant.batch_size", 32)
+
+# --- 数据处理与模型相关配置 ---
+EMBEDDING_MODEL_PATH: str = _config.get("etl.embedding.name", "BAAI/bge-large-zh-v1.5")
+CHUNK_SIZE: int = _config.get('etl.chunking.chunk_size', 512)
+CHUNK_OVERLAP: int = _config.get('etl.chunking.chunk_overlap', 200)
+
+# --- BM25 索引相关配置 ---
+BM25_NODES_PATH: str = _config.get('etl.retrieval.bm25.nodes_path', str(INDEX_PATH / 'bm25_nodes.pkl'))
+STOPWORDS_PATH: str = _config.get('etl.retrieval.bm25.stopwords_path', str(NLTK_PATH / 'hit_stopwords.txt'))
+BM25_ENABLE_CHUNKING: bool = _config.get('etl.retrieval.bm25.enable_chunking', False)
+
+# --- Elasticsearch 索引相关配置 ---
+ES_HOST: str = _config.get('etl.data.elasticsearch.host', 'localhost')
+ES_PORT: int = _config.get('etl.data.elasticsearch.port', 9200)
+ES_INDEX_NAME: str = _config.get('etl.data.elasticsearch.index', 'nkuwiki')
+ES_ENABLE_CHUNKING: bool = _config.get('etl.data.elasticsearch.enable_chunking', False)
+
+# --- 环境变量配置 ---
+HF_ENDPOINT = _config.get('etl.data.models.hf_endpoint', 'https://hf-api.gitee.com')
+HF_HOME = str(MODELS_PATH)
 SENTENCE_TRANSFORMERS_HOME = HF_HOME
-
-# 添加模型路径
-MODELS_PATH = Path(HF_HOME)
-
-# 设置环境变量 - 必须在导入nltk前设置
-os.environ["HF_ENDPOINT"] = HF_ENDPOINT
-os.environ["HF_HOME"] = HF_HOME
-os.environ["SENTENCE_TRANSFORMERS_HOME"] = SENTENCE_TRANSFORMERS_HOME
-os.environ["NLTK_DATA"] = str(NLTK_PATH.absolute())
+os.environ['HF_ENDPOINT'] = HF_ENDPOINT
+os.environ['HF_HOME'] = HF_HOME
+os.environ['SENTENCE_TRANSFORMERS_HOME'] = SENTENCE_TRANSFORMERS_HOME
 
 # 创建必要的目录
 for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, MYSQL_PATH, NLTK_PATH, MODELS_PATH]:
@@ -89,18 +127,12 @@ except Exception as e:
     logger.error(f"NLTK资源检查失败: {e}")
     logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
 
-# 数据库配置
-DB_HOST = config.get('etl.data.mysql.host', '127.0.0.1')
-DB_PORT = config.get('etl.data.mysql.port', 3306)
-DB_USER = config.get('etl.data.mysql.user', 'nkuwiki')
-DB_PASSWORD = config.get('etl.data.mysql.password', '')
-DB_NAME = config.get('etl.data.mysql.name', 'nkuwiki')
-
 # Qdrant配置
-QDRANT_URL = config.get('etl.data.qdrant.url', 'http://localhost:6333')
-QDRANT_TIMEOUT = config.get('etl.data.qdrant.timeout', 30.0)
-COLLECTION_NAME = config.get('etl.data.qdrant.collection', 'main_index')
-VECTOR_SIZE = config.get('etl.data.qdrant.vector_size', 1024)
+VECTOR_SIZE = _config.get('etl.data.qdrant.vector_size', 1024)
+
+# --- 爬虫相关配置 ---
+PROXY_POOL: str = _config.get("etl.crawler.proxy_pool", "http://127.0.0.1:7897")
+MARKET_TOKEN: str = _config.get("etl.crawler.market_token", "")
 
 # 版本信息
 __version__ = "2.0.0"
@@ -108,7 +140,7 @@ __version__ = "2.0.0"
 # 定义导出的符号列表 
 __all__ = [
     # 路径配置
-    'BASE_PATH', 'DATA_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'MYSQL_PATH', 'NLTK_PATH',
+    'BASE_PATH', 'RAW_PATH', 'CACHE_PATH', 'INDEX_PATH', 'QDRANT_PATH', 'MYSQL_PATH', 'NLTK_PATH',
     'MODELS_PATH',
     
     # 环境变量配置
@@ -116,10 +148,14 @@ __all__ = [
     
     # 数据库配置
     'DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASSWORD', 'DB_NAME',
+    'DB_POOL_RESIZE_INTERVAL', 'DB_POOL_MIN_SIZE', 'DB_POOL_MAX_SIZE', 'DB_POOL_MAX_OVERFLOW',
 
     # Qdrant配置
-    'QDRANT_URL', 'QDRANT_TIMEOUT', 'COLLECTION_NAME', 'VECTOR_SIZE',
+    'QDRANT_URL', 'QDRANT_TIMEOUT', 'QDRANT_API_KEY', 'QDRANT_COLLECTION', 'QDRANT_BATCH_SIZE', 'VECTOR_SIZE',
     
+    # 爬虫配置
+    'PROXY_POOL', 'MARKET_TOKEN',
+
     # 版本信息
     '__version__'
 ]
@@ -132,3 +168,5 @@ __all__ = [
 # 5. 数据检索：通过retrieval子模块实现文档的检索与排序
 # 6. 嵌入计算：通过embedding子模块实现文档的向量化
 # 7. PageRank计算：通过pagerank子模块计算网页权威性分数
+
+# 可以在此处添加更多ETL相关的配置常量...

@@ -43,7 +43,7 @@ python-docx
 # 数据存储 (Data Storage)
 # ========================================
 # 关系型数据库
-mysql-connector-python  # 9.2+
+aiomysql                # 异步MySQL驱动
 pymysql
 # 本地开发容器部署: docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 -v D:\Code\nkuwiki\etl\data\mysql:/var/lib/mysql mysql:latest
 
@@ -134,5 +134,9 @@ psutil>=5.9.0
 # 网页爬虫 (Spider for website)
 # ========================================
 scrapy==2.11.1
-mysql-connector-python==8.0.32
+# mysql-connector-python==8.0.32
+
+watchfiles
+websockets
+PyJWT
 

@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_user` (
     `following_count` INT DEFAULT 0 COMMENT '关注的用户数量',
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
-    `last_login` DATETIME DEFAULT NULL COMMENT '最后登录时间',
+    `last_login_time` DATETIME DEFAULT NULL COMMENT '最后登录时间',
     `status` TINYINT DEFAULT 1 COMMENT '状态：1-正常, 0-禁用',
     `role` VARCHAR(32) DEFAULT NULL COMMENT '用户角色，如admin、user、editor',
     PRIMARY KEY (`id`),

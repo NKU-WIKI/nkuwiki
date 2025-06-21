@@ -9,7 +9,7 @@ import asyncio
 
 from api import mcp_router
 from api.common import get_api_logger_dep
-from etl.load.db_core import execute_query, validate_table_name, query_records, get_all_tables
+from etl.load.db_core import execute_custom_query, validate_table_name, query_records, get_all_tables
 from core.utils.logger import register_logger
 
 # 创建日志记录器
@@ -150,82 +150,48 @@ async def handle_jsonrpc(
         data = await request.json()
         api_logger.debug(f"收到JSON-RPC请求: {json.dumps(data)}")
         
-        # 基本JSON-RPC响应结构
         response = {
             "jsonrpc": "2.0",
             "id": data.get("id", None)
         }
         
-        # 处理方法调用
         method = data.get("method", "")
         params = data.get("params", {})
         
-        if method == "listOfferings":
-            # 返回可用工具列表
-            response["result"] = {
-                "tools": MANIFEST["tools"]
-            }
-        elif method == "execute_sql":
-            # 执行SQL查询
+        if method == "execute_sql":
             sql = params.get("sql", "")
-            # 安全检查：只允许SELECT查询
             if not sql.strip().upper().startswith("SELECT"):
-                response["error"] = {
-                    "code": -32600,
-                    "message": "安全限制：只允许SELECT查询"
-                }
+                response["error"] = {"code": -32600, "message": "安全限制：只允许SELECT查询"}
             else:
                 db_params = params.get("params", [])
                 try:
-                    result = execute_query(sql, db_params)
-                    response["result"] = {
-                        "result": result, 
-                        "row_count": len(result) if result else 0,
-                        "sql": sql
-                    }
+                    result = await execute_custom_query(sql, db_params)
+                    response["result"] = {"result": result, "row_count": len(result) if result else 0, "sql": sql}
                 except Exception as e:
                     api_logger.error(f"执行SQL错误: {str(e)}")
-                    response["error"] = {
-                        "code": -32603,
-                        "message": str(e)
-                    }
+                    response["error"] = {"code": -32603, "message": str(e)}
         elif method == "show_tables":
-            # 显示所有表
             try:
-                tables = get_all_tables()
+                tables = await get_all_tables()
                 response["result"] = {"tables": tables, "count": len(tables)}
             except Exception as e:
                 api_logger.error(f"获取表列表错误: {str(e)}")
-                response["error"] = {
-                    "code": -32603,
-                    "message": str(e)
-                }
+                response["error"] = {"code": -32603, "message": str(e)}
         elif method == "describe_table":
-            # 显示表结构
             table_name = params.get("table_name", "")
-            if not validate_table_name(table_name):
-                response["error"] = {
-                    "code": -32602,
-                    "message": f"非法表名: {table_name}"
-                }
+            if not await validate_table_name(table_name):
+                response["error"] = {"code": -32602, "message": f"非法表名: {table_name}"}
             else:
                 try:
-                    result = execute_query(f"DESCRIBE {table_name}")
+                    result = await execute_custom_query(f"DESCRIBE {table_name}")
                     response["result"] = {"structure": result, "table": table_name}
                 except Exception as e:
                     api_logger.error(f"获取表结构错误: {str(e)}")
-                    response["error"] = {
-                        "code": -32603,
-                        "message": str(e)
-                    }
+                    response["error"] = {"code": -32603, "message": str(e)}
         elif method == "query_table":
-            # 查询表数据
             table_name = params.get("table_name", "")
-            if not validate_table_name(table_name):
-                response["error"] = {
-                    "code": -32602,
-                    "message": f"非法表名: {table_name}"
-                }
+            if not await validate_table_name(table_name):
+                response["error"] = {"code": -32602, "message": f"非法表名: {table_name}"}
             else:
                 try:
                     conditions = params.get("conditions", {})
@@ -233,7 +199,7 @@ async def handle_jsonrpc(
                     offset = int(params.get("offset", 0))
                     order_by = params.get("order_by", "id DESC")
                     
-                    result = query_records(
+                    result_dict = await query_records(
                         table_name=table_name,
                         conditions=conditions,
                         order_by=order_by,
@@ -241,47 +207,18 @@ async def handle_jsonrpc(
                         offset=offset
                     )
                     
-                    response["result"] = {
-                        "result": result, 
-                        "row_count": len(result) if result else 0,
-                        "table": table_name,
-                        "limit": limit,
-                        "offset": offset
-                    }
+                    result = result_dict.get('data', [])
+                    response["result"] = {"result": result, "row_count": len(result) if result else 0, "table": table_name, "limit": limit, "offset": offset}
                 except Exception as e:
                     api_logger.error(f"查询表数据错误: {str(e)}")
-                    response["error"] = {
-                        "code": -32603,
-                        "message": str(e)
-                    }
+                    response["error"] = {"code": -32603, "message": str(e)}
         else:
-            # 未知方法
-            response["error"] = {
-                "code": -32601,
-                "message": f"未知方法: {method}"
-            }
-            
-        return JSONResponse(content=response)
-            
-    except json.JSONDecodeError:
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0", 
-                "error": {"code": -32700, "message": "无效的JSON请求"},
-                "id": None
-            },
-            status_code=400
-        )
+            response["error"] = {"code": -32601, "message": "方法未找到"}
+
+        return JSONResponse(response)
     except Exception as e:
-        mcp_logger.error(f"处理JSON-RPC请求错误: {str(e)}")
-        return JSONResponse(
-            content={
-                "jsonrpc": "2.0", 
-                "error": {"code": -32603, "message": str(e)},
-                "id": None
-            },
-            status_code=500
-        )
+        api_logger.error(f"处理JSON-RPC请求失败: {str(e)}")
+        return JSONResponse({"jsonrpc": "2.0", "id": None, "error": {"code": -32603, "message": str(e)}}, status_code=500)
 
 # 保留旧版工具调用接口以保持兼容性
 @mcp_router.post("/tool")

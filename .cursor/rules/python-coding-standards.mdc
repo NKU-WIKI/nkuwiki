@@ -33,6 +33,7 @@ def process_data(items: List[Dict[str, Any]]) -> Optional[Path]:
 - **类名**: 大驼峰式 (`CamelCase`)。示例: `DocumentProcessor`, `QdrantIndexer`。
 - **常量**: 大写字母和下划线 (`SCREAMING_SNAKE_CASE`)。示例: `MAX_RETRIES`, `DEFAULT_TIMEOUT`。
 - **私有成员**: 以单个下划线开头 (`_internal_method`)。
+- **单数优先**: 优先使用单数形式命名。例如，使用 `/user` 而不是 `/users`。即使是返回列表的端点，也遵循此约定，如 `GET /insight` 返回洞察列表。
 
 ## 2. 模块与导入
 
@@ -71,8 +72,8 @@ from etl.load import db_core
 ```python
 from core.utils.logger import register_logger
 
-# api/routes/knowledge/insights.py
-logger = register_logger('api.routes.knowledge.insights')
+# api/routes/knowledge/insight.py
+logger = register_logger('api.routes.knowledge.insight')
 
 # etl/daily_pipeline.py
 logger = register_logger('etl.daily_pipeline')
@@ -88,21 +89,26 @@ logger = register_logger('etl.daily_pipeline')
 ## 4. 项目核心实践
 
 ### 4.1. 配置管理
-- 所有配置项（如数据库凭据、API密钥、路径等）都**必须**通过全局 `Config` 对象访问。
+- 所有配置项（如数据库凭据、API密钥、路径等）都**必须**通过全局 `Config` 对象（`config.py`）进行管理。
 - **禁止**在代码中硬编码任何配置值。
+- **ETL模块特例**：为了集中管理和方便复用，ETL相关的配置常量在 `etl/__init__.py` 中统一定义。在ETL模块内部，应直接 `from etl import DB_HOST, RAW_PATH` 来使用这些常量。
 
 ```python
+# 通用配置获取
 from config import Config
-
 config = Config()
-db_host = config.get("etl.data.mysql.host", "localhost")
 api_key = config.get("core.agent.coze.api_key")
+
+# ETL模块内配置使用
+from etl import DB_HOST, EMBEDDING_MODEL_PATH
+print(f"数据库地址: {DB_HOST}, 模型路径: {EMBEDDING_MODEL_PATH}")
 ```
 
 ### 4.2. 数据库操作 (强制)
 - 所有数据库交互都**必须**通过 `etl.load.db_core` 中的异步函数进行。
-- `db_core` 封装了数据库连接池管理和异步执行，能有效防止阻塞事件循环。
+- `db_core` 基于 `aiomysql` 封装了数据库连接池管理和异步执行，能有效防止阻塞事件循环。
 - **严禁**在其他模块中直接创建数据库连接或执行原生SQL查询。
+- 更详细的规范请参考 `.cursor/rules/database-operations.mdc`。
 
 ```python
 # 正确用法
@@ -110,7 +116,7 @@ from etl.load import db_core
 
 async def get_user(user_id: int):
     result = await db_core.query_records(
-        "users",
+        "wxapp_users",
         conditions={"id": user_id},
         limit=1
     )

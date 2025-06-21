@@ -1,7 +1,7 @@
 ---
 description: 
 globs: 
-alwaysApply: false
+alwaysApply: true
 ---
 # NKUWiki 数据仓库 (`/data`) 结构说明
 

@@ -530,22 +530,23 @@ class RagPipeline:
             return f"抱歉，在生成答案时遇到了问题: {str(e)}"
 
     async def _get_user_search_history(self, user_id: str, limit: int = 10) -> List[str]:
-        """从数据库获取用户的最近搜索历史记录 (同步版本)。"""
+        """获取用户最近的搜索历史"""
         if not user_id:
             return []
         try:
-            # 使用正确的表名 wxapp_search_history 和字段 keyword
-            sql = "SELECT DISTINCT keyword FROM wxapp_search_history WHERE openid = %s ORDER BY search_time DESC LIMIT %s"
             from etl.load import db_core
-            # 假设 db_core 有一个同步执行函数
-            records = await db_core.execute_query(sql, (user_id, limit), fetch=True)
-            if records:
-                history = [record['keyword'] for record in records]
-                logger.info(f"成功获取用户 {user_id} 的 {len(history)} 条搜索历史。")
-                return history
-            return []
+            history_sql = """
+            SELECT query FROM wxapp_search_history
+            WHERE openid = %s
+            ORDER BY search_time DESC
+            LIMIT %s
+            """
+            results = await db_core.execute_custom_query(history_sql, [user_id, limit], fetch='all')
+            history = [row['query'] for row in results] if results else []
+            self.logger.debug(f"成功获取用户 {user_id} 的搜索历史: {history}")
+            return history
         except Exception as e:
-            logger.error(f"获取用户 {user_id} 的搜索历史失败: {e}")
+            self.logger.error(f"获取用户 {user_id} 的搜索历史失败: {e}")
             return []
 
     def run(self, 
@@ -577,7 +578,6 @@ class RagPipeline:
         search_history = []
         if user_id:
             try:
-                import asyncio
                 search_history = asyncio.run(self._get_user_search_history(user_id))
             except Exception as e:
                 logger.warning(f"获取用户搜索历史失败: {e}")

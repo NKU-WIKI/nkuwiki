@@ -285,7 +285,8 @@ async def rag_endpoint(request: Request):
             }
             if request_stream:
                 return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
-            return Response.success(data=result, details={"message": "未找到相关信息"})
+            else:
+                return Response.success(data=result)
         
         # 3. 使用sources生成答案
         logger.debug(f"开始生成答案: sources数量={len(sources)}")
@@ -309,7 +310,8 @@ async def rag_endpoint(request: Request):
         
         if request_stream:
             return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
-        return Response.success(data=result, details={"message": "查询成功"})
+        else:
+            return Response.success(data=result)
     
     except Exception as e:
         import traceback

@@ -3,75 +3,75 @@ description:
 globs: 
 alwaysApply: true
 ---
-# 数据库操作规范
+# 数据库操作规范 (基于 aiomysql)
 
-## 1. 数据库连接管理 (`db_pool_manager.py`)
 
-项目采用基于 `mysql-connector-python` 的高级数据库连接池，具备多实例协调和动态调整能力。
+表结构在etl/load/mysql_tables/下，修改表需要同步修改相应的sql文件
+
+
+## 1. 数据库连接池 (`db_pool_manager.py`)
+
+项目采用基于 `aiomysql` 的异步数据库连接池，为所有数据库操作提供高效、非阻塞的连接管理。
 
 ### 核心特性
-- **多实例协调**：使用 Redis 在多个服务实例间同步连接池状态，避免超出数据库最大连接数。
-- **动态池大小**：根据活跃实例数量和系统负载动态计算并调整每个实例的连接池大小。
-- **文件锁**：通过 `/tmp/nkuwiki_db_lock` 确保在多进程环境中只有一个实例负责初始化。
-- **心跳与监控**：每个实例通过 Redis 定期报告心跳和性能指标。
+- **异步连接池**: 使用 `aiomysql.create_pool` 创建，在应用启动时初始化，在应用关闭时销毁。
+- **上下文管理**: 通过异步上下文管理器 `get_db_connection` 提供连接，确保连接的自动获取和释放。
 
 ### 获取连接
 
-所有数据库操作都应通过 `get_db_connection` 上下文管理器获取连接，以确保连接的正确获取和释放。
+所有数据库操作都应通过 `get_db_connection` 异步上下文管理器获取连接。
 
 ```python
 # etl/load/db_pool_manager.py
+import aiomysql
+from contextlib import asynccontextmanager
 
-from contextlib import contextmanager
-from etl.load.db_pool_manager import get_connection as get_pooled_connection, release_connection
-from core.utils.logger import register_logger
+# 全局连接池实例
+db_pool: aiomysql.Pool = None
 
-logger = register_logger(__name__)
+# (初始化和关闭逻辑...)
 
-@contextmanager
-def get_db_connection():
+@asynccontextmanager
+async def get_db_connection():
     """
-    推荐使用的数据库连接上下文管理器。
-    自动处理连接的获取和释放。
+    从连接池获取一个数据库连接的异步上下文管理器。
     """
-    connection = None
+    if not db_pool:
+        raise ConnectionError("数据库连接池不可用。")
+
+    conn = None
     try:
-        # 从高级连接池获取连接
-        connection = get_pooled_connection()
-        yield connection
-    except Exception as e:
-        logger.error(f"数据库连接上下文管理器出错: {str(e)}")
-        # 异常时也应尝试释放连接
-        if connection:
-            release_connection(connection, has_error=True)
-        raise
+        conn = await db_pool.acquire()
+        yield conn
     finally:
-        # 正常退出时释放连接
-        if connection:
-            release_connection(connection)
+        if conn:
+            await db_pool.release(conn)
 
 # 使用示例
-try:
-    with get_db_connection() as conn:
-        with conn.cursor(dictionary=True) as cursor:
-            cursor.execute("SELECT * FROM some_table LIMIT 1")
-            result = cursor.fetchone()
-            print(result)
-except Exception as e:
-    logger.error(f"数据库操作失败: {e}")
+async def some_db_operation():
+    try:
+        async with get_db_connection() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute("SELECT * FROM some_table LIMIT 1")
+                result = await cursor.fetchone()
+                print(result)
+    except Exception as e:
+        logger.error(f"数据库操作失败: {e}")
 ```
 
 ## 2. 核心数据库异步操作 (`db_core.py`)
 
-数据库核心操作层 (`db_core.py`) 被设计为**异步优先**。所有操作均在独立的线程池 (`ThreadPoolExecutor`) 中执行，以防止阻塞主应用的 `asyncio` 事件循环。
+数据库核心操作层 (`db_core.py`) 完全基于 `aiomysql` 实现，所有函数均为异步方法，防止阻塞主应用的 `asyncio` 事件循环。
 
 ### 常用异步函数
 
 - `execute_custom_query(query, params, fetch)`: 执行任意自定义SQL。
 - `insert_record(table_name, data)`: 插入单条记录。
-- `update_record(table_name, record_id, data)`: 根据ID更新记录。
-- `query_records(table_name, conditions, fields, order_by, limit, offset)`: 功能强大的查询函数。
 - `batch_insert(table_name, records, batch_size)`: 高效的批量插入。
+- `update_record(table_name, conditions, data)`: 根据条件更新记录。
+- `query_records(table_name, conditions, fields, order_by, limit, offset)`: 功能强大的查询函数，返回数据和总数。
+- `get_by_id(table_name, record_id)`: 通过主键ID获取单条记录。
+- `count_records(table_name, conditions)`: 根据条件统计记录数。
 - `get_all_tables()`: 获取所有表名。
 
 ### 使用示例
@@ -81,44 +81,58 @@ except Exception as e:
 ```python
 import asyncio
 from etl.load import db_core
+from etl.load.db_pool_manager import init_db_pool, close_db_pool
 
 async def main():
-    # 示例1: 插入一条记录
-    new_user_data = {"nickname": "async_user", "openid": "test_openid_12345"}
-    user_id = await db_core.insert_record("wxapp_users", new_user_data)
-    print(f"插入用户成功，ID: {user_id}")
+    # 在应用启动时初始化连接池
+    await init_db_pool()
 
-    # 示例2: 查询记录
-    query_conditions = {"nickname": "async_user"}
-    result = await db_core.query_records(
-        table_name="wxapp_users",
-        conditions=query_conditions,
-        fields=["openid", "nickname", "create_time"],
-        limit=1
-    )
-    if result['data']:
-        print("查询结果:", result['data'][0])
+    try:
+        # 示例1: 插入一条记录
+        new_user_data = {"nickname": "async_user", "openid": f"test_openid_{asyncio.runners.random.randint(1000, 9999)}"}
+        # 假设 wxapp_users 表存在
+        user_id = await db_core.insert_record("wxapp_users", new_user_data)
+        print(f"插入用户成功，ID: {user_id}")
 
-    # 示例3: 批量插入
-    new_posts = [
-        {"openid": "test_openid_12345", "title": "帖子A", "content": "内容A"},
-        {"openid": "test_openid_12345", "title": "帖子B", "content": "内容B"},
-    ]
-    inserted_count = await db_core.batch_insert("wxapp_posts", new_posts)
-    print(f"批量插入 {inserted_count} 条帖子成功")
+        # 示例2: 查询记录
+        query_conditions = {"nickname": "async_user"}
+        result = await db_core.query_records(
+            table_name="wxapp_users",
+            conditions=query_conditions,
+            fields=["openid", "nickname", "create_time"],
+            limit=1
+        )
+        if result['data']:
+            print("查询结果:", result['data'][0])
+            print("总记录数:", result['total'])
 
-    # 示例4: 执行自定义SQL
-    custom_sql = "SELECT COUNT(*) as count FROM wxapp_posts WHERE openid = %s"
-    count_result = await db_core.execute_custom_query(custom_sql, ["test_openid_12345"])
-    print("帖子总数:", count_result[0]['count'])
+        # 示例3: 批量插入
+        new_posts = [
+            {"openid": new_user_data["openid"], "title": "帖子A", "content": "内容A"},
+            {"openid": new_user_data["openid"], "title": "帖子B", "content": "内容B"},
+        ]
+        # 假设 wxapp_posts 表存在
+        inserted_count = await db_core.batch_insert("wxapp_posts", new_posts)
+        print(f"批量插入 {inserted_count} 条帖子成功")
+
+        # 示例4: 执行自定义SQL
+        custom_sql = "SELECT COUNT(*) as count FROM wxapp_posts WHERE openid = %s"
+        count_result = await db_core.execute_custom_query(custom_sql, [new_user_data["openid"]], fetch='one')
+        print("帖子总数:", count_result['count'])
+
+    finally:
+        # 在应用关闭时关闭连接池
+        await close_db_pool()
 
 if __name__ == "__main__":
+    # 确保在运行环境中已有相关表结构
+    # 例如 wxapp_users, wxapp_posts
     asyncio.run(main())
 ```
 
 ## 3. 表结构管理 (`table_manager.py`)
 
-表结构的管理由 `TableManager` 负责，其设计同样是异步的，并支持通过命令行进行操作。
+表结构的管理由 `TableManager` 负责，其设计同样是**异步**的，并支持通过命令行进行操作。它依赖 `db_core` 执行所有数据库修改。
 
 ### 核心特性
 - **SQL文件驱动**：表结构定义在 `etl/load/mysql_tables/` 目录下的各个 `.sql` 文件中，文件名即表名（如 `wxapp_users.sql`）。
@@ -130,27 +144,33 @@ if __name__ == "__main__":
 ```python
 import asyncio
 from etl.load.table_manager import TableManager
+from etl.load.db_pool_manager import init_db_pool, close_db_pool
 
 async def manage_tables():
+    await init_db_pool()
     manager = TableManager()
 
-    # 获取所有可用的表定义
-    available_tables = manager.get_available_table_definitions()
-    print("可用的表定义:", available_tables)
+    try:
+        # 获取所有可用的表定义
+        available_tables = manager.get_available_table_definitions()
+        print("可用的表定义:", available_tables)
 
-    # 检查 'wxapp_users' 表是否存在
-    exists = await manager.table_exists('wxapp_users')
-    print(f"'wxapp_users' 表是否存在: {exists}")
+        # 检查 'wxapp_users' 表是否存在
+        exists = await manager.table_exists('wxapp_users')
+        print(f"'wxapp_users' 表是否存在: {exists}")
 
-    # 获取表信息
-    if exists:
-        info = await manager.get_table_info('wxapp_users')
-        if info:
-            print(f"'wxapp_users' 表信息: {info.get('record_count', 0)} 条记录")
+        # 获取表信息
+        if exists:
+            info = await manager.get_table_info('wxapp_users')
+            if info:
+                print(f"'wxapp_users' 表信息: {info.get('record_count', 0)} 条记录")
 
-    # 重新创建所有表（危险操作！）
-    # await manager.recreate_tables(force=True)
-    # print("所有表已重建")
+        # 重新创建所有表（危险操作！）
+        # await manager.recreate_tables(force=True)
+        # print("所有表已重建")
+    finally:
+        await close_db_pool()
+
 
 if __name__ == "__main__":
     asyncio.run(manage_tables())

@@ -84,9 +84,10 @@ class Market(BaseCrawler):
                 headers=self._generate_headers(timestamp),
                 params={"from_time": str(timestamp), "hot": "1"}
             )
-            
+     
             if response.status == 200:
                 data = await response.json()
+                print(data)
                 # 增加数据结构校验
                 if isinstance(data, dict):
                     data_dict = data.get("data", {})
@@ -344,6 +345,7 @@ if __name__ == "__main__":
         被cron或systemd等外部调度器调用。
         """
         market = None
+
         try:
             # 初始化爬虫，headless=True表示在后台运行
             market = Market(debug=False, headless=True)

@@ -11,9 +11,8 @@ import time
 import asyncio
 from pathlib import Path
 from typing import Dict, List, Optional, Union
-from etl import config
 from core.utils import register_logger
-from .abstract import AbstractProcessor
+from core.agent.abstract import AbstractProcessor
 
 logger = register_logger("etl.processors.summarize")
 
