@@ -4,7 +4,7 @@
 #
 # 功能:
 # 1. 检查 market.py 的 cron 定时任务是否已存在。
-# 2. 如果不存在，则添加一个每30分钟执行一次的任务。
+# 2. 如果不存在，则添加一个每小时执行一次的任务。
 # 3. 任务的输出(包括错误)会被重定向到 logs/market_crawler.log 文件。
 #
 set -e
@@ -26,7 +26,7 @@ LOG_FILE="$LOG_DIR/cron.log"
 CRON_JOB_COMMENT="# NKUWiki Market Crawler Job"
 
 # 最终要添加到crontab的命令
-CRON_COMMAND="*/30 * * * * $PYTHON_EXEC_PATH $MARKET_SCRIPT_PATH >> $LOG_FILE 2>&1"
+CRON_COMMAND="0 * * * * $PYTHON_EXEC_PATH $MARKET_SCRIPT_PATH >> $LOG_FILE 2>&1"
 
 
 # --- 主逻辑 ---
@@ -42,22 +42,25 @@ echo "将要配置的Cron任务:"
 echo "$CRON_COMMAND"
 echo ""
 
-# 检查定时任务是否已经存在 (通过我们添加的唯一注释)
-if crontab -l 2>/dev/null | grep -Fq -- "$CRON_JOB_COMMENT"; then
-    echo "✅ 定时任务已经配置好了，无需重复添加。"
-    echo "   您可以通过 'crontab -l' 命令查看。"
+# 检查并更新定时任务
+echo "⏳ 正在配置/更新定时任务..."
+
+# 从现有的crontab中移除旧的定时任务（通过注释和脚本路径识别），以确保配置总是最新的。
+# 使用 grep -v 来排除匹配的行。
+# 2>/dev/null 会抑制 `crontab -l` 在没有crontab时的错误输出。
+CLEANED_CRON=$(crontab -l 2>/dev/null | grep -vF -- "$CRON_JOB_COMMENT" | grep -vF -- "$MARKET_SCRIPT_PATH")
+
+# 添加新的任务
+# 使用管道将清理后的crontab内容和新任务一起写入crontab
+(echo "$CLEANED_CRON"; echo ""; echo "$CRON_JOB_COMMENT"; echo "$CRON_COMMAND") | crontab -
+
+if [ $? -eq 0 ]; then
+    echo "🎉 定时任务配置/更新成功！"
+    echo "   现在，market.py脚本将每小时自动运行一次。"
+    echo "   日志将保存在: $LOG_FILE"
 else
-    echo "⏳ 正在添加新的定时任务..."
-    # 使用现有crontab内容，并附加我们的新任务和注释
-    (crontab -l 2>/dev/null; echo ""; echo "$CRON_JOB_COMMENT"; echo "$CRON_COMMAND") | crontab -
-    if [ $? -eq 0 ]; then
-        echo "🎉 定时任务添加成功！"
-        echo "   现在，market.py脚本将每30分钟自动运行一次。"
-        echo "   日志将保存在: $LOG_FILE"
-    else
-        echo "❌ 错误：无法添加定时任务。请检查 'crontab' 命令是否可用以及权限是否正确。"
-        exit 1
-    fi
+    echo "❌ 错误：无法配置定时任务。请检查 'crontab' 命令是否可用以及权限是否正确。"
+    exit 1
 fi
 
 echo ""
