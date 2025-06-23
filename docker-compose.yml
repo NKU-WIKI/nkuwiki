@@ -59,6 +59,46 @@ services:
         networks:
             - nkuwiki_net
 
+    api_main:
+        build: .
+        container_name: nkuwiki_main
+        command: python app.py --api --host 0.0.0.0 --port 8000
+        ports:
+            - "8000:8000"
+        volumes:
+            - .:/app
+            - /data/raw:/app/data/raw
+            - /data/models:/app/data/models
+        depends_on:
+            - mysql
+            - redis
+            - qdrant
+            - elasticsearch
+        networks:
+            - nkuwiki_net
+        environment:
+            - ENV=main
+
+    api_dev:
+        build: .
+        container_name: nkuwiki_dev
+        command: python app.py --api --host 0.0.0.0 --port 8001
+        ports:
+            - "8001:8001"
+        volumes:
+            - .:/app
+            - /data/raw:/app/data/raw
+            - /data/models:/app/data/models
+        depends_on:
+            - mysql
+            - redis
+            - qdrant
+            - elasticsearch
+        networks:
+            - nkuwiki_net
+        environment:
+            - ENV=dev
+
 networks:
     nkuwiki_net:
         driver: bridge
