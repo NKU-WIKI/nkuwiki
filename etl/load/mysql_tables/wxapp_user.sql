@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_user` (
     `birthday` VARCHAR(20) DEFAULT NULL COMMENT '生日',
     `wechatId` VARCHAR(50) DEFAULT NULL COMMENT '微信号',
     `qqId` VARCHAR(20) DEFAULT NULL COMMENT 'QQ号',
+    `phone` VARCHAR(20) DEFAULT NULL COMMENT '手机号',
     `university` VARCHAR(100) DEFAULT NULL COMMENT '大学',
     `token_count` INT DEFAULT 0 COMMENT '用户Token数量',
     `like_count` INT DEFAULT 0 COMMENT '获得的点赞数',

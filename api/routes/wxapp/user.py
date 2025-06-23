@@ -99,7 +99,7 @@ async def update_user_profile(
         )
         
         if not user_result:
-            return Response.not_found(resource="用户")
+            return Response.bad_request(details={"message": "用户不存在或openid无效"})
         
         user_id = user_result[0]['id']
         
