@@ -1,6 +1,6 @@
 # nkuwiki 开源·共治·普惠的南开百科
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)[![Version](https://img.shields.io/badge/version-0.3.0-blue.svg)](https://github.com/your-org/nkuwiki/releases)[![DeepWiki](https://img.shields.io/badge/DeepWiki-documentation-blue)](https://deepwiki.com/NKU-WIKI/nkuwiki)
 
 <img src="./docs/assets/logo-lc-green.png" width="400" alt="nkuwiki logo" />
 
@@ -16,6 +16,8 @@
 - 🔎 微信服务号：nkuwiki知识社区（无限制，用户体验更好）
 - 🗝️ 微信订阅号 nkuwiki（有消极回复限制）
 - 🔥 微信小程序：nku元智wiki
+  
+![微信小程序码](https://raw.githubusercontent.com/aokimi0/image-hosting-platform/main/img/2ed4dd7258abda2204b768c7e1017cf.jpg)
 
 ## 🎯 愿景与目标
 
@@ -31,7 +33,7 @@
 - 🤖 **开源知识中枢**
   - 🧠 双擎驱动：**RAG**框架 + **SOTA**模型推理
   - 🔄 **动态知识图谱**
-    - 🔓 接入**南开全渠道数据源**（网站/微信公众号/校园集市/小红书/微博/抖音/B站/知乎etc.）
+    - 🔓 接入**南开全渠道数据源**（网站/微信公众号/校园集市/小红书/微博/抖音/B站/知乎etc.，详见[数据源重点实体清单](https://nankai.feishu.cn/wiki/OEuGw04XXiqJnekbawcc9XsQnUf)）
     - 🤝 **社区共治**：志愿者团队与用户协同维护
     - 🛡️ **开源评估框架**（贡献者透明审计）
   - 🔍 多模态和丰富插件支持
@@ -82,9 +84,26 @@ python app.py --api --port 8000
 curl -X GET "http://localhost:8000/api/health"
 
 # 一键部署服务集群（在linux服务器上）
-nkuwiki_service_manager.sh deploy 8000 8 # 8000~8007端口8个实例，nginx负载均衡
-
+nkuwiki_service_manager.sh deploy 8000
 ```
+
+**爬虫模式**
+
+```bash
+# 运行微信公众号爬虫
+python -m etl.crawler.wechat
+
+# 运行校园集市爬虫
+python -m etl.crawler.market
+
+# 运行小红书爬虫
+python -m etl.crawler.xhs_spider
+
+# 运行抖音爬虫
+python -m etl.crawler.douyin_spider
+```
+
+更多爬虫使用说明请参考[爬虫模块使用指南](./docs/crawler_guide.md)
 
 ## 🏗 系统架构
 
@@ -97,7 +116,7 @@ nkuwiki_service_manager.sh deploy 8000 8 # 8000~8007端口8个实例，nginx负�
   - utils/: 通用工具
 
 - **etl/**: 数据处理模块
-  - crawler/: 数据采集
+  - crawler/: 数据采集 (详见 [爬虫模块使用指南](./docs/crawler_guide.md))
   - transform/: 数据转换
   - load/: 数据加载
   - embedding/: 向量嵌入

@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.bridge.pydantic import Field, ConfigDict
 from llama_index.core.schema import BaseNode
-from etl.embedding.ingestion import get_node_content
+from etl.processors.nodes import get_node_content
 
 class HuggingFaceEmbedding(BaseEmbedding):
     model_config = ConfigDict(
@@ -61,6 +61,14 @@ class HuggingFaceEmbedding(BaseEmbedding):
         return self._embed(texts)
 
     async def _aget_text_embeddings(self, texts: List[str]) -> List[List[float]]:
+        return await asyncio.to_thread(self._embed, texts)
+
+    def get_text_embedding_batch(self, texts: List[str], **kwargs: Any) -> List[List[float]]:
+        """批量获取文本嵌入"""
+        return self._embed(texts)
+    
+    async def aget_text_embedding_batch(self, texts: List[str], **kwargs: Any) -> List[List[float]]:
+        """异步批量获取文本嵌入"""
         return await asyncio.to_thread(self._embed, texts)
 
     def __call__(self, nodes: List[BaseNode], **kwargs: Any) -> List[BaseNode]:

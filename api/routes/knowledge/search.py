@@ -2,15 +2,20 @@ import re
 import time
 import asyncio
 from datetime import datetime
-from fastapi import Query, APIRouter, Body
+from fastapi import Query, APIRouter, Body, Depends, HTTPException
+# from fastapi.responses import HTMLResponse
 from typing import Optional, List, Dict, Any
+import hashlib
+from pathlib import Path
 
 from api.models.common import Response, Request, validate_params
 from etl.load.db_core import (
-    async_query_records,async_execute_custom_query
+    async_query_records, async_execute_custom_query
 )
 from core.utils.logger import register_logger
 from api.routes.wxapp.post import batch_enrich_posts_with_user_info
+
+from etl.rag_pipeline import RagPipeline
 
 router = APIRouter()
 
@@ -573,6 +578,51 @@ async def search_endpoint(
         logger.error(f"综合检索失败: {str(e)}\n{error_detail}")
         return Response.error(message=f"搜索失败: {str(e)}")
 
+@router.get("/advanced-search")
+async def advanced_search_endpoint(
+    query: str = Query(..., description="搜索关键词"),
+    openid: str = Query(..., description="用户openid，用于个性化推荐"),
+):
+    """
+    使用RAG管道进行高级检索，支持向量、BM25、通配符和个性化搜索。
+    """
+    try:
+        start_time = time.time()
+        
+        # 每次请求时实例化，确保获取最新的模型和服务状态
+        # 在高并发场景下，应考虑使用FastAPI的Depends进行单例管理
+        rag_pipeline = RagPipeline()
+        
+        # 调用RAG管道的run方法
+        result = rag_pipeline.run(query=query, user_id=openid)
+        
+        # 格式化上下文节点用于返回
+        contexts = []
+        if result.get("contexts"):
+            for node_with_score in result["contexts"]:
+                contexts.append({
+                    "content": node_with_score.get_content(),
+                    "score": node_with_score.score,
+                    "metadata": node_with_score.node.metadata
+                })
+        
+        response_data = {
+            "answer": result.get("answer", "未能生成答案。"),
+            "contexts": contexts
+        }
+        
+        total_time = time.time() - start_time
+        logger.debug(f"高级检索完成: query='{query}', 耗时={total_time:.2f}秒")
+
+        return Response.success(data=response_data, details={"message": "高级检索成功"})
+
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"高级检索失败: {str(e)}\n{error_detail}")
+        return Response.error(message=f"高级检索失败: {str(e)}", code=500)
+
+
 async def _record_search_history(query: str, openid: str):
     """记录搜索历史"""
     try:
@@ -583,19 +633,19 @@ async def _record_search_history(query: str, openid: str):
             ORDER BY create_time DESC 
             LIMIT 1
         """
-        result = execute_query(sql, [query, openid])
+        result = await async_execute_custom_query(sql, [query, openid])
         
         if result:
             # 更新现有记录的时间
             sql = "UPDATE search_history SET update_time = %s WHERE id = %s"
-            execute_query(sql, [datetime.now(), result[0]["id"]])
+            await async_execute_custom_query(sql, [datetime.now(), result[0]["id"]], fetch=False)
         else:
             # 插入新记录
             sql = """
                 INSERT INTO search_history (query, openid, create_time, update_time)
                 VALUES (%s, %s, %s, %s)
             """
-            execute_query(sql, [query, openid, datetime.now(), datetime.now()])
+            await async_execute_custom_query(sql, [query, openid, datetime.now(), datetime.now()], fetch=False)
     except Exception as e:
         logger.error(f"记录搜索历史失败: {str(e)}") 
 
@@ -854,23 +904,6 @@ async def search(
         logger.error(f"搜索失败: {str(e)}")
         return Response.error(details={"message": f"搜索失败: {str(e)}"})
 
-async def _record_search_history(keyword, openid=None):
-    """记录搜索历史"""
-    try:
-        # 简化版本，只记录关键词
-        if not keyword or not keyword.strip():
-            return
-            
-        await async_execute_custom_query(
-            "INSERT INTO wxapp_search_history (keyword, search_time, openid) VALUES (%s, NOW(), %s)",
-            [keyword, openid or "anonymous"],
-            fetch=False
-        )
-    except Exception as e:
-        # 记录搜索历史失败不影响主流程
-        logger.debug(f"记录搜索历史失败: {e}")
-        pass
-
 @router.get("/history")
 async def get_search_history(
     openid: str = Query(..., description="用户OpenID"),
@@ -947,4 +980,31 @@ async def get_hot_searches(
         return Response.success(data=hot_searches or [])
     except Exception as e:
         logger.error(f"获取热门搜索失败: {str(e)}")
-        return Response.error(details={"message": f"获取热门搜索失败: {str(e)}"}) 
+        return Response.error(details={"message": f"获取热门搜索失败: {str(e)}"})
+
+@router.get("/snapshot")
+async def get_snapshot(url: str = Query(..., description="要获取快照的原始URL")):
+    """
+    获取指定URL的网页快照
+    """
+    try:
+        import hashlib
+        from pathlib import Path
+        
+        # 计算URL的MD5哈希
+        url_hash = hashlib.md5(url.encode()).hexdigest()
+        
+        # 构建快照文件路径
+        snapshots_dir = Path(config.get('etl.data.storage.base_path', '/data') + '/raw/website/snapshots')
+        snapshot_path = snapshots_dir / f"{url_hash}.html"
+        
+        if snapshot_path.exists():
+            # 读取并返回快照内容
+            content = snapshot_path.read_text(encoding='utf-8')
+            return Response.success(data={"url": url, "content": content})
+        else:
+            return Response.error(message="未能找到对应URL的网页快照", code=404)
+            
+    except Exception as e:
+        logger.error(f"获取快照失败: {str(e)}")
+        return Response.error(message="服务器内部错误，无法获取快照", code=500)

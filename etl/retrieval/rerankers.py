@@ -9,7 +9,7 @@ from llama_index.core.postprocessor.types import BaseNodePostprocessor
 from llama_index.core.schema import MetadataMode, NodeWithScore, QueryBundle
 from llama_index.core.utils import infer_torch_device
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from etl.embedding.ingestion import get_node_content
+from etl.processors.nodes import get_node_content
 
 DEFAULT_SENTENCE_TRANSFORMER_MAX_LENGTH = 512
 
@@ -35,6 +35,10 @@ class SentenceTransformerRerank(BaseNodePostprocessor):
         default=32,
         description="Batch size for predictions"
     )
+    pagerank_weight: float = Field(
+        default=0.1,
+        description="Weight for PageRank score integration"
+    )
     _model: Any = PrivateAttr()
 
     def __init__(
@@ -44,6 +48,7 @@ class SentenceTransformerRerank(BaseNodePostprocessor):
             device: Optional[str] = None,
             keep_retrieval_score: Optional[bool] = False,
             batch_size: int = 32,
+            pagerank_weight: float = 0.1,
     ):
         try:
             from sentence_transformers import CrossEncoder
@@ -56,11 +61,12 @@ class SentenceTransformerRerank(BaseNodePostprocessor):
         device = infer_torch_device() if device is None else device
         
         super().__init__(
-            model=model,
             top_n=top_n,
+            model=model,
             device=device,
             keep_retrieval_score=keep_retrieval_score,
-            batch_size=batch_size
+            batch_size=batch_size,
+            pagerank_weight=pagerank_weight
         )
         
         try:
@@ -71,6 +77,8 @@ class SentenceTransformerRerank(BaseNodePostprocessor):
             )
         except Exception as e:
             raise Exception(f"Failed to initialize CrossEncoder model: {str(e)}")
+
+        self.pagerank_weight = pagerank_weight
 
     @classmethod
     def class_name(cls) -> str:
@@ -198,10 +206,16 @@ class SentenceTransformerRerank(BaseNodePostprocessor):
                     try:
                         if self.keep_retrieval_score:
                             node.node.metadata["retrieval_score"] = node.score
-                        node.score = float(score) if score is not None else 0.0
+                        
+                        # 获取PageRank分数并整合
+                        pagerank_score = node.node.metadata.get('pagerank_score', 0.0)
+                        score_value = float(score)
+                        # 结合重排序分数和PageRank分数（使用配置的权重）
+                        final_score = score_value + self.pagerank_weight * float(pagerank_score)
+                        node.score = final_score
                     except Exception as e:
                         print(f"Error updating node score: {str(e)}")
-                        node.score = 0.0
+                        node.score = float(score) if isinstance(score, (int, float)) else 0.0
 
                 # 排序并选择top_n
                 new_nodes = sorted(
@@ -225,7 +239,11 @@ class SentenceTransformerRerank(BaseNodePostprocessor):
 
 
 class LLMRerank(BaseNodePostprocessor):
-    model_config = ConfigDict(extra="ignore")  # 添加Pydantic配置
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        extra="ignore",
+        protected_namespaces=()
+    )
     
     model: str = Field(description="Transformer model name.")
     top_n: int = Field(description="Number of nodes to return sorted by score.")
@@ -251,9 +269,14 @@ class LLMRerank(BaseNodePostprocessor):
     _compress_layer: list[int] = PrivateAttr()
     _use_efficient: int = PrivateAttr()
     num_threads: int = Field(
-        default=4, 
-        description="CPU并行线程数",
+        default=8,
+        description="Number of threads for parallel processing",
         json_schema_extra={"example": 4}
+    )
+    pagerank_weight: float = Field(
+        default=0.1,
+        description="Weight for PageRank score integration",
+        json_schema_extra={"example": 0.1}
     )
 
     def __init__(
@@ -265,7 +288,20 @@ class LLMRerank(BaseNodePostprocessor):
             embed_bs: int = 8,  # CPU环境下使用更小的批次
             embed_type: int = 0,
             use_efficient: int = 0,
+            pagerank_weight: float = 0.1,
     ):
+        # Pydantic v2: 先调用super().__init__初始化私有属性系统
+        super().__init__(
+            top_n=top_n,
+            model=model,
+            device=infer_torch_device() if device is None else device,
+            keep_retrieval_score=keep_retrieval_score,
+            embed_bs=embed_bs
+        )
+        
+        self.pagerank_weight = pagerank_weight
+        
+        # 然后设置私有属性
         device = infer_torch_device() if device is None else device
 
         # 优化tokenizer配置
@@ -304,13 +340,6 @@ class LLMRerank(BaseNodePostprocessor):
         
         self._type = 0  # 使用基础模型类型
         self._embed_bs = embed_bs
-        
-        super().__init__(
-            top_n=top_n,
-            model=model,
-            device=device,
-            keep_retrieval_score=keep_retrieval_score,
-        )
 
     def last_logit_pool(self, logits: torch.Tensor,
                         attention_mask: torch.Tensor) -> torch.Tensor:
@@ -466,7 +495,13 @@ class LLMRerank(BaseNodePostprocessor):
             for node, score in zip(batch_data, scores):
                 if self.keep_retrieval_score:
                     node.node.metadata["retrieval_score"] = node.score
-                node.score = float(score.item() if torch.is_tensor(score) else score)
+                
+                # 获取PageRank分数并整合
+                pagerank_score = node.node.metadata.get('pagerank_score', 0.0)
+                score_value = float(score.item() if torch.is_tensor(score) else score)
+                # 结合重排序分数和PageRank分数（使用配置的权重）
+                final_score = score_value + self.pagerank_weight * float(pagerank_score)
+                node.score = final_score
 
             return batch_data, None
         except Exception as e:

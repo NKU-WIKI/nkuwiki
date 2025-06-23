@@ -26,10 +26,10 @@ logger = register_logger("agent.rag")
 
 router = APIRouter()
 
-async def rewrite_query(query: str, rewrite_bot_tag = "rewrite") -> str:
+async def rewrite_query(query: str, bot_tag = "queryEnhance") -> str:
     """使用Coze改写bot改写用户查询"""
     try:
-        rewrite_agent = CozeAgent(tag = rewrite_bot_tag)
+        rewrite_agent = CozeAgent(tag = bot_tag)
         prompt = query
         start_time = time.time()
         
@@ -57,10 +57,10 @@ async def rewrite_query(query: str, rewrite_bot_tag = "rewrite") -> str:
         logger.error(f"查询改写失败: {str(e)}")
         return query
 
-async def generate_answer(query: str, enhanced_query: str, sources: List[Any], rag_bot_tag = "rag") -> Dict[str, Any]:
+async def generate_answer(query: str, enhanced_query: str, sources: List[Any], bot_tag = "answerGenerate") -> Dict[str, Any]:
     """使用Coze RAG bot生成答案"""
     try:
-        rag_agent = CozeAgent(tag = rag_bot_tag, index = 1)
+        rag_agent = CozeAgent(tag = bot_tag, index = 1)
         
         sources_text = ""
         for i, source in enumerate(sources):
@@ -236,7 +236,7 @@ async def rag_endpoint(request: Request):
         
         # 1. 使用rewrite_bot_id查询改写enhanced_query
         logger.debug(f"开始改写查询: {query}")
-        enhanced_query = await rewrite_query(query, 'rewrite')
+        enhanced_query = await rewrite_query(query, 'queryEnhance')
         logger.debug(f"查询改写完成: {query} -> {enhanced_query}")
         
         # 2. 使用enhanced_query调用knowledge/search查询相关信息
@@ -296,7 +296,7 @@ async def rag_endpoint(request: Request):
             
             # 3. 使用sources生成答案
             logger.debug(f"开始生成答案: sources数量={len(sources)}")
-            answer_result = await generate_answer(query, enhanced_query, sources, 'rag')
+            answer_result = await generate_answer(query, enhanced_query, sources, 'answerGenerate')
             
             # 构建返回结果
             total_time = time.time() - start_time

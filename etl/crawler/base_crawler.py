@@ -5,13 +5,15 @@ import pytz
 import requests
 import asyncio
 import random
+import json
 from collections import Counter
 from playwright.async_api import async_playwright
 from typing import List, Dict, Any
 from pathlib import Path
 from datetime import datetime, timedelta
 
-from etl.crawler import crawler_logger, RAW_PATH, DEFAULT_USER_AGENTS, DEFAULT_LOCALE, DEFAULT_TIMEZONE
+from etl.crawler import crawler_logger, RAW_PATH, default_user_agents, default_locale, default_timezone
+from etl.utils.file import clean_filename
 
 
 class BaseCrawler():
@@ -54,7 +56,7 @@ class BaseCrawler():
                 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
                 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
             ]),
-            'User-Agent': random.choice(DEFAULT_USER_AGENTS),
+            'User-Agent': random.choice(default_user_agents),
             'Accept-Encoding': 'gzip, deflate, br',
             'Accept-Language': 'zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7',
             'Cache-Control': 'no-cache',

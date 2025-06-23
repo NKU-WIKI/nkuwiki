@@ -25,6 +25,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+temp/
 
 # IDE和编辑器
 .vscode/
@@ -34,7 +35,6 @@ wheels/
 .DS_Store
 .windsurfrules
 .cursorrules
-.cursor/
 
 # 日志和数据
 *.log
@@ -51,6 +51,12 @@ data/
 # 配置文件
 config.json
 plugins.json
+
+# 敏感词库（包含敏感内容，不提交到版本库）
+banwords.json
+banwords.json.bak
+services/app/utils/banwords.js
+services/app/utils/banwords.js.bak
 
 # 测试和覆盖率
 .coverage

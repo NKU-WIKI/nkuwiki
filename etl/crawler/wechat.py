@@ -1,6 +1,29 @@
-from etl.crawler import *
+import sys
+from pathlib import Path
+sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+from etl.crawler import (
+    crawler_logger, config, proxy_pool, market_token,
+    timedelta, RAW_PATH,
+    default_user_agents, default_timezone, default_locale, user_agents
+)
+from etl.utils.const import (
+    unofficial_accounts,
+    university_official_accounts,
+    school_official_accounts,
+    club_official_accounts,
+    company_accounts
+)
 from etl.crawler.base_crawler import BaseCrawler
+from etl.utils.date import parse_date
+from etl.utils.file import clean_filename
 from tqdm import tqdm
+from typing import Any
+from pathlib import Path
+import asyncio
+import json
+import time
+import re
+from datetime import datetime
 
 class Wechat(BaseCrawler):
     """微信公众号爬虫
@@ -70,7 +93,7 @@ class Wechat(BaseCrawler):
                 raise TimeoutError("登录超时")
         except Exception as e:
             # 增加失败后清理
-            self.context.clear_cache()
+            # self.context.clear_cache()  # BrowserContext没有clear_cache方法
             raise e
 
     async def scrape_articles_from_authors(self, scraped_original_urls: set, max_article_num: int, 
@@ -293,22 +316,23 @@ class Wechat(BaseCrawler):
         except Exception as e:
             self.logger.error(f"抓取出错: {e}")
 
-    async def download_article(self, article: dict, save_dir: Path = None, bot_tag: str = 'abstract') -> None:
+    async def download_article(self, article: dict, save_dir: Path = None, bot_tag: str = 'abstract', enable_abstract: bool = True) -> None:
         """下载单篇文章内容
         Args:
             article: 文章信息字典（需包含original_url）
             save_dir: 文章保存目录，如果为None则使用默认目录
             bot_tag: 机器人标签，默认为'abstract'
+            enable_abstract: 是否生成摘要，默认为True
         """
         try:
             title = article.get('title', '未知标题')
             clean_title = clean_filename(title)
             original_url = article['original_url']
             
-            self.logger.debug(f"开始处理文章: {title}, URL: {original_url}")
+            # self.logger.debug(f"开始处理文章: {title}, URL: {original_url}")
             
             md_file = save_dir / f"{clean_title}.md"
-            from etl.transform.wechatmp2md import wechatmp2md_async
+            from etl.processors.wechat import wechatmp2md_async
             try:
                 success = await wechatmp2md_async(original_url, md_file, 'url')
             except Exception as e:
@@ -324,41 +348,54 @@ class Wechat(BaseCrawler):
                 else:
                     self.logger.error(f"转换失败，MD文件内容为空: {md_file}")
                     return
-                from etl.transform.abstract import generate_abstract_async
-                try:
-                    abstract = await generate_abstract_async(md_file, bot_tag=bot_tag)
-                except Exception as e:
-                    self.logger.error(f"生成摘要时发生错误: {e}")
-                    abstract = None
-                if abstract:
+                    
+                # 根据开关决定是否生成摘要
+                if enable_abstract:
+                    from etl.processors import generate_abstract_async
                     try:
-                        # article['content'] = abstract
-                        with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
-                            json.dump(article, f, ensure_ascii=False,indent=4)
-                        with open(save_dir / 'abstract.md', 'w', encoding='utf-8') as f:
-                            f.write(abstract)
-                        self.logger.debug(f"生成摘要成功: {clean_title}")
-                        preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
-                        self.logger.debug(f"原始URL: {original_url}\n摘要内容预览: {preview_abstract}")
+                        abstract = await generate_abstract_async(md_file, bot_tag=bot_tag)
                     except Exception as e:
-                        self.logger.exception(e)
+                        self.logger.error(f"生成摘要时发生错误: {e}")
+                        abstract = None
+                    if abstract:
+                        try:
+                            # article['content'] = abstract
+                            with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                                json.dump(article, f, ensure_ascii=False,indent=4)
+                            with open(save_dir / 'abstract.md', 'w', encoding='utf-8') as f:
+                                f.write(abstract)
+                            self.logger.debug(f"生成摘要成功: {clean_title}")
+                            preview_abstract = abstract[:100] + "..." if len(abstract) > 100 else abstract
+                            self.logger.debug(f"原始URL: {original_url}\n摘要内容预览: {preview_abstract}")
+                        except Exception as e:
+                            self.logger.exception(e)
+                    else:
+                        try:
+                            article['content'] = ""
+                            with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
+                                json.dump(article, f, ensure_ascii=False, indent=4)
+                            self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
+                        except Exception as e:
+                            self.logger.exception(e)
                 else:
+                    # 不生成摘要，直接保存文章信息
                     try:
-                        article['content'] = ""
+                        article['content'] = content  # 使用原始内容
                         with open(save_dir / f"{clean_title}.json", 'w', encoding='utf-8') as f:
                             json.dump(article, f, ensure_ascii=False, indent=4)
-                        self.logger.debug(f"摘要生成失败，已将content置空保存: {clean_title}")
+                        # self.logger.debug(f"跳过摘要生成，保存原始内容: {clean_title}")
                     except Exception as e:
                         self.logger.exception(e)
         except Exception as e:
             self.logger.exception(e)
 
-    async def download(self, time_range: tuple = None, bot_tag: str = 'abstract'):
+    async def download(self, time_range: tuple = None, bot_tag: str = 'abstract', enable_abstract: bool = True):
         """下载爬取到的文章
         
         Args:
             time_range: 可选的时间范围元组 (start_date, end_date)，支持字符串('2025-01-01')或datetime对象
             bot_tag: 机器人标签，默认为'abstract'
+            enable_abstract: 是否生成摘要，默认为True
         """
         # 处理时间范围
         start_date = end_date = None
@@ -370,14 +407,19 @@ class Wechat(BaseCrawler):
         data_dir = self.data_dir
         data_dir.mkdir(parents=True, exist_ok=True)
         
-        # 获取可用的bot_id数量
-        from etl.transform.abstract import get_bot_ids_by_tag
-        bot_ids = get_bot_ids_by_tag(bot_tag)
-        max_concurrency = len(bot_ids)
-        if max_concurrency == 0:
-            self.logger.error(f"没有找到可用的bot_id(标签:{bot_tag})")
-            return
-        self.logger.info(f"找到 {max_concurrency} 个可用的bot_id")
+                  # 获取可用的bot_id数量（仅在启用摘要时需要）
+          if enable_abstract:
+             from etl.processors.abstract import get_bot_ids_by_tag
+             bot_ids = get_bot_ids_by_tag(bot_tag)
+             max_concurrency = len(bot_ids)
+            if max_concurrency == 0:
+                self.logger.error(f"没有找到可用的bot_id(标签:{bot_tag})")
+                return
+            self.logger.info(f"找到 {max_concurrency} 个可用的bot_id")
+        else:
+            # 不生成摘要时，使用更高的并发数
+            max_concurrency = 10
+            self.logger.info(f"摘要生成已禁用，使用并发数: {max_concurrency}")
         
         # 递归查找所有JSON文件
         json_files = list(data_dir.glob('**/*.json'))
@@ -451,7 +493,7 @@ class Wechat(BaseCrawler):
                 # 使用文章所在目录作为保存目录
                 save_dir = json_file.parent
                 # 创建自定义任务，包含文件信息用于进度更新
-                tasks.append((self.download_article(article, save_dir, bot_tag), json_file))
+                tasks.append((self.download_article(article, save_dir, bot_tag, enable_abstract), json_file))
             except Exception as e:
                 self.logger.error(f"处理JSON文件失败: {json_file}, 错误: {e}")
                 failed += 1
@@ -507,12 +549,16 @@ class Wechat(BaseCrawler):
 if __name__ == "__main__":
     async def main():
         """异步主函数"""
-        university_accounts = UNIVERSITY_OFFICIAL_ACCOUNTS
-        wechat = Wechat(authors=university_accounts, debug=True, headless=True, use_proxy=True)
+        accounts = school_official_accounts + club_official_accounts + company_accounts
+        # accounts = university_official_accounts + school_official_accounts + club_official_accounts + company_accounts
+        wechat = Wechat(authors=accounts, debug=True, headless=True, use_proxy=True)
         await wechat.async_init()  # 确保在调用download前初始化
         
+        start_time = "2025-03-13"
+        end_time = "2025-06-06"
+        enable_abstract = False
         try:
-            await wechat.scrape(max_article_num=10, total_max_article_num=1e10, time_range=("2025-01-01", "2025-03-12"))
+            await wechat.scrape(max_article_num=100, total_max_article_num=1e10, time_range=(start_time, end_time))
         finally:
             # 清理cookies并关闭当前页面
             await wechat.context.clear_cookies()
@@ -520,7 +566,7 @@ if __name__ == "__main__":
             # 开新页面
             wechat.page = await wechat.context.new_page()
         
-        await wechat.download(time_range=("2025-01-01", "2025-03-12"))
+        await wechat.download(time_range=(start_time, end_time), enable_abstract=enable_abstract)
 
     # 运行异步主函数
     asyncio.run(main())

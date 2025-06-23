@@ -19,10 +19,14 @@ from llama_index.core.schema import NodeWithScore, BaseNode, IndexNode
 from llama_index.core.storage.docstore import BaseDocumentStore
 from llama_index.core.vector_stores import VectorStoreQuery
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-from etl.embedding.ingestion import get_node_content
+from etl.processors.nodes import get_node_content
 from nltk import PorterStemmer
 from rank_bm25 import BM25Okapi
 from pydantic import ConfigDict, BaseModel, Field
+from qdrant_client import QdrantClient, models
+from elasticsearch import Elasticsearch
+import jieba
+import pickle
 
 from etl.retrieval import logger
 
@@ -89,7 +93,7 @@ def tokenize_and_remove_stopwords(tokenizer, text, stopwords):
 
 
 class BM25Retriever(BaseRetriever):
-    """BM25 retriever implementation."""
+    """BM25 retriever implementation with fast loading support."""
     
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
@@ -134,6 +138,8 @@ class BM25Retriever(BaseRetriever):
             stopwords: List[str] = [""],
             embed_type: int = 0,
             bm25_type: int = 0,
+            fast_mode: bool = True,  # 新增：快速模式，跳过索引构建
+            lazy_init: bool = False,  # 新增：延迟初始化
     ) -> None:
         if not nodes:
             raise ValueError("Nodes list cannot be empty")
@@ -149,23 +155,52 @@ class BM25Retriever(BaseRetriever):
         self._nodes = nodes
         self._tokenizer = tokenizer
         self.stopwords = stopwords
+        self._corpus = None
+        self.bm25 = None
+        self._initialized = False
+        
+        # 根据模式决定是否立即初始化
+        if not fast_mode and not lazy_init:
+            self._build_index()
+        elif fast_mode:
+            logger.info("BM25Retriever使用快速模式，跳过索引构建")
+            # 快速模式：延迟到第一次查询时再构建索引
+            self._initialized = False
+        
+        self.filter_dict = None
+        
+        super().__init__(
+            callback_manager=callback_manager,
+            object_map=object_map,
+            objects=objects,
+            verbose=verbose,
+        )
+    
+    def _build_index(self):
+        """构建BM25索引（耗时操作）"""
+        if self._initialized:
+            return
+            
+        logger.info(f"开始构建BM25索引，节点数量: {len(self._nodes)}")
+        start_time = time.time()
         
         # 处理语料库
         self._corpus = []
-        for node in self._nodes:
+        for i, node in enumerate(self._nodes):
+            if i % 10000 == 0:  # 每处理1万个节点显示一次进度
+                logger.debug(f"已处理 {i}/{len(self._nodes)} 个节点")
+            
             content = get_node_content(node, self.embed_type)
-            tokens = tokenize_and_remove_stopwords(self._tokenizer, content, stopwords=stopwords)
+            tokens = tokenize_and_remove_stopwords(self._tokenizer, content, stopwords=self.stopwords)
             self._corpus.append(tokens)
-            
-        if not any(self._corpus):  # 检查是否所有文档都是空的
+        
+        if not any(self._corpus):
             raise ValueError("All documents are empty after tokenization")
-            
+        
+        # 构建BM25索引
         try:
             if self.bm25_type == 1:
-                self.bm25 = bm25s.BM25(
-                    k1=self.k1,
-                    b=self.b,
-                )
+                self.bm25 = bm25s.BM25(k1=self.k1, b=self.b)
                 self.bm25.index(self._corpus)
             else:
                 self.bm25 = BM25Okapi(
@@ -176,15 +211,104 @@ class BM25Retriever(BaseRetriever):
                 )
         except Exception as e:
             raise ValueError(f"Failed to initialize BM25: {str(e)}")
-            
-        self.filter_dict = None
         
-        super().__init__(
-            callback_manager=callback_manager,
-            object_map=object_map,
-            objects=objects,
-            verbose=verbose,
-        )
+        self._initialized = True
+        end_time = time.time()
+        logger.info(f"BM25索引构建完成，耗时: {end_time - start_time:.2f}秒")
+    
+    def _ensure_initialized(self):
+        """确保索引已初始化"""
+        if not self._initialized:
+            self._build_index()
+    
+    @classmethod
+    def from_pickle_fast(
+        cls,
+        nodes_path: str,
+        tokenizer: Optional[Callable[[str], List[str]]] = None,
+        stopwords: List[str] = None,
+        similarity_top_k: int = DEFAULT_SIMILARITY_TOP_K,
+        **kwargs
+    ) -> "BM25Retriever":
+        """
+        从pickle文件快速加载BM25检索器（推荐方法）
+        
+        Args:
+            nodes_path: BM25文件路径
+            tokenizer: 分词器
+            stopwords: 停用词列表
+            similarity_top_k: 返回结果数量
+            **kwargs: 其他参数
+        """
+        import pickle
+        
+        logger.info(f"从文件快速加载BM25数据: {nodes_path}")
+        start_time = time.time()
+        
+        # 检查文件是否存在
+        if not os.path.exists(nodes_path):
+            raise FileNotFoundError(f"BM25文件不存在: {nodes_path}")
+        
+        # 设置默认值
+        if tokenizer is None:
+            import jieba
+            tokenizer = jieba
+        
+        if stopwords is None:
+            stopwords = []
+        
+        # 首先尝试检查文件内容类型
+        try:
+            with open(nodes_path, 'rb') as f:
+                data = pickle.load(f)
+            
+            # 情况1：新格式 - 包含完整状态的字典
+            if isinstance(data, dict) and 'bm25_index' in data:
+                logger.info("检测到新格式BM25文件，使用快速加载...")
+                end_time = time.time()
+                logger.info(f"文件读取耗时: {end_time - start_time:.2f}秒")
+                
+                # 重新打开文件并使用load_from_pickle方法
+                instance = cls.load_from_pickle(nodes_path, tokenizer)
+                
+                # 更新参数（如果提供的话）
+                if similarity_top_k != DEFAULT_SIMILARITY_TOP_K:
+                    instance.similarity_top_k = similarity_top_k
+                
+                return instance
+                
+            # 情况2：旧格式 - 完整的BM25检索器对象（已废弃，应该不会出现）
+            elif isinstance(data, cls):
+                logger.info(f"加载完整BM25检索器成功，节点数量: {len(data._nodes)}，耗时: {time.time() - start_time:.2f}秒")
+                if similarity_top_k != DEFAULT_SIMILARITY_TOP_K:
+                    data.similarity_top_k = similarity_top_k
+                return data
+                
+            # 情况3：最旧格式 - 仅节点列表，需要重新构建索引
+            elif isinstance(data, list):
+                nodes = data
+                end_time = time.time()
+                logger.info(f"加载节点数据完成，节点数量: {len(nodes)}，耗时: {end_time - start_time:.2f}秒")
+                logger.info("检测到旧格式文件（仅节点），正在构建BM25索引...")
+                
+                # 创建检索器实例并立即构建索引
+                instance = cls(
+                    nodes=nodes,
+                    tokenizer=tokenizer,
+                    stopwords=stopwords,
+                    similarity_top_k=similarity_top_k,
+                    fast_mode=False,  # 立即构建索引
+                    **kwargs
+                )
+                
+                return instance
+                
+            else:
+                raise ValueError(f"不支持的pickle文件格式: {type(data)}")
+                
+        except Exception as e:
+            logger.error(f"加载BM25文件失败: {e}")
+            raise
 
     def filter(self, scores):
         top_n = scores.argsort()[::-1]
@@ -208,6 +332,9 @@ class BM25Retriever(BaseRetriever):
         return nodes
 
     def get_scores(self, query, docs=None):
+        # 确保索引已初始化
+        self._ensure_initialized()
+        
         if docs is None:
             bm25 = self.bm25
         else:
@@ -280,6 +407,294 @@ class BM25Retriever(BaseRetriever):
 
         return nodes
 
+    def save_to_pickle(self, filepath: str):
+        """
+        保存BM25检索器到pickle文件，排除不能序列化的对象
+        """
+        if not self._initialized:
+            raise ValueError("BM25检索器未初始化，无法保存")
+        
+        # 创建可序列化的状态字典
+        state = {
+            'nodes': self._nodes,
+            'corpus': self._corpus,
+            'bm25_data': {
+                'type': self.bm25_type,
+                'k1': self.k1,
+                'b': self.b,
+                'epsilon': self.epsilon,
+            },
+            'stopwords': self.stopwords,
+            'similarity_top_k': self.similarity_top_k,
+            'embed_type': self.embed_type,
+            'initialized': True
+        }
+        
+        # 保存BM25索引数据
+        if self.bm25_type == 1:
+            # bm25s类型，保存其内部数据
+            state['bm25_index'] = {
+                'doc_freqs': self.bm25.doc_freqs,
+                'idf': self.bm25.idf,
+                'doc_lens': self.bm25.doc_lens,
+                'avgdl': self.bm25.avgdl,
+                'vocab': self.bm25.vocab,
+                'corpus_size': self.bm25.corpus_size
+            }
+        else:
+            # BM25Okapi类型，保存其内部数据
+            state['bm25_index'] = {
+                'doc_freqs': self.bm25.doc_freqs,
+                'idf': self.bm25.idf,
+                'doc_len': self.bm25.doc_len,
+                'avgdl': self.bm25.avgdl,
+                'corpus': self._corpus  # BM25Okapi需要原始语料库
+            }
+        
+        import pickle
+        with open(filepath, 'wb') as f:
+            pickle.dump(state, f)
+        
+        logger.info(f"BM25检索器状态已保存到: {filepath}")
+
+    @classmethod
+    def load_from_pickle(cls, filepath: str, tokenizer=None) -> "BM25Retriever":
+        """
+        从pickle文件加载BM25检索器状态并重建对象
+        """
+        import pickle
+        
+        with open(filepath, 'rb') as f:
+            state = pickle.load(f)
+        
+        # 设置默认tokenizer
+        if tokenizer is None:
+            import jieba
+            tokenizer = jieba
+        
+        # 创建实例（不构建索引）
+        instance = cls(
+            nodes=state['nodes'],
+            tokenizer=tokenizer,
+            stopwords=state['stopwords'],
+            similarity_top_k=state['similarity_top_k'],
+            embed_type=state['embed_type'],
+            bm25_type=state['bm25_data']['type'],
+            fast_mode=True,  # 跳过自动构建
+            lazy_init=True
+        )
+        
+        # 设置参数
+        instance.k1 = state['bm25_data']['k1']
+        instance.b = state['bm25_data']['b']
+        instance.epsilon = state['bm25_data']['epsilon']
+        instance._corpus = state['corpus']
+        
+        # 重建BM25索引对象
+        if state['bm25_data']['type'] == 1:
+            # bm25s类型
+            import bm25s
+            instance.bm25 = bm25s.BM25(k1=instance.k1, b=instance.b)
+            # 恢复内部状态
+            bm25_data = state['bm25_index']
+            instance.bm25.doc_freqs = bm25_data['doc_freqs']
+            instance.bm25.idf = bm25_data['idf']
+            instance.bm25.doc_lens = bm25_data['doc_lens']
+            instance.bm25.avgdl = bm25_data['avgdl']
+            instance.bm25.vocab = bm25_data['vocab']
+            instance.bm25.corpus_size = bm25_data['corpus_size']
+        else:
+            # BM25Okapi类型
+            from rank_bm25 import BM25Okapi
+            instance.bm25 = BM25Okapi(
+                state['bm25_index']['corpus'],
+                k1=instance.k1,
+                b=instance.b,
+                epsilon=instance.epsilon
+            )
+        
+        instance._initialized = True
+        logger.info(f"BM25检索器已从 {filepath} 恢复，节点数量: {len(instance._nodes)}")
+        
+        return instance
+
+
+class ElasticsearchRetriever(BaseRetriever):
+    """
+    使用Elasticsearch进行检索，支持通配符查询。
+    """
+    def __init__(
+        self, 
+        index_name: str, 
+        es_host: str = 'localhost', 
+        es_port: int = 9200, 
+        similarity_top_k: int = 10,
+        callback_manager: Optional[CallbackManager] = None,
+    ):
+        """
+        初始化Elasticsearch检索器。
+
+        Args:
+            index_name (str): 要查询的Elasticsearch索引名称。
+            es_host (str): Elasticsearch主机名。
+            es_port (int): Elasticsearch端口号。
+            similarity_top_k (int): 返回结果的数量。
+        """
+        self.index_name = index_name
+        self.similarity_top_k = similarity_top_k
+        try:
+            self.es_client = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': 'http'}])
+            if not self.es_client.ping():
+                raise ConnectionError("无法连接到Elasticsearch")
+        except Exception as e:
+            logger.error(f"无法连接到Elasticsearch: {e}")
+            self.es_client = None
+
+        super().__init__(callback_manager=callback_manager)
+
+    def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
+        """
+        使用通配符查询在Elasticsearch中搜索。
+
+        Args:
+            query_bundle (QueryBundle): 包含查询字符串。
+
+        Returns:
+            List[NodeWithScore]: 检索到的节点列表。
+        """
+        if not self.es_client:
+            return []
+            
+        query = query_bundle.query_str
+        
+        # 构建通配符查询
+        if '*' in query or '?' in query:
+            should_queries = []
+            
+            # 策略1: 在keyword字段中使用通配符（用于精确匹配完整标题）
+            should_queries.extend([
+                {"wildcard": {"title.keyword": {"value": query, "case_insensitive": True}}},
+                {"wildcard": {"content.keyword": {"value": query, "case_insensitive": True}}}
+            ])
+            
+            # 策略2: 在text字段中使用通配符
+            should_queries.extend([
+                {"wildcard": {"title": {"value": query, "case_insensitive": True}}},
+                {"wildcard": {"content": {"value": query, "case_insensitive": True}}}
+            ])
+            
+            # 策略3: 对于简单的前缀后缀匹配，拆分查询
+            if '*' in query:
+                # 处理前缀匹配 如: "南开*"
+                if query.endswith('*') and '*' not in query[:-1]:
+                    prefix = query[:-1]
+                    should_queries.extend([
+                        {"prefix": {"title": {"value": prefix, "case_insensitive": True}}},
+                        {"prefix": {"content": {"value": prefix, "case_insensitive": True}}}
+                    ])
+                
+                # 处理后缀匹配 如: "*大学"
+                elif query.startswith('*') and '*' not in query[1:]:
+                    suffix = query[1:]
+                    should_queries.extend([
+                        {"suffix": {"title": {"value": suffix, "case_insensitive": True}}},
+                        {"suffix": {"content": {"value": suffix, "case_insensitive": True}}}
+                    ])
+                
+                # 处理中间匹配 如: "南开*大学" 
+                elif query.count('*') == 1 and not query.startswith('*') and not query.endswith('*'):
+                    parts = query.split('*')
+                    if len(parts) == 2:
+                        prefix, suffix = parts
+                        # 需要同时包含前缀和后缀
+                        should_queries.append({
+                            "bool": {
+                                "must": [
+                                    {"prefix": {"title": {"value": prefix, "case_insensitive": True}}},
+                                    {"suffix": {"title": {"value": suffix, "case_insensitive": True}}}
+                                ]
+                            }
+                        })
+                        should_queries.append({
+                            "bool": {
+                                "must": [
+                                    {"prefix": {"content": {"value": prefix, "case_insensitive": True}}},
+                                    {"suffix": {"content": {"value": suffix, "case_insensitive": True}}}
+                                ]
+                            }
+                        })
+            
+            # 策略4: 对于?查询，转换为模糊查询或者更宽泛的匹配
+            if '?' in query:
+                # 将?替换为空，做包含查询作为备选
+                query_without_wildcards = query.replace('?', '').replace('*', '')
+                if query_without_wildcards:
+                    should_queries.extend([
+                        {"match": {"title": {"query": query_without_wildcards, "fuzziness": "AUTO"}}},
+                        {"match": {"content": {"query": query_without_wildcards, "fuzziness": "AUTO"}}}
+                    ])
+            
+            # 策略5: query_string作为最后的尝试
+            should_queries.append({
+                "query_string": {
+                    "query": query,
+                    "fields": ["title", "content"],
+                    "allow_leading_wildcard": True,
+                    "analyze_wildcard": True,
+                    "lenient": True
+                }
+            })
+            
+            es_query = {
+                "query": {
+                    "bool": {
+                        "should": should_queries,
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+        else:
+            # 如果没有通配符，使用普通的匹配查询
+            es_query = {
+                "query": {
+                    "bool": {
+                        "should": [
+                                {"match": {"title": query}},
+                                {"match": {"content": query}}
+                        ],
+                        "minimum_should_match": 1
+                    }
+                }
+            }
+
+        try:
+            response = self.es_client.search(
+                index=self.index_name,
+                body=es_query,
+                size=self.similarity_top_k
+            )
+            
+            nodes_with_scores = []
+            for hit in response['hits']['hits']:
+                source = hit['_source']
+                node = IndexNode(
+                    text=source.get('content', ''),
+                    index_id=hit['_id'],  # 添加必需的 index_id 字段
+                    metadata={
+                        'title': source.get('title', ''),
+                        'url': source.get('url', ''),
+                        'publish_time': source.get('publish_time'),
+                        'pagerank_score': source.get('pagerank_score', 0.0),  # 添加PageRank分数
+                        'source': source.get('source', ''),  # 添加数据源信息
+                    }
+                )
+                nodes_with_scores.append(NodeWithScore(node=node, score=hit['_score']))
+            
+            return nodes_with_scores
+        except Exception as e:
+            logger.error(f"Elasticsearch搜索出错: {e}")
+            return []
+
 
 class HybridRetriever(BaseRetriever):
     def __init__(
@@ -288,6 +703,7 @@ class HybridRetriever(BaseRetriever):
             sparse_retriever: BM25Retriever,
             retrieval_type=1,
             topk=256,
+            pagerank_weight=0.1,
     ):
         self.dense_retriever = dense_retriever
         self.sparse_retriever = sparse_retriever
@@ -295,6 +711,7 @@ class HybridRetriever(BaseRetriever):
         self.filters = None
         self.filter_dict = None
         self.topk = topk
+        self.pagerank_weight = pagerank_weight
         super().__init__()
 
     @classmethod
@@ -321,8 +738,8 @@ class HybridRetriever(BaseRetriever):
         return all_nodes[:min(topk, len(all_nodes))]
 
     @classmethod
-    def reciprocal_rank_fusion(cls, list_of_list_ranks_system, K=60, topk=256):
-        """Reciprocal rank fusion method."""
+    def reciprocal_rank_fusion(cls, list_of_list_ranks_system, K=60, topk=256, pagerank_weight=0.1):
+        """Reciprocal rank fusion method with PageRank integration."""
         from collections import defaultdict
         
         if not list_of_list_ranks_system or all(not lst for lst in list_of_list_ranks_system):
@@ -337,9 +754,18 @@ class HybridRetriever(BaseRetriever):
             for rank, item in enumerate(rank_list, 1):
                 content = item.node.get_content()
                 content_to_node[content] = item
-                rrf_scores[content] += 1 / (rank + K)
+                
+                # 计算RRF分数
+                rrf_score = 1 / (rank + K)
+                
+                # 获取PageRank分数
+                pagerank_score = item.node.metadata.get('pagerank_score', 0.0)
+                
+                # 结合RRF和PageRank分数（使用配置的权重）
+                final_score = rrf_score + pagerank_weight * float(pagerank_score)
+                rrf_scores[content] += final_score
 
-        # 按RRF分数排序
+        # 按最终分数排序
         sorted_items = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
         
         # 构建结果列表
@@ -374,7 +800,8 @@ class HybridRetriever(BaseRetriever):
             # 使用 reciprocal rank fusion 合并结果
             all_nodes = self.reciprocal_rank_fusion(
                 [sparse_nodes, dense_nodes], 
-                topk=self.topk
+                topk=self.topk,
+                pagerank_weight=self.pagerank_weight
             )
             
             return all_nodes
@@ -385,5 +812,60 @@ class HybridRetriever(BaseRetriever):
             return []
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
-        """Synchronous version - not maintained."""
-        raise NotImplementedError("Synchronous retrieval is not supported. Please use aretrieve instead.")
+        """Synchronous version."""
+        try:
+            if self.retrieval_type == 2:
+                # BM25只进行同步检索
+                sparse_nodes = self.sparse_retriever._retrieve(query_bundle)
+                return sparse_nodes
+                
+            if self.retrieval_type == 1:
+                # 向量检索
+                dense_nodes = self.dense_retriever._retrieve(query_bundle)
+                return dense_nodes
+
+            # Hybrid retrieval (type 3)
+            # 同步执行两个检索
+            sparse_nodes = self.sparse_retriever._retrieve(query_bundle)
+            dense_nodes = self.dense_retriever._retrieve(query_bundle)
+            
+            # 使用 reciprocal rank fusion 合并结果
+            all_nodes = self.reciprocal_rank_fusion(
+                [sparse_nodes, dense_nodes], 
+                topk=self.topk,
+                pagerank_weight=self.pagerank_weight
+            )
+            
+            return all_nodes
+            
+        except Exception as e:
+            print(f"Error in hybrid retrieval: {str(e)}")
+            # 返回空列表而不是失败
+            return []
+
+
+class VectorRetriever:
+    """
+    从向量数据库（如Qdrant）中检索相关文档。
+    """
+    def __init__(self, vector_store: QdrantVectorStore, embed_model: BaseEmbedding):
+        self.vector_store = vector_store
+        self.embed_model = embed_model
+
+    def search(self, query: str) -> List[Dict[str, Any]]:
+        query_embedding = self.embed_model.get_query_embedding(query)
+        vector_store_query = VectorStoreQuery(
+            query_embedding,
+            similarity_top_k=2,
+        )
+        query_result = self.vector_store.query(
+            vector_store_query,
+        )
+
+        results = []
+        for node, similarity in zip(query_result.nodes, query_result.similarities):
+            results.append({
+                'node': node,
+                'similarity': similarity
+            })
+        return results
