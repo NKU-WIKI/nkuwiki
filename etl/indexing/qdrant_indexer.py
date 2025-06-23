@@ -14,20 +14,19 @@ from typing import List, Dict, Any, Optional
 import aiofiles
 import aiofiles.os
 from tqdm.asyncio import tqdm
-
-# 添加项目根目录到路径
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
-from config import Config
-from etl.load import db_core
-from etl.embedding.hf_embeddings import HuggingFaceEmbedding
 from llama_index.core.schema import BaseNode, TextNode
+from llama_index.core.node_parser import JSONNodeParser
+from llama_index.core.text_splitter import SentenceSplitter
 from llama_index.core import VectorStoreIndex, StorageContext
 from llama_index.vector_stores.qdrant import QdrantVectorStore
-from qdrant_client import QdrantClient, models, AsyncQdrantClient
-# 导入ETL模块的统一路径配置
-from etl import QDRANT_URL, COLLECTION_NAME, VECTOR_SIZE, MODELS_PATH, RAW_PATH
+from qdrant_client import models, AsyncQdrantClient
+from qdrant_client.http.models import UpdateStatus
+from etl.embedding.hf_embeddings import HuggingFaceEmbedding
+from config import Config
+from core.utils.logger import register_logger
+from etl import QDRANT_URL, QDRANT_API_KEY, EMBEDDING_MODEL_PATH, CHUNK_SIZE, CHUNK_OVERLAP, MODELS_PATH, QDRANT_BATCH_SIZE
 
-logger = logging.getLogger(__name__)
+logger = register_logger("etl.indexing.qdrant_indexer")
 
 
 class QdrantIndexer:
@@ -36,18 +35,55 @@ class QdrantIndexer:
     负责从MySQL数据构建Qdrant向量检索索引，支持语义嵌入和文本分块。
     """
     
-    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        self.config = config
-        self.logger = logger or logging.getLogger(__name__)
+    def __init__(self, collection_name: str):
+        """
+        初始化QdrantIndexer。
+
+        Args:
+            collection_name (str): 要操作的Qdrant集合的名称。
+        """
+        if not collection_name:
+            raise ValueError("集合名称不能为空")
+
+        self.collection_name = collection_name
+
+        if not QDRANT_URL:
+            raise ValueError("Qdrant URL未在配置中设置")
+        if not EMBEDDING_MODEL_PATH:
+            raise ValueError("嵌入模型路径未在配置中设置")
+
+        self.logger = register_logger(f"{__name__}.{self.__class__.__name__}")
         
-        # 使用ETL模块统一配置的参数
-        self.collection_name = config.get('etl.data.qdrant.collection', COLLECTION_NAME)
-        self.qdrant_url = config.get('etl.data.qdrant.url', QDRANT_URL)
-        self.embedding_model = config.get('etl.embedding.name', 'BAAI/bge-large-zh-v1.5')
-        self.vector_size = config.get('etl.data.qdrant.vector_size', VECTOR_SIZE)
-        self.chunk_size = config.get('etl.chunking.chunk_size', 512)
-        self.chunk_overlap = config.get('etl.chunking.chunk_overlap', 200)
-        
+        self.client = AsyncQdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY, prefer_grpc=True)
+        self.embedding_model_name = EMBEDDING_MODEL_PATH
+        self.parser = JSONNodeParser()
+        self.chunk_size = CHUNK_SIZE
+        self.chunk_overlap = CHUNK_OVERLAP
+        self.splitter = SentenceSplitter(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
+
+        # 将嵌入模型初始化推迟到实际需要时
+        self.embed_model = None
+
+    async def _ensure_collection_exists(self):
+        """确保Qdrant集合存在，如果不存在则创建"""
+        try:
+            collections_response = await self.client.get_collections()
+            existing_collections = {collection.name for collection in collections_response.collections}
+            
+            if self.collection_name in existing_collections:
+                self.logger.info(f"集合 '{self.collection_name}' 已存在。")
+            else:
+                self.logger.info(f"集合 '{self.collection_name}' 不存在，正在创建...")
+                await self.client.create_collection(
+                    collection_name=self.collection_name,
+                    vectors_config=models.VectorParams(size=1024, distance=models.Distance.COSINE) # size需要与模型匹配
+                )
+                self.logger.info(f"集合 '{self.collection_name}' 创建成功。")
+        except Exception as e:
+            self.logger.error(f"检查或创建集合 '{self.collection_name}' 时发生错误: {e}")
+            # 抛出异常以中断后续操作
+            raise
+
     async def build_indexes(self, 
                      limit: int = None, 
                      batch_size: int = 100,
@@ -55,7 +91,8 @@ class QdrantIndexer:
                      data_source: str = "raw_files",
                      start_batch: int = 0,
                      max_batches: int = None,
-                     incremental: bool = False) -> Dict[str, Any]:
+                     incremental: bool = False,
+                     source_path: Optional[Path] = None) -> Dict[str, Any]:
         """
         构建Qdrant向量索引
         
@@ -63,10 +100,11 @@ class QdrantIndexer:
             limit: 限制处理的记录数量，None表示处理所有
             batch_size: 批处理大小
             test_mode: 测试模式，不实际创建索引
-            data_source: 数据源类型 ("raw_files"=混合模式, "mysql"=仅MySQL, "raw_only"=仅原始文件)
+            data_source: 数据源类型 ("raw_files", "mysql", "raw_only", "custom_path")
             start_batch: 从第几批开始处理（分批构建）
             max_batches: 最大批次数，None表示处理所有批次
             incremental: 是否增量构建（不删除现有集合）
+            source_path: 当 data_source 为 "custom_path" 时，指定要扫描的目录路径
             
         Returns:
             构建结果统计
@@ -74,19 +112,22 @@ class QdrantIndexer:
         self.logger.info(f"开始构建Qdrant向量索引，集合: {self.collection_name}")
         
         try:
-            # 初始化嵌入模型
-            embed_model = await self._init_embedding_model()
-            if not embed_model:
-                return {"success": False, "error": "嵌入模型初始化失败", "message": "嵌入模型初始化失败"}
+            # 1. 确认集合存在
+            await self._ensure_collection_exists()
+
+            # 2. 如果是测试模式，只加载节点，不进行索引
+            if test_mode:
+                self.logger.info("测试模式：跳过索引构建")
+                nodes = await self._load_nodes_recursively(source_path)
+                return {"success": True, "nodes": nodes}
             
-            # 初始化异步Qdrant客户端
-            qdrant_client = AsyncQdrantClient(url=self.qdrant_url)
-            
-            # 创建或重建集合
-            if not test_mode:
-                await self._setup_collection(qdrant_client, incremental=incremental)
-            
-            # 根据数据源类型加载数据
+            # 3. 初始化嵌入模型 (仅在非测试模式下)
+            if self.embed_model is None:
+                self.embed_model = await self._init_embedding_model()
+                if self.embed_model is None:
+                    return {"success": False, "error": "嵌入模型初始化失败"}
+
+            # 4. 加载和处理节点
             if data_source == "raw_files":
                 print("📁 混合模式：从原始文件+PageRank数据...")
                 nodes = await self._load_nodes_hybrid(limit)
@@ -99,6 +140,13 @@ class QdrantIndexer:
                 print("📁 仅从原始JSON文件加载数据...")
                 nodes = await self._load_and_chunk_nodes_from_raw_files(limit)
                 self.logger.info(f"从原始文件加载了 {len(nodes)} 个节点")
+            elif data_source == "custom_path":
+                if not source_path:
+                    self.logger.error("使用 'custom_path' 数据源时必须提供 source_path")
+                    return {"success": False, "message": "缺少 source_path 参数"}
+                print(f"📂 从自定义路径递归加载数据: {source_path}")
+                nodes = await self._load_nodes_recursively(source_path, limit)
+                self.logger.info(f"从自定义路径 {source_path} 加载了 {len(nodes)} 个节点")
             else:
                 print("📁 默认混合模式：从原始文件+PageRank数据...")
                 nodes = await self._load_nodes_hybrid(limit)
@@ -111,13 +159,13 @@ class QdrantIndexer:
             # 构建向量索引
             if not test_mode:
                 vector_store = QdrantVectorStore(
-                    aclient=qdrant_client,
+                    aclient=self.client,
                     collection_name=self.collection_name
                 )
                 
                 # 为节点生成嵌入（带进度条）
                 print("🔮 生成向量嵌入...")
-                nodes = await self._generate_embeddings_with_progress(embed_model, nodes, batch_size)
+                nodes = await self._generate_embeddings_with_progress(self.embed_model, nodes, batch_size)
 
                 # 异步批量添加节点到Qdrant（带进度条）
                 print("📤 上传向量到Qdrant...")
@@ -129,11 +177,12 @@ class QdrantIndexer:
             
             print("✅ Qdrant向量索引构建完成!")
             return {
+                "nodes": nodes,
                 "total_nodes": len(nodes),
                 "success": True,
                 "collection_name": self.collection_name,
-                "vector_size": self.vector_size,
-                "embedding_model": self.embedding_model,
+                "vector_size": self.chunk_size,
+                "embedding_model": self.embedding_model_name,
                 "data_source": data_source,
                 "message": f"成功构建Qdrant索引，包含 {len(nodes)} 个向量"
             }
@@ -254,9 +303,9 @@ class QdrantIndexer:
                 os.environ['HF_HUB_CACHE'] = models_path
                 os.environ['SENTENCE_TRANSFORMERS_HOME'] = models_path
                 
-                self.logger.info(f"初始化嵌入模型: {self.embedding_model}")
+                self.logger.info(f"初始化嵌入模型: {self.embedding_model_name}")
                 embed_model = HuggingFaceEmbedding(
-                    model_name=self.embedding_model,
+                    model_name=self.embedding_model_name,
                     device='cpu'  # 强制使用CPU
                 )
                 
@@ -303,11 +352,11 @@ class QdrantIndexer:
             
             # 创建新集合（仅在非增量模式或集合不存在时）
             if not incremental or self.collection_name not in existing_collections:
-                self.logger.info(f"创建新集合: {self.collection_name}, 向量维度: {self.vector_size}")
+                self.logger.info(f"创建新集合: {self.collection_name}, 向量维度: {self.chunk_size}")
                 await client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=models.VectorParams(
-                        size=self.vector_size,
+                        size=self.chunk_size,
                         distance=models.Distance.COSINE
                     )
                 )
@@ -615,7 +664,7 @@ class QdrantIndexer:
                 updated_count = 0
                 with tqdm(raw_nodes, desc="补充PageRank分数", unit="节点") as pbar:
                     for node in pbar:
-                        url = node.metadata.get('url', '')
+                        url = node.metadata.get('original_url', '')
                         if url in pagerank_mapping:
                             node.metadata['pagerank_score'] = float(pagerank_mapping[url])
                             updated_count += 1
@@ -713,6 +762,223 @@ class QdrantIndexer:
             return {"status": "error", "error_message": str(e)}
         finally:
             await client.close()
+
+    async def _load_nodes_recursively(self, data_path: Path, limit: int = None) -> List[BaseNode]:
+        """
+        从指定的目录递归加载所有.json文件作为节点。
+        
+        Args:
+            data_path: 要扫描的根目录路径
+            limit: 最大加载节点数
+            
+        Returns:
+            加载的TextNode列表
+        """
+        self.logger.info(f"从目标数据目录递归加载节点: {data_path}")
+        
+        if not await aiofiles.os.path.isdir(data_path):
+            self.logger.warning(f"目标数据目录不存在: {data_path}")
+            return []
+
+        nodes = []
+        
+        # 使用Path.rglob进行递归搜索
+        json_files = list(data_path.rglob("*.json"))
+        
+        if not json_files:
+            self.logger.warning(f"在目录 {data_path} 下未找到任何 .json 文件。")
+            return []
+            
+        self.logger.info(f"在 {data_path} 中找到 {len(json_files)} 个 .json 文件，开始处理...")
+
+        with tqdm(total=len(json_files), desc=f"递归加载 {data_path.name}", unit="file") as pbar:
+            for file_path in json_files:
+                if limit and len(nodes) >= limit:
+                    self.logger.info(f"已达到处理上限 {limit}，停止加载。")
+                    break
+                
+                try:
+                    async with aiofiles.open(file_path, mode='r', encoding='utf-8') as f:
+                        content = await f.read()
+                        # 跳过空文件
+                        if not content.strip():
+                            continue
+                        record = json.loads(content)
+                        
+                        platform = record.get("platform", "unknown")
+                        node = await self._create_node_from_record(record, platform, file_path)
+                        if node:
+                            nodes.append(node)
+                            
+                except json.JSONDecodeError:
+                    self.logger.warning(f"无法解析JSON文件: {file_path}")
+                except Exception as e:
+                    self.logger.error(f"处理文件 {file_path} 时出错: {e}")
+                
+                pbar.update(1)
+                
+        self.logger.info(f"从目录 {data_path} 的 {len(json_files)} 个文件中加载了 {len(nodes)} 个节点")
+        return nodes
+
+    async def build_from_nodes(self,
+                             nodes: List[BaseNode],
+                             batch_size: int = QDRANT_BATCH_SIZE,
+                             test_mode: bool = False) -> Dict[str, Any]:
+        """
+        从预先加载的节点列表构建Qdrant向量索引。
+
+        Args:
+            nodes: 要处理的TextNode节点列表
+            batch_size: 批处理大小
+            test_mode: 测试模式，不实际创建索引
+
+        Returns:
+            构建结果统计
+        """
+        self.logger.info(f"开始从 {len(nodes)} 个预加载节点构建Qdrant索引，集合: {self.collection_name}")
+
+        try:
+            await self._ensure_collection_exists()
+
+            if not nodes:
+                self.logger.warning("节点列表为空，无需建立索引。")
+                return {"success": True, "nodes": [], "message": "节点列表为空"}
+
+            if test_mode:
+                self.logger.info("测试模式：已接收节点，跳过索引构建。")
+                return {"success": True, "nodes": nodes}
+
+            if self.embed_model is None:
+                self.embed_model = await self._init_embedding_model()
+                if self.embed_model is None:
+                    return {"success": False, "error": "嵌入模型初始化失败"}
+
+            vector_store = QdrantVectorStore(
+                aclient=self.client,
+                collection_name=self.collection_name
+            )
+
+            self.logger.info("🔮 生成向量嵌入...")
+            nodes = await self._generate_embeddings_with_progress(self.embed_model, nodes, batch_size)
+
+            self.logger.info("📤 上传向量到Qdrant...")
+            await self._upload_to_qdrant_with_progress(vector_store, nodes, batch_size)
+
+            self.logger.info(f"Qdrant向量索引构建完成，集合: {self.collection_name}")
+
+            return {
+                "total_nodes": len(nodes),
+                "success": True,
+                "collection_name": self.collection_name,
+                "message": f"成功从 {len(nodes)} 个预加载节点构建了索引"
+            }
+
+        except Exception as e:
+            self.logger.exception(f"从预加载节点构建Qdrant索引时出错: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def build_indexes_from_files(self,
+                                     file_paths: List[Path],
+                                     batch_size: int = 128,
+                                     test_mode: bool = False) -> Dict[str, Any]:
+        """
+        从指定的文件路径列表构建Qdrant向量索引。
+
+        Args:
+            file_paths: 要处理的JSON文件的路径列表
+            batch_size: 批处理大小
+            test_mode: 测试模式，不实际创建索引，仅加载节点
+
+        Returns:
+            构建结果统计
+        """
+        self.logger.info(f"开始从 {len(file_paths)} 个文件构建Qdrant索引，集合: {self.collection_name}")
+        
+        try:
+            await self._ensure_collection_exists()
+
+            # 1. 从文件列表加载和分块节点
+            nodes = await self._load_nodes_from_file_list(file_paths)
+            if not nodes:
+                self.logger.warning("从提供的文件列表中没有加载到任何节点。")
+                return {"success": True, "nodes": [], "message": "没有加载到节点"}
+
+            # 2. 如果是测试模式，加载完节点后直接返回
+            if test_mode:
+                self.logger.info("测试模式：已加载节点，跳过索引构建。")
+                return {"success": True, "nodes": nodes}
+            
+            # 3. 初始化嵌入模型
+            if self.embed_model is None:
+                self.embed_model = await self._init_embedding_model()
+                if self.embed_model is None:
+                    return {"success": False, "error": "嵌入模型初始化失败"}
+
+            # 4. 构建向量索引
+            vector_store = QdrantVectorStore(
+                aclient=self.client,
+                collection_name=self.collection_name
+            )
+            
+            self.logger.info("🔮 生成向量嵌入...")
+            nodes = await self._generate_embeddings_with_progress(self.embed_model, nodes, batch_size)
+
+            self.logger.info("📤 上传向量到Qdrant...")
+            await self._upload_to_qdrant_with_progress(vector_store, nodes, batch_size)
+            
+            self.logger.info(f"Qdrant向量索引构建完成，集合: {self.collection_name}")
+            
+            return {
+                "nodes": nodes,
+                "total_nodes": len(nodes),
+                "success": True,
+                "collection_name": self.collection_name,
+                "message": f"成功从 {len(file_paths)} 个文件构建了 {len(nodes)} 个向量"
+            }
+            
+        except Exception as e:
+            self.logger.exception(f"从文件列表构建Qdrant索引时出错: {e}")
+            return {"success": False, "error": str(e)}
+
+    async def _load_nodes_from_file_list(self, file_paths: List[Path]) -> List[BaseNode]:
+        """
+        从一个文件路径列表加载、解析和分块节点。
+        
+        Args:
+            file_paths: JSON文件的路径列表。
+            
+        Returns:
+            处理和分块后的节点列表。
+        """
+        all_docs = []
+        self.logger.info(f"开始从 {len(file_paths)} 个文件加载内容...")
+        
+        for file_path in tqdm(file_paths, desc="读取文件", unit="file"):
+            try:
+                async with aiofiles.open(file_path, 'r', encoding='utf-8') as f:
+                    content = await f.read()
+                    data = json.loads(content)
+                    
+                    # 确保是有效的字典并且包含内容
+                    if isinstance(data, dict) and data.get("content"):
+                        node = self._create_node_from_record(data, file_path)
+                        if node:
+                            all_docs.append(node)
+                            
+            except json.JSONDecodeError:
+                self.logger.warning(f"无法解析JSON文件，跳过: {file_path}")
+            except Exception as e:
+                self.logger.error(f"读取或处理文件失败 {file_path}: {e}")
+        
+        if not all_docs:
+            self.logger.warning("未能从任何文件创建有效节点。")
+            return []
+            
+        self.logger.info(f"成功从文件列表加载了 {len(all_docs)} 篇文档，现在开始分块...")
+        chunked_nodes = await self._chunk_nodes_with_progress(all_docs)
+        self.logger.info(f"分块完成，共生成 {len(chunked_nodes)} 个节点。")
+        
+        return chunked_nodes
 
 
 # 向后兼容的函数接口

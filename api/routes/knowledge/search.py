@@ -9,13 +9,16 @@ import hashlib
 from pathlib import Path
 
 from api.models.common import Response, Request, validate_params
-from etl.load.db_core import (
-    async_query_records, async_execute_custom_query
+from etl.load import (
+    query_records,
+    execute_custom_query,
+    count_records
 )
 from core.utils.logger import register_logger
 from api.routes.wxapp.post import batch_enrich_posts_with_user_info
 
-from etl.rag_pipeline import RagPipeline
+from etl.rag.pipeline import RagPipeline
+from etl.rag.strategies import RetrievalStrategy, RerankStrategy
 
 router = APIRouter()
 
@@ -243,11 +246,19 @@ async def search_knowledge(
     # 构建并发搜索任务
     for table in valid_tables:
         # 从表名中提取平台和标签
-        platform_name, tag_name = table.split("_")
-        platform_info = TABLE_MAPPING[platform_name]
+        platform_name, *rest = table.split("_")
+        tag_name = rest[0] if rest else ""
+        platform_info = TABLE_MAPPING.get(platform_name)
+
+        if not platform_info:
+            logger.warning(f"平台 {platform_name} 在 TABLE_MAPPING 中没有定义，跳过")
+            continue
         
         # 如果是wxapp平台，需要根据tag获取对应的表结构
         if platform_name == "wxapp":
+            if not tag_name or tag_name not in platform_info:
+                logger.warning(f"wxapp平台缺少有效标签，跳过表 {table}")
+                continue
             table_info = platform_info[tag_name]
         else:
             table_info = platform_info
@@ -300,10 +311,12 @@ async def search_knowledge(
         logger.debug(f"搜索SQL条件: {where_condition}, 参数: {sql_params}")
         
         # 更新排序方式，使用各表配置的时间字段进行降序排序
-        search_task = async_query_records(
+        order_by_dict = {time_field: "DESC", "id": "DESC"}
+        
+        search_task = query_records(
             table_name=table,
             conditions={"where_condition": where_condition, "params": sql_params},
-            order_by=f"{time_field} DESC, id DESC",  # 按表配置的时间字段降序排序
+            order_by=order_by_dict,
             limit=max_results
         )
         search_tasks.append((table, search_task))
@@ -379,15 +392,13 @@ async def search_knowledge(
     sources = []
     
     # 收集所有来自wxapp_post的项目，用于批量查询用户信息
-    wxapp_post_items = []
-    
-    for item in paged_results:
-        # 对所有平台都先复制原始项目的所有字段
+    wxapp_post_items = [item for item in paged_results if item.get("_table") == "wxapp_post"]
+    other_items = [item for item in paged_results if item.get("_table") != "wxapp_post"]
+
+    # 优先处理其他平台的item
+    for item in other_items:
         source = item.copy()
-        
-        # 获取表名和平台名
-        table_name = item.get("_table", "")
-        platform_name = table_name.split("_")[0]
+        platform_name = source.get("_table", "").split("_")[0]
         
         # 确保有is_truncated字段
         source["is_truncated"] = item.get("_content_truncated", False)
@@ -395,12 +406,8 @@ async def search_knowledge(
         # 添加平台信息
         source["platform"] = platform_name
         
-        # 如果是wxapp_post表的数据，收集起来待会批量处理
-        if platform_name == "wxapp" and "post" in table_name and "openid" in source:
-            wxapp_post_items.append(source)
-            
         # 对于非wxapp平台，需要进行额外字段处理
-        if platform_name != "wxapp" and platform_name in TABLE_MAPPING:
+        if platform_name in TABLE_MAPPING and platform_name != "wxapp":
             platform_info = TABLE_MAPPING[platform_name]
             
             # 获取作者字段名和值
@@ -415,68 +422,80 @@ async def search_knowledge(
             
             # 获取其他值
             original_url = item.get("original_url", "")
-            is_official = item.get("is_official", False)
             
             # 处理标签，如果存在
-            tag = None
+            tag_val = ""
             if "tag" in item and item["tag"]:
                 try:
                     if isinstance(item["tag"], str):
                         import json
-                        tag = json.loads(item["tag"])
+                        tag_val = json.loads(item["tag"])
                     else:
-                        tag = item["tag"]
+                        tag_val = item["tag"]
                 except:
-                    tag = None
-                    
-            # 处理图片，如果存在
-            image = None
-            if "image" in item and item["image"]:
-                try:
-                    if isinstance(item["image"], str):
-                        import json
-                        image = json.loads(item["image"])
-                    else:
-                        image = item["image"]
-                except:
-                    image = None
+                    tag_val = ""
                     
             # 处理时间字段
             publish_time = item.get("publish_time")
-            scrape_time = item.get("scrape_time")
             create_time = publish_time
             update_time = publish_time
             
-            # 添加或覆盖处理后的字段
+            # 添加或覆盖处理后的字段，符合API文档规范
             source.update({
                 "author": author,
                 "title": title,
                 "content": content,
                 "original_url": original_url,
-                "tag": tag,
-                "image": image,
-                "publish_time": publish_time,
-                "scrape_time": scrape_time,
-                "create_time": create_time,
-                "update_time": update_time,
-                "is_official": is_official
+                "tag": tag_val,
+                "create_time": str(create_time) if create_time else "",
+                "update_time": str(update_time) if update_time else "",
+                "is_official": item.get("is_official", False)
             })
-        
-        # 删除内部使用的临时字段
-        if "_table" in source:
-            del source["_table"]
-        if "_type" in source:
-            del source["_type"]
-        if "_content_truncated" in source:
-            del source["_content_truncated"]
+
+        if "_table" in source: del source["_table"]
+        if "_type" in source: del source["_type"]
+        if "_content_truncated" in source: del source["_content_truncated"]
         
         sources.append(source)
     
-    # 如果有wxapp_post的帖子，批量查询用户信息
+    # 如果有wxapp_post的帖子，批量查询用户信息并格式化字段
     if wxapp_post_items:
-        # 使用通用函数批量补充用户信息
-        await batch_enrich_posts_with_user_info(wxapp_post_items)
-    
+        # 使用通用函数批量补充用户信息，并传入openid
+        enriched_posts = await batch_enrich_posts_with_user_info(wxapp_post_items, openid)
+        
+        for post in enriched_posts:
+            # 格式化字段以符合API文档规范
+            user_info = post.get("user_info", {})
+            post.update({
+                "author": user_info.get("nickname", ""),
+                "avatar": user_info.get("avatar", ""),
+                "title": post.get("title", ""),
+                "content": post.get("content", ""),
+                "original_url": f"wxapp://post/{post.get('id', '')}",
+                "tag": post.get("tag", "") if post.get("tag") else "",
+                "create_time": str(post.get("create_time", "")),
+                "update_time": str(post.get("update_time", "")),
+                "platform": "wxapp",
+            })
+            # 清理临时或内部字段
+            if "_table" in post: del post["_table"]
+            if "_type" in post: del post["_type"]
+            if "_content_truncated" in post: del post["_content_truncated"]
+            if "user_info" in post: del post["user_info"]
+            sources.append(post)
+
+    # 由于处理顺序打乱了原有的排序，需要根据sort_by重新排序
+    if sort_by == "relevance":
+        sources.sort(key=lambda x: x.get("relevance", 0), reverse=True)
+    else:  # time
+        def get_sort_time(item):
+            platform = item.get('platform')
+            if platform == 'wxapp':
+                return item.get('update_time', '1970-01-01T00:00:00')
+            else:
+                return item.get('create_time', '1970-01-01T00:00:00')
+        sources.sort(key=get_sort_time, reverse=True)
+
     # 创建分页信息
     pagination = {
         "total": total_count,
@@ -532,7 +551,6 @@ async def search_endpoint(
                 "tag": "标签",
                 "title": "标题",
                 "content": "内容",
-                "is_official": "是否为官方信息",
                 "relevance": 0.85
             }
         ],
@@ -582,39 +600,100 @@ async def search_endpoint(
 async def advanced_search_endpoint(
     query: str = Query(..., description="搜索关键词"),
     openid: str = Query(..., description="用户openid，用于个性化推荐"),
+    top_k_retrieve: int = Query(20, description="召回文档数量，建议值[10, 50]"),
+    top_k_rerank: int = Query(10, description="重排文档数量，建议值[5, 20]"),
+    retrieval_strategy: RetrievalStrategy = Query(
+        default=RetrievalStrategy.AUTO, 
+        description="检索策略：auto-自动, hybrid-混合, vector_only-仅向量, bm25_only-仅BM25, es_only-仅ES"
+    ),
+    rerank_strategy: RerankStrategy = Query(
+        default=RerankStrategy.BGE_RERANKER,
+        description="重排策略：no_rerank-不重排, bge_reranker-BGE模型, st_reranker-SentenceTransformer, personalized-个性化"
+    )
 ):
     """
-    使用RAG管道进行高级检索，支持向量、BM25、通配符和个性化搜索。
+    高级混合检索接口，调用RAG管道执行检索和重排序，不生成回答。
+    
+    返回经过重排序的文档列表，包含详细的元数据和相关度分数。
     """
     try:
         start_time = time.time()
         
-        # 每次请求时实例化，确保获取最新的模型和服务状态
-        # 在高并发场景下，应考虑使用FastAPI的Depends进行单例管理
+        if not query:
+            return Response.bad_request(details={"message": "查询关键词不能为空"})
+        
+        logger.debug(
+            f"高级检索开始: query='{query}', openid='{openid}', "
+            f"retrieval_strategy='{retrieval_strategy.value}', rerank_strategy='{rerank_strategy.value}'"
+        )
+        
+        # 1. 初始化 RAG 管道
         rag_pipeline = RagPipeline()
         
-        # 调用RAG管道的run方法
-        result = rag_pipeline.run(query=query, user_id=openid)
+        # 2. 执行仅检索和重排序
+        # retrieve_only 内部会调用 run(..., skip_generation=True)
+        results = rag_pipeline.retrieve_only(
+            query=query,
+            top_k_retrieve=top_k_retrieve,
+            top_k_rerank=top_k_rerank,
+            user_id=openid,
+            retrieval_strategy=retrieval_strategy,
+            rerank_strategy=rerank_strategy
+        )
         
-        # 格式化上下文节点用于返回
+        # 3. 格式化返回结果
+        reranked_nodes = results.get("reranked_nodes", [])
         contexts = []
-        if result.get("contexts"):
-            for node_with_score in result["contexts"]:
-                contexts.append({
-                    "content": node_with_score.get_content(),
-                    "score": node_with_score.score,
-                    "metadata": node_with_score.node.metadata
-                })
-        
-        response_data = {
-            "answer": result.get("answer", "未能生成答案。"),
-            "contexts": contexts
-        }
-        
-        total_time = time.time() - start_time
-        logger.debug(f"高级检索完成: query='{query}', 耗时={total_time:.2f}秒")
+        for node_with_score in reranked_nodes:
+            node = node_with_score.node
+            metadata = node.metadata or {}
+            
+            # 截断内容
+            content = node.get_content()
+            is_truncated = False
+            max_content_length=500
+            if len(content) > max_content_length:
+                content = content[:max_content_length] + "..."
+                is_truncated = True
 
-        return Response.success(data=response_data, details={"message": "高级检索成功"})
+            publish_time = metadata.get('publish_time', '')
+            context = {
+                "title": metadata.get('title', '无标题'),
+                "content": content,
+                "original_url": metadata.get('original_url', ''),
+                "author": metadata.get('author', ''),
+                "platform": metadata.get('platform', ''),
+                "tag": metadata.get('tag', '') or "",
+                "relevance": node_with_score.score,
+                "create_time": str(publish_time) if publish_time else "",
+                "update_time": str(publish_time) if publish_time else "",
+                "is_truncated": is_truncated,
+                "is_official": metadata.get('is_official', False),
+                "view_count": metadata.get('view_count', 0),
+                "like_count": metadata.get('like_count', 0),
+                "comment_count": metadata.get('comment_count', 0),
+                "pagerank_score": metadata.get('pagerank_score', 0.0)
+            }
+            contexts.append(context)
+            
+        total_time = time.time() - start_time
+        logger.debug(f"高级检索完成: query='{query}', 耗时={total_time:.2f}秒, 返回结果数={len(contexts)}")
+        
+        # 4. 记录搜索历史
+        asyncio.create_task(_record_search_history(query, openid))
+
+        return Response.success(
+            data=contexts,
+            details={
+                "message": "高级检索成功",
+                "query": query,
+                "retrieval_strategy": results.get("retrieval_strategy"),
+                "rerank_strategy": results.get("rerank_strategy"),
+                "documents_retrieved": len(results.get("retrieved_nodes", [])),
+                "documents_reranked": len(contexts),
+                "response_time": total_time
+            }
+        )
 
     except Exception as e:
         import traceback
@@ -622,32 +701,230 @@ async def advanced_search_endpoint(
         logger.error(f"高级检索失败: {str(e)}\n{error_detail}")
         return Response.error(message=f"高级检索失败: {str(e)}", code=500)
 
+async def _elasticsearch_search_internal(
+    query: str,
+    enhanced_query: str = None,
+    platform: Optional[str] = None,
+    size: int = 10,
+    offset: int = 0
+) -> Dict[str, Any]:
+    """
+    内部共享的Elasticsearch检索函数
+    """
+    from elasticsearch import Elasticsearch
+    from config import Config
+    
+    config = Config()
+    es_host = config.get("etl.data.elasticsearch.host", "localhost")
+    es_port = config.get("etl.data.elasticsearch.port", 9200)
+    index_name = config.get("etl.data.elasticsearch.index_name", "nkuwiki")
+    
+    es_client = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': 'http'}])
+    if not es_client.ping():
+        raise HTTPException(status_code=503, detail=f"无法连接到Elasticsearch ({es_host}:{es_port})")
+    if not es_client.indices.exists(index=index_name):
+        raise HTTPException(status_code=404, detail=f"索引 '{index_name}' 不存在")
+    
+    # 分析查询分词结果
+    try:
+        # 获取原始查询的分词结果
+        analyze_response = es_client.indices.analyze(
+            index=index_name,
+            body={
+                "analyzer": "ik_smart",
+                "text": query
+            }
+        )
+        tokens = [token['token'] for token in analyze_response['tokens']]
+        logger.debug(f"ES分词结果 - 原始查询: '{query}' -> 分词: {tokens}")
+        
+        # 如果有增强查询，也分析其分词结果
+        if enhanced_query and enhanced_query != query:
+            enhanced_analyze_response = es_client.indices.analyze(
+                index=index_name,
+                body={
+                    "analyzer": "ik_smart",
+                    "text": enhanced_query
+                }
+            )
+            enhanced_tokens = [token['token'] for token in enhanced_analyze_response['tokens']]
+            logger.debug(f"ES分词结果 - 增强查询: '{enhanced_query}' -> 分词: {enhanced_tokens}")
+    except Exception as e:
+        logger.warning(f"获取分词结果失败: {str(e)}")
+        
+    # 构建查询，使用ik_smart分析器
+    should_clauses = []
+    # 优先使用增强查询
+    if enhanced_query:
+        should_clauses.extend([
+            {"match": {"title": {"query": enhanced_query, "analyzer": "ik_smart", "boost": 2.5}}},
+            {"match": {"content": {"query": enhanced_query, "analyzer": "ik_smart", "boost": 1.5}}}
+        ])
+    
+    # 始终包含原始查询以保证广度
+    should_clauses.extend([
+        {"match": {"title": {"query": query, "analyzer": "ik_smart", "boost": 2.0}}},
+        {"match": {"content": {"query": query, "analyzer": "ik_smart", "boost": 1.0}}}
+    ])
+
+    main_query = {
+        "bool": {
+            "should": should_clauses,
+            "minimum_should_match": 1
+        }
+    }
+    
+    # 添加平台过滤
+    filter_clauses = []
+    if platform and platform != 'all':
+        platform_list = [p.strip() for p in platform.split(',') if p.strip()]
+        if platform_list:
+            filter_clauses.append({"terms": {"platform": platform_list}})
+            logger.debug(f"ES平台过滤: {platform_list}")
+            
+    es_query = {"query": {"bool": {"must": [main_query], "filter": filter_clauses}} if filter_clauses else main_query}
+    
+    # 记录ES查询结构
+    logger.debug(f"ES查询结构: {es_query}")
+    
+    # 执行搜索
+    response = es_client.search(
+        index=index_name,
+        body=es_query,
+        size=size,
+        from_=offset
+    )
+    
+    # 记录检索统计信息
+    total_hits = response['hits']['total']['value']
+    max_score = response['hits']['max_score']
+    actual_hits = len(response['hits']['hits'])
+    logger.debug(f"ES检索统计: 总匹配={total_hits}, 最高分={max_score}, 返回数量={actual_hits}")
+    
+    return response
+
+@router.get("/es-search")
+async def elasticsearch_search_endpoint(
+    query: str = Query(..., description="搜索关键词"),
+    openid: str = Query(..., description="用户openid"),
+    platform: Optional[str] = Query(None, description="平台筛选，多个用逗号分隔"),
+    page: int = Query(1, description="分页页码"),
+    page_size: int = Query(10, description="每页结果数"),
+    max_content_length: int = Query(300, description="内容最大长度")
+):
+    """
+    使用Elasticsearch进行检索，支持通配符和数据源筛选。
+    """
+    try:
+        start_time = time.time()
+        
+        offset = (page - 1) * page_size
+        response = await _elasticsearch_search_internal(
+            query=query,
+            platform=platform,
+            size=page_size,
+            offset=offset
+        )
+        
+        # 处理结果
+        results = []
+        hits = response['hits']['hits']
+        total_hits = response['hits']['total']['value']
+        
+        logger.debug(f"ES检索到的文档详情:")
+        for i, hit in enumerate(hits):
+            source = hit['_source']
+            score = hit['_score']
+            doc_id = hit.get('_id', 'unknown')
+            
+            # 记录每个文档的详细信息
+            title = source.get('title', '无标题')
+            platform = source.get('platform', '')
+            author = source.get('author', '')
+            original_content_length = len(source.get('content', ''))
+            
+            logger.debug(f"  文档#{i+1}: ID={doc_id}, 分数={score:.4f}, 平台={platform}")
+            logger.debug(f"    标题: {title[:50]}{'...' if len(title) > 50 else ''}")
+            logger.debug(f"    作者: {author}, 内容长度: {original_content_length}字符")
+            
+            content = source.get('content', '')
+            is_truncated = False
+            if content and len(content) > max_content_length:
+                content = content[:max_content_length] + "..."
+                is_truncated = True
+                logger.debug(f"    内容已截断: {original_content_length} -> {max_content_length}字符")
+            
+            result_item = {
+                "title": title,
+                "content": content,
+                "original_url": source.get('original_url', ''),
+                "author": author,
+                "platform": platform,
+                "tag": source.get('tag', '') if source.get('tag') else "",
+                "create_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
+                "update_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
+                "relevance": score,
+                "is_truncated": is_truncated,
+                "is_official": source.get('is_official', False)
+            }
+            results.append(result_item)
+            
+        pagination = {
+            "total": total_hits,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total_hits + page_size - 1) // page_size if page_size > 0 else 1
+        }
+        
+        total_time = time.time() - start_time
+        
+        # 汇总日志
+        platform_stats = {}
+        for result in results:
+            result_platform = result.get('platform', 'unknown')
+            platform_stats[result_platform] = platform_stats.get(result_platform, 0) + 1
+        
+        logger.debug(f"ES检索完成汇总:")
+        logger.debug(f"  查询: '{query}', 平台过滤: {platform}")
+        logger.debug(f"  检索耗时: {total_time:.2f}秒")
+        logger.debug(f"  命中总数: {total_hits}, 返回数量: {len(results)}")
+        logger.debug(f"  平台分布: {platform_stats}")
+        if results:
+            scores = [r['relevance'] for r in results]
+            logger.debug(f"  分数范围: {min(scores):.4f} ~ {max(scores):.4f}")
+        
+        asyncio.create_task(_record_search_history(query, openid))
+        
+        details = {"message": "ES检索成功", "query": query, "response_time": total_time}
+        if platform:
+            details["platform_filter"] = platform
+        
+        return Response.paged(data=results, pagination=pagination, details=details)
+        
+    except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        logger.error(f"ES检索失败: {str(e)}\n{error_detail}")
+        return Response.error(message=f"ES检索失败: {str(e)}", code=500)
 
 async def _record_search_history(query: str, openid: str):
     """记录搜索历史"""
     try:
-        # 检查是否存在相同的搜索记录
-        sql = """
-            SELECT id FROM search_history 
-            WHERE query = %s AND openid = %s 
-            ORDER BY create_time DESC 
-            LIMIT 1
-        """
-        result = await async_execute_custom_query(sql, [query, openid])
-        
-        if result:
-            # 更新现有记录的时间
-            sql = "UPDATE search_history SET update_time = %s WHERE id = %s"
-            await async_execute_custom_query(sql, [datetime.now(), result[0]["id"]], fetch=False)
+        # 检查是否已存在相同的搜索历史
+        history_query = "SELECT id FROM wxapp_search_history WHERE query = %s AND openid = %s"
+        existing_history = await execute_custom_query(history_query, [query, openid], fetch='one')
+
+        if existing_history:
+            # 更新时间戳
+            update_query = "UPDATE wxapp_search_history SET search_time = CURRENT_TIMESTAMP WHERE id = %s"
+            await execute_custom_query(update_query, [existing_history['id']], fetch=False)
         else:
             # 插入新记录
-            sql = """
-                INSERT INTO search_history (query, openid, create_time, update_time)
-                VALUES (%s, %s, %s, %s)
-            """
-            await async_execute_custom_query(sql, [query, openid, datetime.now(), datetime.now()], fetch=False)
+            insert_query = "INSERT INTO wxapp_search_history (query, openid) VALUES (%s, %s)"
+            await execute_custom_query(insert_query, [query, openid], fetch=False)
+            
     except Exception as e:
-        logger.error(f"记录搜索历史失败: {str(e)}") 
+        logger.error(f"记录搜索历史失败: {str(e)}")
 
 @router.get("/suggestion")
 async def get_search_suggest(
@@ -661,23 +938,27 @@ async def get_search_suggest(
         if not query.strip():
             return Response.success(data=[])
             
-        suggestions = await async_execute_custom_query(
-            """
-            SELECT keyword 
+        # 从 search_history 表中获取搜索建议
+        suggest_query = """
+            SELECT query, COUNT(*) as count 
             FROM wxapp_search_history 
-            WHERE keyword LIKE %s 
-            GROUP BY keyword 
-            ORDER BY COUNT(*) DESC, MAX(search_time) DESC
+            WHERE query LIKE %s AND openid = %s
+            GROUP BY query 
+            ORDER BY count DESC 
             LIMIT %s
-            """,
-            [f"%{query}%", page_size]
-        )
+        """
+        
+        like_query = f"%{query}%"
+        results = await execute_custom_query(suggest_query, [like_query, openid, page_size], fetch='all')
+        
+        # 提取建议词
+        suggestions = [row['query'] for row in results]
         
         # 异步记录搜索历史
         if openid:
             asyncio.create_task(_record_search_history(query, openid))
             
-        return Response.success(data=[s["keyword"] for s in suggestions])
+        return Response.success(data=suggestions)
     except Exception as e:
         logger.error(f"获取搜索建议失败: {str(e)}")
         return Response.error(details={"message": f"获取搜索建议失败: {str(e)}"})
@@ -721,7 +1002,7 @@ async def search(
             post_sql += " LIMIT %s OFFSET %s"
             
             search_tasks.append(
-                ("post", async_execute_custom_query(
+                ("post", execute_custom_query(
                     post_sql, 
                     [f"%{query}%", f"%{query}%", page_size, offset]
                 ))
@@ -733,7 +1014,7 @@ async def search(
             WHERE status = 1 AND (title LIKE %s OR content LIKE %s)
             """
             count_tasks.append(
-                ("post", async_execute_custom_query(
+                ("post", execute_custom_query(
                     post_count_sql,
                     [f"%{query}%", f"%{query}%"]
                 ))
@@ -757,7 +1038,7 @@ async def search(
             user_sql += " LIMIT %s OFFSET %s"
             
             search_tasks.append(
-                ("user", async_execute_custom_query(
+                ("user", execute_custom_query(
                     user_sql,
                     [f"%{query}%", f"%{query}%", page_size, offset]
                 ))
@@ -769,7 +1050,7 @@ async def search(
             WHERE status = 1 AND (nickname LIKE %s OR bio LIKE %s)
             """
             count_tasks.append(
-                ("user", async_execute_custom_query(
+                ("user", execute_custom_query(
                     user_count_sql,
                     [f"%{query}%", f"%{query}%"]
                 ))
@@ -885,7 +1166,8 @@ async def search(
             search_results = search_results[start_idx:end_idx]
         
         # 异步记录搜索历史
-        asyncio.create_task(_record_search_history(query))
+        # 暂时不记录搜索历史，因为没有传入openid参数
+        # asyncio.create_task(_record_search_history(query, openid))
         
         # 计算分页
         pagination = {
@@ -909,77 +1191,58 @@ async def get_search_history(
     openid: str = Query(..., description="用户OpenID"),
     page_size: int = Query(10, description="返回结果数量")
 ):
-    """获取搜索历史"""
+    """获取用户搜索历史"""
     try:
-        logger.debug(f"获取搜索历史: openid={openid}, page_size={page_size}")
-        if not openid:
-            return Response.bad_request(details={"message": "缺少openid参数"})
-
-        # 直接使用SQL查询搜索历史并去重
-        history_sql = """
-        SELECT DISTINCT keyword, MAX(search_time) as search_time
-        FROM wxapp_search_history
-        WHERE openid = %s
-        GROUP BY keyword
-        ORDER BY MAX(search_time) DESC
-        LIMIT %s
-        """
-        
-        history = await async_execute_custom_query(history_sql, [openid, page_size])
-        
-        return Response.success(data=history or [])
+        # 确保调用异步函数时使用了await
+        history_data = await query_records(
+            "wxapp_search_history",
+            conditions={"openid": openid},
+            order_by={"search_time": "DESC"},
+            limit=page_size
+        )
+        # 直接返回从数据库获取的数据
+        return Response.success(data=history_data["data"])
     except Exception as e:
-        logger.error(f"获取搜索历史失败: {str(e)}")
-        return Response.error(details={"message": f"获取搜索历史失败: {str(e)}"})
+        logger.error(f"获取搜索历史失败: {e}")
+        raise HTTPException(status_code=500, detail=f"获取搜索历史失败: {str(e)}")
 
 @router.post("/history/clear")
 async def clear_search_history(request: Request):
-    """清空搜索历史"""
+    """清空用户搜索历史"""
     try:
-        # 参数验证
-        req_data = await request.json()
-        required_params = ["openid"]
-        error_response = validate_params(req_data, required_params)
-        if error_response:
-            return error_response
-            
-        openid = req_data.get("openid")
-        logger.debug(f"清空搜索历史: openid={openid}")
+        data = await request.json()
+        openid = data.get("openid")
         
-        # 删除历史记录
-        await async_execute_custom_query(
-            "DELETE FROM wxapp_search_history WHERE openid = %s",
-            [openid],
-            fetch=False
-        )
+        if not openid:
+            return Response.bad_request(details={"message": "缺少openid"})
+            
+        sql = "DELETE FROM wxapp_search_history WHERE openid = %s"
+        await execute_custom_query(sql, (openid,), fetch=None) # 确保异步调用
         
         return Response.success(details={"message": "清空搜索历史成功"})
+        
     except Exception as e:
-        logger.error(f"清空搜索历史失败: {str(e)}")
-        return Response.error(details={"message": f"清空搜索历史失败: {str(e)}"})
+        logger.error(f"清空搜索历史失败: {e}")
+        return Response.error(details={"message": str(e)})
 
 @router.get("/hot")
 async def get_hot_searches(
     page_size: int = Query(10, description="返回结果数量")
 ):
-    """获取热门搜索"""
+    """获取热门搜索词条"""
     try:
-        logger.debug(f"获取热门搜索: page_size={page_size}")
-        hot_searches = await async_execute_custom_query(
-            """
-            SELECT keyword, COUNT(*) as count 
-            FROM wxapp_search_history 
-            WHERE search_time > DATE_SUB(NOW(), INTERVAL 7 DAY)
-            GROUP BY keyword 
-            ORDER BY count DESC 
-            LIMIT %s
-            """,
-            [page_size]
-        )
-        
+        hot_sql = """
+        SELECT query, COUNT(*) as search_count
+        FROM wxapp_search_history
+        GROUP BY query
+        ORDER BY search_count DESC
+        LIMIT %s
+        """
+        # 确保异步调用
+        hot_searches = await execute_custom_query(hot_sql, [page_size], fetch='all')
         return Response.success(data=hot_searches or [])
     except Exception as e:
-        logger.error(f"获取热门搜索失败: {str(e)}")
+        logger.error(f"获取热门搜索失败: {e}")
         return Response.error(details={"message": f"获取热门搜索失败: {str(e)}"})
 
 @router.get("/snapshot")

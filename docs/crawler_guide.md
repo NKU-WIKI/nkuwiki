@@ -1,8 +1,126 @@
-# Crawler 模块使用指南
+# 爬虫模块开发指南
 
-## 简介
+## 1. 模块定位与职责
 
-`etl/crawler` 模块是 nkuwiki 校园知识共享平台的数据提取核心，负责从各种指定的数据源（如微信公众号、集市、新浪财经等）抓取信息。该模块基于 Playwright 实现，支持浏览器自动化、代理配置、反反爬虫策略等功能。
+`etl/crawler` 模块是 nkuwiki 项目ETL流程的**第一阶段（数据采集）**。其核心职责是从各类数据源（网站、微信公众号、校园集市等）抓取原始信息，并按照统一规范输出JSON文件到数据湖。
+
+本指南聚焦于爬虫的开发实践。关于爬取的数据如何被后续流程（如索引、洞察生成）所使用，请参考统一的 **[ETL流程开发规范](./etl_pipeline_guide.md)**。
+
+## 2. 核心概念与`BaseCrawler`基类
+
+所有爬虫都继承自 `etl.crawler.base_crawler.BaseCrawler`，它封装了浏览器自动化（Playwright）、代理管理、Cookies管理、反检测脚本等通用功能。
+
+### 关键初始化参数
+
+- `platform` (str): 平台名称，如 `wechat`, `market`。这将决定数据存储的一级目录。
+- `tag` (str): 任务标签，用于区分同一平台下的不同数据来源，如 `nkunews`, `nkuyouth`, `market_sell`。这将决定数据存储的二级目录。
+- `headless` (bool): 是否以无头模式运行浏览器。服务器环境应设为 `True`。
+- `use_proxy` (bool): 是否使用配置中的代理。
+
+## 3. 爬虫开发流程
+
+### 步骤一：创建爬虫类
+
+在 `etl/crawler/` 目录下创建你的爬虫文件，并继承 `BaseCrawler`。
+
+```python
+# etl/crawler/my_crawler.py
+from etl.crawler.base_crawler import BaseCrawler
+from core.utils.logger import crawler_logger
+
+class MyNewCrawler(BaseCrawler):
+    def __init__(self, platform="my_platform", tag="default_tag", **kwargs):
+        # 必须定义 platform 和 tag
+        self.platform = platform
+        self.tag = tag
+        super().__init__(**kwargs)
+        # 为日志绑定特定上下文
+        self.logger = crawler_logger.bind(platform=self.platform, tag=self.tag)
+
+    async def scrape(self, **kwargs):
+        # 实现你的爬取逻辑
+        pass
+```
+
+### 步骤二：实现 `scrape` 方法
+
+`scrape` 方法是爬虫的核心，负责抓取元数据并调用下载方法。
+
+```python
+async def scrape(self, max_items=10):
+    self.logger.info("开始爬取元数据...")
+    await self.async_init()  # 初始化浏览器
+
+    # 示例：爬取一个列表页
+    # for i in range(max_items):
+    #     item_data = {...} # 包含 title, url, publish_time 等
+    #
+    #     # 调用 download_item 保存单个文件
+    #     await self.download_item(item_data)
+
+    await self.close() # 关闭浏览器资源
+    self.logger.info("元数据爬取与下载完成。")
+```
+
+### 步骤三：实现 `download_item` 方法
+
+此方法负责处理单个数据单元的下载和保存，确保其符合下游规范。
+
+```python
+async def download_item(self, item_data: dict):
+    """
+    下载单个项目、处理并保存为标准JSON文件。
+    item_data (dict): 从scrape方法传入的，至少包含url, title等信息的字典。
+    """
+    # 1. 访问详情页获取完整内容 (如果需要)
+    # await self.page.goto(item_data['url'])
+    # full_content = await self.page.text_content(...)
+
+    # 2. 构建符合ETL规范的JSON数据
+    final_data = {
+        "id": self.generate_doc_id(item_data['url']),
+        "title": item_data['title'],
+        "content": "获取到的完整内容...",
+        "url": item_data['url'],
+        "platform": self.platform,
+        "tag": self.tag,
+        "publish_time": "ISO 8601格式的时间字符串"
+    }
+
+    # 3. 生成文件名和路径
+    # self.get_save_path() 会自动处理年月目录
+    save_path = self.get_save_path(
+        doc_id=final_data['id'],
+        publish_time_str=final_data['publish_time']
+    )
+
+    # 4. 保存文件
+    await self.safe_write_json(save_path, final_data)
+    self.logger.info(f"成功保存文件: {save_path}")
+
+```
+
+## 4. 数据输出规范
+
+- **文件格式**: 标准JSON。
+- **核心字段**: `id`, `title`, `content`, `url`, `platform`, `tag`, `publish_time`。
+- **存储路径**: 必须遵循 `data/raw/{platform}/{tag}/{year}{month}/{article_id}.json` 结构。
+    - `BaseCrawler` 中的 `get_save_path` 方法已经封装了此逻辑，请务必使用它来生成最终保存路径。
+
+## 5. 运行与调试
+
+- **直接运行**:
+  ```bash
+  python -m etl.crawler.your_crawler
+  ```
+- **调试技巧**:
+  - 设置 `headless=False` 以观察浏览器操作。
+  - 使用 `self.logger.debug()` 在关键步骤打印信息。
+  - 善用 `await self.page.pause()`（在非无头模式下）来暂停执行并检查浏览器状态。
+- **注意事项**:
+  - **资源管理**: 确保任务结束时调用 `await self.close()`。
+  - **异步编程**: 所有 `playwright` 操作和 `asyncio.sleep` 都必须 `await`。
+  - **配置安全**: 敏感信息（如token）应放在 `config.json` 中，并确保该文件不被提交到代码库。
 
 ## 模块结构
 

@@ -119,7 +119,7 @@ async def search_documents(
                 "score": node.score,
                 "content": node.node.text,
                 "metadata": node.node.metadata,
-                "source": node.node.metadata.get("source", "未知来源"),
+                "platform": node.node.metadata.get("platform", "未知来源"),
                 "title": node.node.metadata.get("title", "未知标题")
             }
             results.append(result)

@@ -12,8 +12,6 @@ from pathlib import Path
 # 添加项目根目录到系统路径
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
-# 明确导入
-from etl import DATA_PATH, BASE_PATH
 
 from llama_index.core.bridge.pydantic import Field
 from llama_index.core.callbacks.base import CallbackManager

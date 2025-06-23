@@ -713,7 +713,6 @@ class WebpageCrawler(BaseCrawler):
                 "platform": self.platform,
                 "original_url": article_data.get('url', ''),
                 "title": title,
-                "source": article_data.get('source', ''),
                 "publish_time": publish_time,
                 "scrape_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "content_type": self.content_type,
@@ -730,7 +729,7 @@ class WebpageCrawler(BaseCrawler):
                 with open(article_dir / f"{clean_title[:50]}.md", 'w', encoding='utf-8') as f:
                     f.write(f"# {title}\n\n")
                     f.write(f"发布时间: {publish_time}\n\n")
-                    f.write(f"来源: {article_data.get('source', '')}\n\n")
+                    f.write(f"来源: {article_data.get('platform', '')}\n\n")
                     f.write(f"链接: {article_data.get('url', '')}\n\n")
                     f.write("---\n\n")
                     f.write(content)

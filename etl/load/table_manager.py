@@ -13,14 +13,17 @@ import re
 from typing import List, Dict, Any, Optional, Union
 from pathlib import Path
 from tqdm import tqdm
+import asyncio
 
-# 添加项目根目录到Python路径
-root_dir = Path(__file__).resolve().parent.parent.parent
-sys.path.append(str(root_dir))
+# 调整导入路径，确保可以从项目根目录导入
+# 这假设脚本是从项目根目录运行的
+# 如果不是，可能需要更复杂的路径处理
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from etl.load import db_core
 from core.utils.logger import register_logger
-from etl import config
+from config import Config
+from etl.load.db_pool_manager import init_db_pool, close_db_pool
 
 # 创建模块专用日志记录器
 logger = register_logger('etl.load.table_manager')
@@ -32,6 +35,7 @@ class TableManager:
         """初始化表管理器"""
         self.sql_dir = Path(__file__).parent / "mysql_tables"
         self.logger = logger
+        self.config = Config()
         
     def get_table_name_from_file(self, file_path: Union[str, Path]) -> str:
         """从SQL文件名提取表名"""
@@ -144,40 +148,12 @@ class TableManager:
         return [self.get_table_name_from_file(f) for f in sql_files]
     
     def apply_config_defaults(self, sql_content: str, table_name: str) -> str:
-        """应用配置文件中的默认值到SQL语句"""
-        try:
-            # 对微信小程序相关表应用特殊配置
-            if table_name.startswith('wxapp_'):
-                # 硬编码默认头像URL
-                default_avatar = "cloud://cloud1-7gu881ir0a233c29.636c-cloud1-7gu881ir0a233c29-1352978573/avatar1.png"
-                
-                if "`avatar`" in sql_content:
-                    # 查找avatar字段定义
-                    start_idx = sql_content.find("`avatar`")
-                    end_idx = sql_content.find(",", start_idx)
-                    if end_idx == -1:
-                        end_idx = sql_content.find(")", start_idx)
-                    
-                    if end_idx > start_idx:
-                        avatar_def = sql_content[start_idx:end_idx]
-                        
-                        if f"DEFAULT '{default_avatar}'" not in avatar_def:
-                            if "DEFAULT" in avatar_def:
-                                new_avatar_def = re.sub(
-                                    r'DEFAULT\s+[\'\"](.*?)[\'\"]', 
-                                    f"DEFAULT '{default_avatar}'", 
-                                    avatar_def
-                                )
-                            else:
-                                new_avatar_def = avatar_def + f" DEFAULT '{default_avatar}'"
-                            
-                            sql_content = sql_content.replace(avatar_def, new_avatar_def)
-                            self.logger.debug(f"为表{table_name}应用了默认头像配置")
-            
-            return sql_content
-        except Exception as e:
-            self.logger.error(f"应用配置默认值失败: {str(e)}")
-            return sql_content
+        """应用配置文件中的默认值到SQL建表语句"""
+        if table_name == 'wxapp_config':
+            admin_openid = self.config.get("wxapp.admin_openid", "default_admin_openid")
+            sql_content = sql_content.replace("'{{ADMIN_OPENID}}'", f"'{admin_openid}'")
+            self.logger.debug(f"已将wxapp_config的默认管理员OPENID设置为: {admin_openid}")
+        return sql_content
     
     async def recreate_tables(self, table_names: List[str] = None, force: bool = False, apply_defaults: bool = True) -> Dict[str, Any]:
         """重新创建表"""
@@ -383,79 +359,80 @@ async def main():
         from loguru import logger as global_logger
         global_logger.remove()
         global_logger.add(sys.stderr, level="DEBUG")
-    
+
+    await init_db_pool()
     manager = TableManager()
+    return_code = 0
     
     try:
-        # 测试数据库连接
-        with db_core.get_connection():
-            logger.debug("数据库连接测试成功")
+        if args.command == 'recreate':
+            tables_to_recreate = args.tables
+            
+            if args.wxapp_only:
+                available_tables = manager.get_available_table_definitions()
+                tables_to_recreate = [t for t in available_tables if t.startswith('wxapp_')]
+                logger.info(f"wxapp模式：将重建 {len(tables_to_recreate)} 个表")
+            
+            results = await manager.recreate_tables(
+                table_names=tables_to_recreate,
+                force=args.force,
+                apply_defaults=not args.no_defaults
+            )
+            
+            print(f"\n重建结果:")
+            print(f"成功: {len(results['success'])} 个表")
+            if results['success']:
+                print(f"  - {', '.join(results['success'])}")
+            print(f"失败: {len(results['failed'])} 个表")
+            if results['failed']:
+                print(f"  - {', '.join(results['failed'])}")
+        
+        elif args.command == 'list':
+            if args.detail:
+                await manager.print_table_summary()
+            else:
+                tables = await manager.list_all_tables()
+                print(f"数据库中的表 (共{len(tables)}个):")
+                for table in tables:
+                    print(f"  - {table}")
+        
+        elif args.command == 'export':
+            success = await manager.export_table_structure(args.output)
+            if not success:
+                return_code = 1
+        
+        elif args.command == 'health':
+            health_report = await manager.check_table_health()
+            print(f"数据库健康检查报告 ({health_report['timestamp']}):")
+            print(f"总表数: {health_report['total_tables']}")
+            print(f"健康表数: {health_report['healthy_tables']}")
+            
+            if health_report['issues']:
+                print(f"发现问题 ({len(health_report['issues'])}个):")
+                for issue in health_report['issues']:
+                    print(f"  - {issue}")
+            else:
+                print("✅ 所有表都正常")
+        
+        elif args.command == 'info':
+            table_info = await manager.get_table_info(args.table_name)
+            if table_info:
+                print(json.dumps(table_info, ensure_ascii=False, indent=2, default=str))
+            else:
+                print(f"表 {args.table_name} 不存在或获取信息失败")
+                return_code = 1
+        
+        else:
+            print("请指定一个命令。使用 --help 查看帮助。")
+            return_code = 1
+    
     except Exception as e:
-        logger.error(f"无法连接到数据库: {str(e)}")
-        return 1
-    
-    if args.command == 'recreate':
-        tables_to_recreate = args.tables
+        logger.error(f"命令执行失败: {e}", exc_info=True)
+        return_code = 1
+    finally:
+        await close_db_pool()
         
-        if args.wxapp_only:
-            available_tables = manager.get_available_table_definitions()
-            tables_to_recreate = [t for t in available_tables if t.startswith('wxapp_')]
-            logger.info(f"wxapp模式：将重建 {len(tables_to_recreate)} 个表")
-        
-        results = await manager.recreate_tables(
-            table_names=tables_to_recreate,
-            force=args.force,
-            apply_defaults=not args.no_defaults
-        )
-        
-        print(f"\n重建结果:")
-        print(f"成功: {len(results['success'])} 个表")
-        if results['success']:
-            print(f"  - {', '.join(results['success'])}")
-        print(f"失败: {len(results['failed'])} 个表")
-        if results['failed']:
-            print(f"  - {', '.join(results['failed'])}")
-    
-    elif args.command == 'list':
-        if args.detail:
-            await manager.print_table_summary()
-        else:
-            tables = await manager.list_all_tables()
-            print(f"数据库中的表 (共{len(tables)}个):")
-            for table in tables:
-                print(f"  - {table}")
-    
-    elif args.command == 'export':
-        success = await manager.export_table_structure(args.output)
-        return 0 if success else 1
-    
-    elif args.command == 'health':
-        health_report = await manager.check_table_health()
-        print(f"数据库健康检查报告 ({health_report['timestamp']}):")
-        print(f"总表数: {health_report['total_tables']}")
-        print(f"健康表数: {health_report['healthy_tables']}")
-        
-        if health_report['issues']:
-            print(f"发现问题 ({len(health_report['issues'])}个):")
-            for issue in health_report['issues']:
-                print(f"  - {issue}")
-        else:
-            print("✅ 所有表都正常")
-    
-    elif args.command == 'info':
-        table_info = await manager.get_table_info(args.table_name)
-        if table_info:
-            print(json.dumps(table_info, ensure_ascii=False, indent=2, default=str))
-        else:
-            print(f"表 {args.table_name} 不存在或获取信息失败")
-            return 1
-    
-    else:
-        print("请指定一个命令。使用 --help 查看帮助。")
-        return 1
-    
-    return 0
+    return return_code
 
 if __name__ == "__main__":
-    import asyncio
     sys.exit(asyncio.run(main())) 

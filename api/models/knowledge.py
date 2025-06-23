@@ -22,7 +22,16 @@ class Source(BaseTimeStamp):
     is_official: Optional[bool] = Field(default=False, description="是否为官方信息")
     relevance: Optional[float] = Field(description="相关性")
 
+class Insight(BaseTimeStamp):
+    """洞察信息模型"""
+    id: int
+    title: str = Field(description="洞察标题")
+    content: str = Field(description="洞察主体内容")
+    category: Optional[str] = Field(description="洞察分类")
+    insight_date: datetime = Field(description="洞察相关的日期")
+
 # 更新导出列表
 __all__ = [
     "Source",
+    "Insight",
 ] 

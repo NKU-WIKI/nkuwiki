@@ -20,30 +20,23 @@ from tqdm import tqdm
 from llama_index.core.schema import BaseNode, TextNode
 from llama_index.core.node_parser import SentenceSplitter
 from core.utils import register_logger
+from etl import CACHE_PATH, CHUNK_OVERLAP, CHUNK_SIZE
 
 
 class ChunkCacheManager:
     """文本分块缓存管理器"""
     
-    def __init__(self, 
-                 cache_dir: str = "/data/cache/chunks",
-                 chunk_size: int = 512,
-                 chunk_overlap: int = 200,
-                 cache_ttl_days: int = 30,
-                 logger=None):
+    def __init__(self, cache_ttl_days: int = 30, logger=None):
         """
         初始化分块缓存管理器
         
         Args:
-            cache_dir: 缓存目录
-            chunk_size: 分块大小
-            chunk_overlap: 分块重叠
             cache_ttl_days: 缓存有效期（天）
             logger: 日志器
         """
-        self.cache_dir = Path(cache_dir)
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        self.cache_dir = CACHE_PATH / "chunks"
+        self.chunk_size = CHUNK_SIZE
+        self.chunk_overlap = CHUNK_OVERLAP
         self.cache_ttl = timedelta(days=cache_ttl_days)
         self.logger = logger or register_logger("chunk_cache")
         
@@ -52,16 +45,15 @@ class ChunkCacheManager:
         
         # 初始化分割器
         self.splitter = SentenceSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap
+            chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap
         )
         
         # 缓存元数据文件
         self.metadata_file = self.cache_dir / "cache_metadata.json"
         self.metadata = self._load_metadata()
         
-        self.logger.info(f"分块缓存管理器初始化完成: {cache_dir}")
-        self.logger.info(f"分块参数: chunk_size={chunk_size}, chunk_overlap={chunk_overlap}")
+        self.logger.info(f"分块缓存管理器初始化完成: {self.cache_dir}")
+        self.logger.info(f"分块参数: chunk_size={self.chunk_size}, chunk_overlap={self.chunk_overlap}")
     
     def _load_metadata(self) -> Dict[str, Any]:
         """加载缓存元数据"""

@@ -1,9 +1,9 @@
 CREATE TABLE IF NOT EXISTS `wxapp_action` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `openid` VARCHAR(100) NOT NULL COMMENT '执行者openid',
-    `action_type` VARCHAR(100) DEFAULT NULL COMMENT '动作类型：like-点赞, comment-评论, follow-关注',
-    `target_id` INT DEFAULT NULL COMMENT '目标ID，如帖子ID、评论ID等',
-    `target_type` VARCHAR(100) DEFAULT NULL COMMENT '目标类型，如post、comment等',
+    `action_type` VARCHAR(100) DEFAULT NULL COMMENT '动作类型：like, favorite, follow',
+    `target_id` VARCHAR(100) DEFAULT NULL COMMENT '目标ID (post_id, comment_id, user_openid)',
+    `target_type` VARCHAR(100) DEFAULT NULL COMMENT '目标类型 (post, comment, user)',
     `extra_data` JSON DEFAULT NULL COMMENT '额外数据',
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

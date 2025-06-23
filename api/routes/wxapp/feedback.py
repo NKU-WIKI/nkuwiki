@@ -2,202 +2,219 @@
 微信小程序用户反馈API
 """
 from typing import List, Dict, Any, Optional
-from fastapi import Query, APIRouter
-from api.models.common import Response, Request, validate_params
-from etl.load.db_core import async_execute_custom_query, async_insert
+from fastapi import Query, APIRouter, Depends, Body, HTTPException
+from api.models.common import Response, Request, validate_params, PaginationInfo
+from etl.load import (
+    execute_custom_query, 
+    insert_record, 
+    get_by_id, 
+    update_record, 
+    query_records, 
+    count_records
+)
 from core.utils.logger import register_logger
 import json
+from pydantic import BaseModel
 
 router = APIRouter()
 logger = register_logger('api.routes.wxapp.feedback')
 
-@router.get("/feedback/detail")
-async def get_feedback_detail(
-    feedback_id: str = Query(..., description="反馈ID")
-):
-    """获取用户反馈详情"""
-    if(not feedback_id):
-        return Response.bad_request(details={"message": "缺少feedback_id参数"})
-    try:
-        # 使用直接SQL查询获取反馈详情
-        sql = "SELECT * FROM wxapp_feedback WHERE id = %s"
-        feedback = await async_execute_custom_query(sql, [feedback_id])
-        
-        if not feedback:
-            return Response.not_found(resource="反馈")
-            
-        return Response.success(data=feedback[0])
-    except Exception as e:
-        logger.error(f"获取反馈详情失败: {e}")
-        return Response.error(details={"message": f"获取反馈详情失败: {str(e)}"})
+class FeedbackRequest(BaseModel):
+    openid: str
+    title: str
+    content: str
+    category: str
+    contact: Optional[str] = None
+    image: Optional[List[str]] = []
+    device_info: Optional[Dict[str, Any]] = None
 
-@router.get("/feedback/list")
+class UpdateStatusRequest(BaseModel):
+    feedback_id: int
+    status: str
+    admin_id: str
+
+class ReplyRequest(BaseModel):
+    feedback_id: int
+    reply_content: str
+    admin_id: str
+
+class DeleteRequest(BaseModel):
+    feedback_id: int
+    admin_id: str
+
+@router.get("/detail", summary="获取反馈详情")
+async def get_feedback_detail(feedback_id: int):
+    """获取单条反馈的详细信息，包括处理记录"""
+    sql = """
+    SELECT f.*, u.nickname as user_nickname, u.avatar as user_avatar
+    FROM wxapp_feedback f
+    LEFT JOIN wxapp_user u ON f.openid = u.openid
+    WHERE f.id = %s
+    """
+    feedback = await execute_custom_query(sql, [feedback_id], fetch='one')
+    if not feedback:
+        return Response.error(message="反馈不存在")
+    
+    # 获取处理记录
+    history_sql = "SELECT * FROM wxapp_feedback_history WHERE feedback_id = %s ORDER BY create_time ASC"
+    history = await execute_custom_query(history_sql, [feedback_id])
+    feedback['history'] = history
+    
+    return Response.success(data=feedback)
+
+@router.get("/list", summary="获取反馈列表")
 async def get_feedback_list(
-    openid: str = Query(..., description="用户OpenID"),
-    type: Optional[str] = Query(None, description="反馈类型"),
-    status: Optional[str] = Query(None, description="反馈状态")
+    page: int = 1,
+    page_size: int = 10,
+    status: Optional[str] = None,
+    category: Optional[str] = None
 ):
-    """获取用户反馈列表"""
-    if(not openid):
-        return Response.bad_request(details={"message": "缺少openid参数"})
-    try:
-        # 构建查询条件
-        conditions = ["openid = %s"]
-        params = [openid]
+    """获取反馈列表，支持按状态和分类筛选"""
+    conditions = {}
+    if status:
+        conditions['status'] = status
+    if category:
+        conditions['category'] = category
+
+    total = await count_records("wxapp_feedback", conditions)
+    
+    offset = (page - 1) * page_size
+    
+    base_sql = """
+    SELECT f.id, f.title, f.content, f.category, f.status, f.create_time, 
+           u.nickname as user_nickname, u.avatar as user_avatar
+    FROM wxapp_feedback f
+    LEFT JOIN wxapp_user u ON f.openid = u.openid
+    """
+    
+    where_clauses = []
+    params = []
+    
+    if status:
+        where_clauses.append("f.status = %s")
+        params.append(status)
+    if category:
+        where_clauses.append("f.category = %s")
+        params.append(category)
         
-        if type:
-            conditions.append("type = %s")
-            params.append(type)
-            
-        if status:
-            conditions.append("status = %s")
-            params.append(status)
-            
-        # 构建SQL
-        where_clause = " AND ".join(conditions)
-        sql = f"""
-            SELECT * FROM wxapp_feedback 
-            WHERE {where_clause} 
-            ORDER BY create_time DESC
-        """
+    if where_clauses:
+        base_sql += " WHERE " + " AND ".join(where_clauses)
         
-        # 执行查询
-        feedbacks = await async_execute_custom_query(sql, params)
-        
-        return Response.success(data={"feedbacks": feedbacks or []})
-    except Exception as e:
-        logger.error(f"获取用户反馈列表失败: {e}")
-        return Response.error(details={"message": f"获取用户反馈列表失败: {str(e)}"})
+    base_sql += " ORDER BY f.create_time DESC LIMIT %s OFFSET %s"
+    params.extend([page_size, offset])
+    
+    feedbacks = await execute_custom_query(base_sql, params)
+    
+    pagination = PaginationInfo(
+        total=total, 
+        page=page, 
+        page_size=page_size
+    )
+    return Response.paged(data=feedbacks, pagination=pagination)
 
-@router.post("/feedback")
-async def create_feedback(request: Request):
-    """创建用户反馈"""
-    try:
-        req_data = await request.json()
-        required_params = ["content"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
+@router.post("/")
+async def create_feedback(feedback_data: Dict[str, Any] = Body(...)):
+    """用户提交反馈"""
+    # 验证请求体
+    required_fields = ['openid', 'content']
+    if error_msg := validate_params(feedback_data, required_fields):
+        return Response.bad_request(error_msg)
 
-        openid = req_data.get("openid")
-        content = req_data.get("content")
-        type = req_data.get("type", "")
-        image = req_data.get("image", [])
-        contact = req_data.get("contact", "")
+    # 如果存在image字段且是列表，则转换为JSON字符串
+    if 'image' in feedback_data and isinstance(feedback_data['image'], list):
+        feedback_data['image'] = json.dumps(feedback_data['image'], ensure_ascii=False)
+    
+    # 如果存在device_info字段且是字典，则转换为JSON字符串
+    if 'device_info' in feedback_data and isinstance(feedback_data['device_info'], dict):
+        feedback_data['device_info'] = json.dumps(feedback_data['device_info'], ensure_ascii=False)
 
-        # 使用直接SQL插入反馈
-        sql = """
-            INSERT INTO wxapp_feedback 
-            (openid, content, type, image, contact, create_time, update_time) 
-            VALUES (%s, %s, %s, %s, %s, NOW(), NOW())
-        """
-        
-        # 执行插入并返回ID
-        result = await async_execute_custom_query(
-            sql, 
-            [openid, content, type, json.dumps(image) if isinstance(image, list) else image, contact],
-            fetch=True
-        )
-        
-        feedback_id = result[0]["id"] if result and "id" in result[0] else None
-        if not feedback_id:
-            # 回退到原始插入方法
-            feedback_data = {
-                "openid": openid,
-                "content": content,
-                "type": type,
-                "image": image,
-                "contact": contact
-            }
-            
-            feedback_id = await async_insert("wxapp_feedback", feedback_data)
+    # 插入新反馈
+    feedback_id = await insert_record("wxapp_feedback", feedback_data)
+    if not feedback_id:
+        return Response.db_error("创建反馈失败")
 
-        logger.debug(f"创建反馈成功: {feedback_id}")
-        return Response.success(details={"feedback_id": feedback_id, "message": "反馈创建成功"})
-    except Exception as e:
-        logger.error(f"创建反馈失败: {e}")
-        return Response.error(details={"message": f"创建反馈失败: {str(e)}"})
+    return Response.success(data={"feedback_id": feedback_id}, message="反馈成功提交")
 
-@router.post("/feedback/update")
-async def update_feedback(request: Request):
-    """更新用户反馈"""
-    try:
-        req_data = await request.json()
-        required_params = ["feedback_id"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
+@router.post("/update-status", summary="更新反馈状态 (管理员)")
+async def update_feedback_status(
+    request: UpdateStatusRequest
+):
+    """更新反馈状态 (管理员操作)"""
+    # 更新记录
+    updated_count = await update_record(
+        "wxapp_feedback", 
+        conditions={"id": request.feedback_id}, 
+        data={"status": request.status, "admin_id": request.admin_id}
+    )
 
-        openid = req_data.get("openid")
-        feedback_id = req_data.get("feedback_id")
+    if updated_count == 0:
+        return Response.not_found("未找到该反馈或状态未改变")
+    
+    # 插入历史记录
+    history_data = {
+        "feedback_id": request.feedback_id,
+        "operator": request.admin_id,
+        "action_type": "status_change",
+        "details": json.dumps({"new_status": request.status})
+    }
+    await insert_record("wxapp_feedback_history", history_data)
 
-        # 检查反馈是否存在
-        feedback_sql = "SELECT * FROM wxapp_feedback WHERE id = %s"
-        feedback = await async_execute_custom_query(feedback_sql, [feedback_id])
-        
-        if not feedback:
-            return Response.not_found(resource="反馈")
+    return Response.success(message="状态更新成功")
 
-        # 提取可更新字段
-        allowed_fields = ["content", "type", "image", "contact", "status", "reply"]
-        update_fields = []
-        update_params = []
-        
-        for field in allowed_fields:
-            if field in req_data:
-                update_fields.append(f"{field} = %s")
-                # 特殊处理image字段
-                if field == "image" and isinstance(req_data[field], list):
-                    update_params.append(json.dumps(req_data[field]))
-                else:
-                    update_params.append(req_data[field])
-        
-        if not update_fields:
-            return Response.bad_request(details={"message": "没有提供可更新的字段"})
-            
-        update_fields.append("update_time = NOW()")
-        
-        # 构建更新SQL
-        set_clause = ", ".join(update_fields)
-        update_sql = f"""
-            UPDATE wxapp_feedback 
-            SET {set_clause} 
-            WHERE id = %s
-        """
-        update_params.append(feedback_id)
-        
-        # 执行更新
-        await async_execute_custom_query(update_sql, update_params, fetch=False)
+@router.post("/{feedback_id}/reply")
+async def reply_to_feedback(
+    feedback_id: int, 
+    reply_data: Dict[str, Any] = Body(...)
+):
+    """回复用户反馈 (管理员操作)"""
+    reply_content = reply_data.get("reply_content")
+    admin_id = reply_data.get("admin_id") # 从请求体获取操作员信息
 
-        return Response.success(details={"message": "反馈更新成功"})
-    except Exception as e:
-        logger.error(f"更新反馈失败: {e}")
-        return Response.error(details={"message": f"更新反馈失败: {str(e)}"})
+    if not reply_content or not admin_id:
+        return Response.bad_request("缺少'reply_content'或'admin_id'参数")
+    
+    # 更新记录
+    updated_count = await update_record(
+        "wxapp_feedback",
+        conditions={"id": feedback_id},
+        data={"admin_reply": reply_content, "admin_id": admin_id, "status": "replied"}
+    )
+    
+    if updated_count == 0:
+        return Response.not_found("未找到该反馈")
+    
+    # 插入历史记录
+    history_data = {
+        "feedback_id": feedback_id,
+        "operator": admin_id,
+        "action_type": "reply",
+        "details": json.dumps({"reply": reply_content})
+    }
+    await insert_record("wxapp_feedback_history", history_data)
 
-@router.post("/feedback/delete")
-async def delete_feedback(request: Request):
-    """删除反馈"""
-    try:
-        req_data = await request.json()
-        required_params = ["feedback_id"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
+    return Response.success(message="回复成功")
 
-        feedback_id = req_data.get("feedback_id")
+@router.post("/delete", summary="删除反馈 (管理员)")
+async def delete_feedback(
+    body: Dict[str, Any] = Body(...)
+):
+    """管理员删除反馈"""
+    feedback_id = body.get("feedback_id")
+    admin_id = body.get("admin_id") # 从请求体获取操作员信息
+    if not feedback_id or not admin_id:
+        return Response.bad_request("缺少'feedback_id'或'admin_id'参数")
 
-        # 检查反馈是否存在
-        feedback_sql = "SELECT * FROM wxapp_feedback WHERE id = %s"
-        feedback = await async_execute_custom_query(feedback_sql, [feedback_id])
-        
-        if not feedback:
-            return Response.not_found(resource="反馈")
-
-        # 删除反馈
-        delete_sql = "DELETE FROM wxapp_feedback WHERE id = %s"
-        await async_execute_custom_query(delete_sql, [feedback_id], fetch=False)
-
-        return Response.success(details={"message": "反馈删除成功"})
-    except Exception as e:
-        logger.error(f"删除反馈失败: {e}")
-        return Response.error(details={"message": f"删除反馈失败: {str(e)}"}) 
+    feedback_sql = "SELECT * FROM wxapp_feedback WHERE id = %s"
+    feedback = await execute_custom_query(feedback_sql, [feedback_id], fetch='one')
+    if not feedback:
+        return Response.error(message="反馈不存在")
+    
+    # 实际项目中可能需要权限校验
+    
+    delete_sql = "DELETE FROM wxapp_feedback WHERE id = %s"
+    await execute_custom_query(delete_sql, [feedback_id], fetch=False)
+    
+    # 可选：也删除相关的处理记录
+    await execute_custom_query("DELETE FROM wxapp_feedback_history WHERE feedback_id = %s", [feedback_id], fetch=False)
+    
+    return Response.success(message="反馈删除成功") 

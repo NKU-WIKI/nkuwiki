@@ -21,7 +21,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 from config import Config
 from etl.load import db_core
 # 导入ETL模块的统一路径配置
-from etl import RAW_PATH
+from etl import (RAW_PATH, ES_INDEX_NAME, ES_HOST, ES_PORT, ES_ENABLE_CHUNKING, CHUNK_SIZE, CHUNK_OVERLAP)
 
 logger = logging.getLogger(__name__)
 
@@ -32,19 +32,18 @@ class ElasticsearchIndexer:
     负责从MySQL数据构建Elasticsearch全文检索索引，支持通配符查询和复杂文本匹配。
     """
     
-    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        self.config = config
+    def __init__(self, logger: Optional[logging.Logger] = None):
         self.logger = logger or logging.getLogger(__name__)
         
-        # 从配置获取参数（Elasticsearch配置暂时保持独立）
-        self.index_name = config.get('etl.data.elasticsearch.index', 'nkuwiki')
-        self.es_host = config.get('etl.data.elasticsearch.host', 'localhost')
-        self.es_port = config.get('etl.data.elasticsearch.port', 9200)
+        # 从ETL模块统一配置获取参数
+        self.index_name = ES_INDEX_NAME
+        self.es_host = ES_HOST
+        self.es_port = ES_PORT
         
-        # 分块参数（可选，用于支持长文档）
-        self.enable_chunking = config.get('etl.data.elasticsearch.enable_chunking', False)
-        self.chunk_size = config.get('etl.chunking.chunk_size', 512)
-        self.chunk_overlap = config.get('etl.chunking.chunk_overlap', 200)
+        # 分块参数
+        self.enable_chunking = ES_ENABLE_CHUNKING
+        self.chunk_size = CHUNK_SIZE
+        self.chunk_overlap = CHUNK_OVERLAP
         
     async def build_indexes(self, 
                      limit: int = None, 
@@ -124,6 +123,68 @@ class ElasticsearchIndexer:
                 "message": f"Elasticsearch索引构建失败: {str(e)}"
             }
 
+    async def build_from_nodes(self, nodes: List[Dict[str, Any]], batch_size: int = 500) -> Dict[str, Any]:
+        """
+        从预加载的节点列表构建Elasticsearch索引。
+        
+        Args:
+            nodes: 从文件处理阶段传入的TextNode列表
+            batch_size: 批处理大小
+            
+        Returns:
+            构建结果统计
+        """
+        self.logger.info(f"开始从 {len(nodes)} 个预加载节点构建Elasticsearch索引...")
+        es_client = await self._init_es_client()
+        if not es_client:
+            return {"success": False, "error": "无法连接到Elasticsearch"}
+
+        try:
+            # 1. 将 TextNode 转换为 Elasticsearch 需要的字典格式
+            actions = []
+            for node in nodes:
+                # 从 metadata 提取所需字段
+                doc = {
+                    "url": node.metadata.get("url", ""),
+                    "title": node.metadata.get("title", ""),
+                    "content": node.text,  # content 来自 node.text
+                    "publish_time": node.metadata.get("publish_time"),
+                    "platform": node.metadata.get("platform", ""),
+                    "pagerank_score": float(node.metadata.get("pagerank_score", 0.0))
+                }
+                
+                # 移除空值字段，以避免ES索引错误
+                doc = {k: v for k, v in doc.items() if v is not None}
+                
+                actions.append({
+                    "_index": self.index_name,
+                    "_id": node.metadata.get("source_id", node.id_),
+                    "_source": doc
+                })
+
+            if not actions:
+                self.logger.warning("没有可供索引的有效节点。")
+                return {"success": True, "indexed": 0, "errors": 0}
+
+            # 2. 使用 helpers.async_bulk 批量索引
+            indexed, errors = await helpers.async_bulk(es_client, actions, chunk_size=batch_size)
+            
+            result = {
+                "success": True,
+                "indexed": indexed,
+                "errors": len(errors),
+                "message": f"成功索引 {indexed} 个文档，失败 {len(errors)} 个。"
+            }
+            self.logger.info(f"Elasticsearch索引构建完成: {result}")
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"从节点构建Elasticsearch索引时出错: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            if es_client:
+                await es_client.close()
+
     async def _init_es_client(self) -> Optional[AsyncElasticsearch]:
         """初始化Elasticsearch客户端"""
         try:
@@ -194,7 +255,7 @@ class ElasticsearchIndexer:
                             "type": "date",
                             "format": "yyyy-MM-dd||yyyy-MM-dd HH:mm:ss||epoch_millis"
                         },
-                        "source": {
+                        "platform": {
                             "type": "keyword",
                             "index": True
                         },
@@ -623,13 +684,11 @@ class ElasticsearchIndexer:
                             "_source": {
                                 "source_id": record.get('source_id'),
                                 "id": record.get('id'),
-                                "url": record.get('original_url', ''),
+                                "original_url": record.get('original_url', ''),
                                 "title": record.get('title', ''),
                                 "content": record.get('content', ''),
                                 "author": record.get('author', ''),
-                                "original_url": record.get('original_url', ''),
                                 "publish_time": record.get('publish_time'),
-                                "source": record.get('platform', ''),
                                 "platform": record.get('platform', ''),
                                 "pagerank_score": record.get('pagerank_score', 0.0)
                             }

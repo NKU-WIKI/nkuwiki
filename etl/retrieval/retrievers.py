@@ -654,13 +654,13 @@ class ElasticsearchRetriever(BaseRetriever):
                 }
             }
         else:
-            # 如果没有通配符，使用普通的匹配查询
+            # 如果没有通配符，使用普通的匹配查询，指定使用ik_smart分析器
             es_query = {
                 "query": {
                     "bool": {
                         "should": [
-                                {"match": {"title": query}},
-                                {"match": {"content": query}}
+                            {"match": {"title": {"query": query, "analyzer": "ik_smart", "boost": 2.0}}},
+                            {"match": {"content": {"query": query, "analyzer": "ik_smart", "boost": 1.0}}}
                         ],
                         "minimum_should_match": 1
                     }
@@ -682,10 +682,10 @@ class ElasticsearchRetriever(BaseRetriever):
                     index_id=hit['_id'],  # 添加必需的 index_id 字段
                     metadata={
                         'title': source.get('title', ''),
-                        'url': source.get('url', ''),
+                        'original_url': source.get('original_url', ''),
                         'publish_time': source.get('publish_time'),
                         'pagerank_score': source.get('pagerank_score', 0.0),  # 添加PageRank分数
-                        'source': source.get('source', ''),  # 添加数据源信息
+                        'platform': source.get('platform', ''),  # 添加数据源信息
                     }
                 )
                 nodes_with_scores.append(NodeWithScore(node=node, score=hit['_score']))
@@ -812,7 +812,7 @@ class HybridRetriever(BaseRetriever):
             return []
 
     def _retrieve(self, query_bundle: QueryBundle) -> List[NodeWithScore]:
-        """Synchronous version."""
+        """Synchronous version with intelligent fallback."""
         try:
             if self.retrieval_type == 2:
                 # BM25只进行同步检索
@@ -824,24 +824,44 @@ class HybridRetriever(BaseRetriever):
                 dense_nodes = self.dense_retriever._retrieve(query_bundle)
                 return dense_nodes
 
-            # Hybrid retrieval (type 3)
+            # Hybrid retrieval (type 3) - 智能混合检索
             # 同步执行两个检索
             sparse_nodes = self.sparse_retriever._retrieve(query_bundle)
             dense_nodes = self.dense_retriever._retrieve(query_bundle)
             
-            # 使用 reciprocal rank fusion 合并结果
+            # 智能降级策略
+            if not dense_nodes and sparse_nodes:
+                # 向量检索失败，降级到BM25检索
+                print(f"向量检索返回0结果，降级使用BM25检索，返回{len(sparse_nodes)}个结果")
+                return sparse_nodes
+            elif not sparse_nodes and dense_nodes:
+                # BM25检索失败，降级到向量检索
+                print(f"BM25检索返回0结果，降级使用向量检索，返回{len(dense_nodes)}个结果")
+                return dense_nodes
+            elif not sparse_nodes and not dense_nodes:
+                # 两个都失败
+                print("BM25和向量检索都返回0结果")
+                return []
+            
+            # 正常混合检索：使用 reciprocal rank fusion 合并结果
             all_nodes = self.reciprocal_rank_fusion(
                 [sparse_nodes, dense_nodes], 
                 topk=self.topk,
                 pagerank_weight=self.pagerank_weight
             )
             
+            print(f"混合检索：BM25返回{len(sparse_nodes)}个结果，向量返回{len(dense_nodes)}个结果，融合后{len(all_nodes)}个结果")
             return all_nodes
             
         except Exception as e:
             print(f"Error in hybrid retrieval: {str(e)}")
-            # 返回空列表而不是失败
-            return []
+            # 尝试降级到BM25检索作为最后的备选
+            try:
+                fallback_nodes = self.sparse_retriever._retrieve(query_bundle)
+                print(f"异常降级到BM25检索，返回{len(fallback_nodes)}个结果")
+                return fallback_nodes
+            except:
+                return []
 
 
 class VectorRetriever:

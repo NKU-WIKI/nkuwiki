@@ -5,12 +5,18 @@
 import time
 import json
 from typing import Dict, Any, Optional, List
-from fastapi import Query, APIRouter
+from fastapi import Query, APIRouter, Depends, Body, Request
 import asyncio
+import re
 
-from api.models.common import Response, Request, validate_params
-from etl.load.db_core import (
-    async_query_records, async_get_by_id, async_insert, async_update, async_count_records, async_execute_custom_query
+from api.models.common import Response, Request, validate_params, PaginationInfo
+from etl.load import (
+    query_records, 
+    insert_record, 
+    update_record, 
+    execute_custom_query, 
+    count_records,
+    get_by_id
 )
 from config import Config
 from core.utils.logger import register_logger
@@ -20,72 +26,59 @@ config = Config()
 router = APIRouter()
 logger = register_logger('api.routes.wxapp.post')
 
-async def batch_enrich_posts_with_user_info(posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """批量为帖子数据补充用户信息
-    
-    Args:
-        posts: 帖子数据列表，每个帖子至少应包含openid字段
-        
-    Returns:
-        补充了用户信息的帖子列表
-    """
+async def batch_enrich_posts_with_user_info(posts: List[Dict[str, Any]], current_user_openid: Optional[str]) -> List[Dict[str, Any]]:
     if not posts:
-        return posts
-        
-    # 收集所有公开帖子的openid
-    public_post_openids = []
-    for post in posts:
-        if post.get("is_public", 1) == 1 and post.get("openid"):
-            # 如果帖子公开且有openid，加入查询列表
-            public_post_openids.append(post.get("openid"))
-    
-    # 如果没有公开帖子，直接返回
-    if not public_post_openids:
-        return posts
-        
-    # 使用IN查询批量获取用户信息
-    user_query = """
-    SELECT openid, nickname, avatar, bio 
-    FROM wxapp_user 
-    WHERE openid IN %s
-    """
-    user_results = await async_execute_custom_query(
-        user_query, 
-        [tuple(public_post_openids)] if len(public_post_openids) > 1 else [(public_post_openids[0],)]
-    )
-    
-    # 构建用户信息映射
+        return []
+
+    post_ids = [post['id'] for post in posts]
+    author_openids = list(set(post.get('openid') for post in posts if post.get('openid')))
+
     user_info_map = {}
-    if user_results:
-        for user in user_results:
-            user_info_map[user.get("openid")] = user
-    
-    # 更新帖子信息
+    actions_map = {}
+    following_map = {}
+
+    # 1. 批量获取作者信息
+    if author_openids:
+        placeholders = ', '.join(['%s'] * len(author_openids))
+        user_query = f"SELECT openid, nickname, avatar, bio FROM wxapp_user WHERE openid IN ({placeholders})"
+        user_results = await execute_custom_query(user_query, author_openids, fetch='all')
+        user_info_map = {user['openid']: user for user in user_results}
+
+    # 2. 批量获取当前用户的互动状态 (点赞、收藏)
+    if current_user_openid:
+        placeholders_posts = ', '.join(['%s'] * len(post_ids))
+        action_query = f"""
+            SELECT target_id, action_type 
+            FROM wxapp_action 
+            WHERE openid = %s AND target_type = 'post' AND target_id IN ({placeholders_posts})
+        """
+        action_results = await execute_custom_query(action_query, [current_user_openid] + post_ids, fetch='all')
+        for action in action_results:
+            if action['target_id'] not in actions_map:
+                actions_map[action['target_id']] = set()
+            actions_map[action['target_id']].add(action['action_type'])
+        
+        # 3. 批量检查是否关注了作者
+        if author_openids:
+            placeholders_authors = ', '.join(['%s'] * len(author_openids))
+            follow_query = f"""
+                SELECT target_id 
+                FROM wxapp_action 
+                WHERE openid = %s AND target_type = 'user' AND action_type = 'follow' AND target_id IN ({placeholders_authors})
+            """
+            follow_results = await execute_custom_query(follow_query, [current_user_openid] + author_openids, fetch='all')
+            following_map = {result['target_id'] for result in follow_results}
+
+
+    # 4. 组装最终结果
     for post in posts:
-        # 对公开帖子，补充用户信息
-        if post.get("is_public", 1) == 1 and post.get("openid") in user_info_map:
-            user_info = user_info_map.get(post.get("openid"))
-            # 如果数据库中的用户信息更新，覆盖帖子中的用户信息
-            post["nickname"] = user_info.get("nickname") or post.get("nickname", "")
-            post["avatar"] = user_info.get("avatar") or post.get("avatar", "")
-            post["bio"] = user_info.get("bio") or post.get("bio", "")
-            # 添加用户对象
-            post["user"] = user_info
-        elif post.get("is_public", 0) == 0:
-            # 非公开帖子处理：清除可能泄露用户信息的字段
-            post["nickname"] = "匿名用户"
-            post["avatar"] = ""
-            post["bio"] = ""
-            post["phone"] = None
-            post["wechatId"] = None
-            post["qqId"] = None
-            post["openid"] = ""  # 不暴露原始openid
-            # 添加匿名用户对象
-            post["user"] = {
-                "openid": "",
-                "nickname": "匿名用户",
-                "avatar": ""
-            }
+        author_openid = post.get('openid')
+        post['user_info'] = user_info_map.get(author_openid, {})
+        
+        post_actions = actions_map.get(post['id'], set())
+        post['is_liked'] = 'like' in post_actions
+        post['is_favorited'] = 'favorite' in post_actions
+        post['is_following_author'] = author_openid in following_map
             
     return posts
 
@@ -124,14 +117,14 @@ def sanitize_input(text):
     
     return result
 
-@router.post("/post")
+@router.post("/create", summary="创建新帖子")
 async def create_post(
-    request: Request,
+    post_data: Dict[str, Any] = Body(...)
 ):
     """创建帖子"""
     try:
         # 获取请求数据
-        req_data = await request.json()
+        req_data = post_data
         
         # 定义必须的参数
         required_params = ["openid", "title", "content"]
@@ -140,8 +133,6 @@ async def create_post(
         error_response = validate_params(req_data, required_params)
         if(error_response):
             return error_response
-
-        openid = req_data.get("openid")
         
         # 清理和过滤输入，防止SQL注入
         title = sanitize_input(req_data.get("title"))
@@ -158,7 +149,7 @@ async def create_post(
             category_id = 1
             
         db_post_data = {
-            "openid": openid,
+            "openid": req_data.get("openid"),
             "nickname": req_data.get("nickname", ""),
             "avatar": req_data.get("avatar", ""),
             "bio": req_data.get("bio", ""),
@@ -178,19 +169,19 @@ async def create_post(
         if "qqId" in req_data:
             db_post_data["qqId"] = req_data.get("qqId")
         
-        # 处理其他可选字段
-        if "image" in req_data:
-            db_post_data["image"] = req_data.get("image")
-        if "tag" in req_data:
-            db_post_data["tag"] = req_data.get("tag")
-        if "location" in req_data:
-            db_post_data["location"] = req_data.get("location")
+        # 处理需要JSON序列化的可选字段
+        if "image" in req_data and isinstance(req_data["image"], list):
+            db_post_data["image"] = json.dumps(req_data["image"], ensure_ascii=False)
+        if "tag" in req_data and isinstance(req_data["tag"], list):
+            db_post_data["tag"] = json.dumps(req_data["tag"], ensure_ascii=False)
+        if "location" in req_data and isinstance(req_data["location"], dict):
+            db_post_data["location"] = json.dumps(req_data["location"], ensure_ascii=False)
         
         # 创建帖子和更新用户发帖数并行执行
-        post_insert = async_insert("wxapp_post", db_post_data)
-        user_update = async_execute_custom_query(
+        post_insert = insert_record("wxapp_post", db_post_data)
+        user_update = execute_custom_query(
             "UPDATE wxapp_user SET post_count = post_count + 1 WHERE openid = %s",
-            [openid],
+            [req_data.get("openid")],
             fetch=False
         )
         
@@ -208,208 +199,337 @@ async def create_post(
         logger.error(f"创建帖子接口异常: {str(e)}")
         return Response.error(details={"message": f"创建帖子失败: {str(e)}"})
 
-@router.get("/post/detail")
+@router.get("/detail", summary="获取帖子详情")
 async def get_post_detail(
-    post_id: str = Query(..., description="帖子ID")
+    post_id: int,
+    openid: Optional[str] = Query(None)
 ):
-    """获取帖子详情"""
-    try:
-        # 直接使用单一SQL查询帖子，包含所有字段
-        post_query = """
-        SELECT 
-            id, openid, title, content, image, tag, category_id, location, nickname, avatar,
-            phone, wechatId, qqId, view_count, like_count, comment_count, favorite_count,
-            allow_comment, is_public, create_time, update_time, status, is_deleted
-        FROM wxapp_post
-        WHERE id = %s AND status = 1 AND is_deleted = 0
-        LIMIT 1
-        """
+    """获取帖子详情，包括作者信息和当前用户的互动状态"""
+    post_query = "SELECT * FROM wxapp_post WHERE id = %s AND is_deleted = 0"
+    post_data = await execute_custom_query(post_query, [post_id], fetch='one')
+    
+    if not post_data:
+        return Response.error(message="帖子不存在或已被删除")
         
-        post_data = await async_execute_custom_query(post_query, [post_id])
+    # 增加浏览量
+    await execute_custom_query("UPDATE wxapp_post SET view_count = view_count + 1 WHERE id = %s", [post_id], fetch=False)
+    
+    post = dict(post_data)
+    post['view_count'] += 1
+    
+    # 获取作者信息
+    author_openid = post.get('openid')
+    if author_openid:
+        user_data = await execute_custom_query(
+            "SELECT openid, nickname, avatar, bio, post_count, follower_count, following_count FROM wxapp_user WHERE openid = %s",
+            [author_openid], 
+            fetch='one'
+        )
+        post['user_info'] = user_data
+    else:
+        post['user_info'] = {}
+
+    # 如果提供了当前用户openid，查询互动状态
+    if openid and author_openid:
+        actions_task = query_records(
+            "wxapp_action",
+            {"openid": openid, "target_id": post_id, "target_type": "post"},
+            fields=['action_type']
+        )
+        follow_action_task = query_records(
+            "wxapp_action",
+            {"openid": openid, "target_id": author_openid, "target_type": "user", "action_type": "follow"},
+            limit=1
+        )
+        actions_result, follow_action_result = await asyncio.gather(actions_task, follow_action_task)
         
-        if not post_data:
-            return Response.not_found(resource="帖子")
-            
-        # 增加浏览量
-        increment_views_query = """
-        UPDATE wxapp_post SET view_count = view_count + 1 WHERE id = %s
-        """
-        await async_execute_custom_query(increment_views_query, [post_id], fetch=False)
+        action_types = {action['action_type'] for action in actions_result.get('data', [])}
+        post['is_liked'] = 'like' in action_types
+        post['is_favorited'] = 'favorite' in action_types
+        post['is_following_author'] = len(follow_action_result.get('data', [])) > 0
+    else:
+        post['is_liked'] = False
+        post['is_favorited'] = False
+        post['is_following_author'] = False
 
-        # 构建详情响应
-        detail_response = post_data[0]
-        
-        # 只有公开帖子才查询用户详细信息
-        if detail_response.get("is_public", 1) == 1 and detail_response.get("openid"):
-            user_data = await async_execute_custom_query(
-                "SELECT openid, nickname, avatar, bio FROM wxapp_user WHERE openid = %s LIMIT 1",
-                [detail_response.get("openid")]
-            )
-            if user_data:
-                for key, value in user_data[0].items():
-                    detail_response[key] = value
-        else:
-            # 非公开帖子提供匿名信息
-            detail_response["user"] = {
-                "openid": "",  # 不提供真实openid
-                "nickname": "匿名用户",
-                "avatar": ""  # 空头像
-            }
-            
-            # 清除可能泄露用户信息的字段
-            detail_response["nickname"] = "匿名用户"
-            detail_response["avatar"] = ""
-            detail_response["bio"] = ""
-            detail_response["phone"] = None
-            detail_response["wechatId"] = None
-            detail_response["qqId"] = None
+    return Response.success(data=post)
 
-        return Response.success(data=detail_response)
-    except Exception as e:
-        return Response.error(details={"message": f"获取帖子详情失败: {str(e)}"})
-
-@router.get("/post/list")
+@router.get("/list", summary="获取帖子列表")
 async def get_posts(
+    page: int = 1,
+    page_size: int = 10,
+    category_id: Optional[int] = Query(None),
+    sort_by: str = Query("latest", description="排序方式: latest, popular"),
+    favorite: bool = Query(False, description="是否只看收藏"),
+    following: bool = Query(False, description="是否只看关注"),
+    openid: Optional[str] = Query(None) # 改为可选的查询参数
+):
+    """获取帖子列表，支持分类、排序、收藏、关注等筛选"""
+    base_query = "FROM wxapp_post p"
+    select_query = "SELECT p.* "
+    
+    conditions = ["p.is_deleted = 0"]
+    params = []
+    joins = ""
+
+    # 处理筛选条件
+    if category_id:
+        conditions.append("p.category_id = %s")
+        params.append(category_id)
+            
+    if favorite:
+        if not openid:
+            return Response.bad_request(details={"message": "查看收藏帖子需要提供openid"})
+        joins += " JOIN wxapp_action a ON p.id = a.target_id"
+        conditions.append("a.openid = %s AND a.target_type = 'post' AND a.action_type = 'favorite'")
+        params.append(openid)
+            
+    if following:
+        if not openid:
+            return Response.bad_request(details={"message": "查看关注帖子需要提供openid"})
+        following_actions = await query_records(
+            "wxapp_action",
+            {"openid": openid, "target_type": "user", "action_type": "follow"},
+            fields=['target_id']
+        )
+        followed_openids = [action['target_id'] for action in following_actions.get('data', [])]
+
+        if not followed_openids:
+            return Response.paged(data=[], pagination=PaginationInfo(
+                total=0, page=page, page_size=page_size
+            ))
+        
+        placeholders = ', '.join(['%s'] * len(followed_openids))
+        conditions.append(f"p.openid IN ({placeholders})")
+        params.extend(followed_openids)
+
+    where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+    
+    # 排序
+    order_clause = " ORDER BY p.like_count DESC, p.view_count DESC" if sort_by == 'popular' else " ORDER BY p.create_time DESC"
+    
+    # 分页
+    limit_clause = " LIMIT %s OFFSET %s"
+    offset = (page - 1) * page_size
+    
+    # 构造完整查询
+    full_query = select_query + base_query + joins + where_clause + order_clause + limit_clause
+    count_query = "SELECT COUNT(p.id) as total " + base_query + joins + where_clause
+
+    # 执行查询
+    try:
+        count_result = await execute_custom_query(count_query, params, fetch='one')
+        total = count_result['total'] if count_result else 0
+
+        if total == 0:
+            return Response.paged(data=[], pagination=PaginationInfo(
+                total=0, page=page, page_size=page_size
+            ))
+
+        posts_data = await execute_custom_query(full_query, params + [page_size, offset], fetch='all')
+        
+        # 批量数据增强
+        enriched_posts = await batch_enrich_posts_with_user_info(posts_data, openid)
+        
+        pagination = PaginationInfo(
+            total=total,
+            page=page,
+            page_size=page_size
+        )
+        return Response.paged(data=enriched_posts, pagination=pagination)
+    except Exception as e:
+        logger.error(f"获取帖子列表失败: {e}")
+        return Response.error(details=f"数据库查询异常: {e}")
+
+@router.post("/update", summary="更新帖子")
+async def update_post(
+    post_data: Dict[str, Any] = Body(...)
+):
+    """更新帖子信息"""
+    try:
+        req_data = post_data
+        required_params = ["post_id", "openid"]
+        error_response = validate_params(req_data, required_params)
+        if(error_response):
+            return error_response
+            
+        post_id = req_data.get("post_id")
+        openid = req_data.get("openid")
+        
+        if not post_id or not openid:
+            return Response.invalid_params(details={"message": "post_id和openid是必需的"})
+        
+        # 验证帖子是否存在且属于该用户
+        post_check = await get_by_id("wxapp_post", post_id)
+        if not post_check or post_check['openid'] != openid:
+            return Response.permission_denied(details={"message": "无权修改该帖子"})
+        
+        # 提取更新字段
+        update_data = {}
+        
+        if "title" in req_data:
+            update_data["title"] = sanitize_input(req_data["title"])
+        if "content" in req_data:
+            update_data["content"] = sanitize_input(req_data["content"])
+        if "image" in req_data and isinstance(req_data["image"], list):
+            update_data["image"] = json.dumps(req_data["image"], ensure_ascii=False)
+        if "category_id" in req_data:
+            try:
+                update_data["category_id"] = int(req_data["category_id"])
+            except (ValueError, TypeError):
+                update_data["category_id"] = 1
+        if "tag" in req_data and isinstance(req_data["tag"], list):
+            update_data["tag"] = json.dumps(req_data["tag"], ensure_ascii=False)
+        if "phone" in req_data:
+            update_data["phone"] = req_data["phone"]
+        if "wechatId" in req_data:
+            update_data["wechatId"] = req_data["wechatId"]
+        if "qqId" in req_data:
+            update_data["qqId"] = req_data["qqId"]
+        if "allow_comment" in req_data:
+            update_data["allow_comment"] = 1 if req_data["allow_comment"] in [1, "1", True, "true", "True"] else 0
+        if "is_public" in req_data:
+            update_data["is_public"] = 1 if req_data["is_public"] in [1, "1", True, "true", "True"] else 0
+        if "location" in req_data and isinstance(req_data["location"], dict):
+            update_data["location"] = json.dumps(req_data["location"], ensure_ascii=False)
+        
+        if not update_data:
+            return Response.bad_request(details={"message": "未提供任何更新数据"})
+            
+        # 更新帖子
+        update_success = update_record(
+            "wxapp_post",
+            post_id,
+            update_data
+        )
+        
+        if not update_success:
+            return Response.db_error(details={"message": "更新帖子失败"})
+        
+        # 直接使用SQL获取更新后的帖子
+        fields = "id, title, content, image, tag, category_id, phone, wechatId, qqId, allow_comment, is_public, location, update_time"
+        updated_post = await execute_custom_query(
+            f"SELECT {fields} FROM wxapp_post WHERE id = %s LIMIT 1",
+            [post_id]
+        )
+        
+        if not updated_post:
+            return Response.db_error(details={"message": "更新帖子失败"})
+
+        # 获取完整帖子信息以返回
+        post_detail = await get_post_with_stats(post_id)
+        return Response.success(data=post_detail, details={"message": "帖子更新成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"更新帖子失败: {str(e)}"})
+
+@router.post("/delete", summary="删除帖子")
+async def delete_post(
+    body: Dict[str, Any] = Body(...)
+):
+    """删除帖子"""
+    try:
+        # 查询当前操作用户的角色
+        user_info = await execute_custom_query(
+            "SELECT role FROM wxapp_user WHERE openid = %s LIMIT 1",
+            [body.get("openid")]
+        )
+        user_role = user_info[0]["role"] if user_info and user_info[0] else None
+
+        # 先查询帖子是否存在
+        post_query = f"SELECT id, openid FROM wxapp_post WHERE id = %s AND is_deleted = 0"
+        post_result = await execute_custom_query(post_query, [body.get("post_id")])
+        if not post_result:
+            return Response.not_found(resource="帖子")
+        post_owner = post_result[0]["openid"]
+
+        # 只有admin可以无视openid，普通用户只能删除自己帖子
+        if user_role != "admin" and post_owner != body.get("openid"):
+            return Response.forbidden(details={"message": "只有帖子作者才能删除帖子"})
+        
+        # 逻辑删除帖子，同时减少用户的发帖数
+        # 并发执行两个SQL操作
+        delete_post_query = execute_custom_query(
+            "UPDATE wxapp_post SET is_deleted = 1, status = 0, update_time = NOW() WHERE id = %s",
+            [body.get("post_id")],
+            fetch=False
+        )
+        update_user_query = execute_custom_query(
+            "UPDATE wxapp_user SET post_count = GREATEST(post_count - 1, 0) WHERE openid = %s",
+            [post_owner],
+            fetch=False
+        )
+        await asyncio.gather(delete_post_query, update_user_query)
+        
+        return Response.success(details={"message": "删除帖子成功"})
+    except Exception as e:
+        return Response.error(details={"message": f"删除帖子失败: {str(e)}"})
+
+@router.get("/search")
+async def search_posts(
+    request: Request,
+    keywords: Optional[str] = Query(None, description="搜索关键词"),
+    category_id: Optional[int] = Query(None, description="分类ID"),
+    min_likes: Optional[int] = Query(None, description="最小点赞数"),
+    max_likes: Optional[int] = Query(None, description="最大点赞数"),
     page: int = Query(1, description="页码"),
     limit: int = Query(10, description="每页数量"),
-    category_id: Optional[int] = Query(None, description="分类ID"),
-    tag: Optional[str] = Query(None, description="标签"),
-    openid: Optional[str] = Query(None, description="用户openid，查询该用户的帖子或收藏的帖子"),
-    favorite: bool = Query(False, description="是否查询用户收藏的帖子，为true时使用openid参数查询用户收藏的帖子"),
-    order_by: str = Query("create_time DESC", description="排序字段")
+    order_by: str = Query("create_time DESC", description="排序方式"),
+    favorite: bool = Query(False, description="是否只看收藏"),
+    following: bool = Query(False, description="是否只看关注"),
+    openid: Optional[str] = Query(None, description="当前用户OpenID，用于查询收藏和关注")
 ):
-    """查询帖子列表"""
+    """搜索帖子"""
     try:
         # 验证并规范排序字段
-        ALLOWED_ORDERS = {"update_time", "create_time", "view_count", "like_count"}
+        ALLOWED_ORDERS = {"update_time", "create_time", "view_count", "like_count", "comment_count"}
         
         order_by_parts = order_by.split()
         if len(order_by_parts) != 2 or order_by_parts[0] not in ALLOWED_ORDERS or order_by_parts[1].upper() not in {"ASC", "DESC"}:
             order_by = "create_time DESC"
+            
+        # 构建基础SQL和条件
+        base_sql = """
+        SELECT 
+            id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
+            view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
+            create_time, update_time, tag, category_id, status
+        FROM wxapp_post
+        WHERE status = 1 AND is_deleted = 0 AND is_public = 1
+        """
         
-        # 处理收藏查询
-        if favorite and openid:
-            # 先查询用户收藏的帖子ID
-            favorite_sql = """
-            SELECT target_id FROM wxapp_action 
-            WHERE openid = %s AND action_type = 'favorite' AND target_type = 'post'
-            """
-            favorite_results = await async_execute_custom_query(favorite_sql, [openid])
-            
-            if not favorite_results:
-                # 用户没有收藏帖子，直接返回空结果
-                pagination = {
-                    "total": 0,
-                    "page": page,
-                    "page_size": limit,
-                    "total_pages": 0,
-                    "has_more": False
-                }
-                return Response.paged(data=[], pagination=pagination)
-            
-            # 提取收藏的帖子ID
-            favorite_post_ids = [item['target_id'] for item in favorite_results]
-            
-            # 构建基础SQL查询，加入收藏条件
-            base_sql = """
-            SELECT 
-                id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
-                view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
-                create_time, update_time, tag, category_id, status, is_deleted
-            FROM wxapp_post
-            WHERE is_deleted = 0 AND id IN %s
-            """
-            params = [tuple(favorite_post_ids) if len(favorite_post_ids) > 1 else f"({favorite_post_ids[0]})"]
-            
-            # 添加分类筛选
-            if category_id:
-                base_sql += " AND category_id = %s"
-                params.append(category_id)
-            
-            # 添加标签筛选
-            if tag:
-                base_sql += " AND tag LIKE %s"
-                params.append(f"%{tag}%")
-            
-            # 添加排序和分页
-            base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
-            params.extend([limit, (page - 1) * limit])
-            
-            # 构建计数SQL
-            count_sql = """
-            SELECT COUNT(*) as total FROM wxapp_post 
-            WHERE is_deleted = 0 AND id IN %s
-            """
-            count_params = [tuple(favorite_post_ids) if len(favorite_post_ids) > 1 else f"({favorite_post_ids[0]})"]
-            
-            # 添加分类筛选到计数查询
-            if category_id:
-                count_sql += " AND category_id = %s"
-                count_params.append(category_id)
-            
-            # 添加标签筛选到计数查询
-            if tag:
-                count_sql += " AND tag LIKE %s"
-                count_params.append(f"%{tag}%")
-        else:
-            # 常规查询流程（非收藏查询）
-            # 构建基础SQL查询和条件
-            base_sql = """
-            SELECT 
-                id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
-                view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
-                create_time, update_time, tag, category_id, status, is_deleted
-            FROM wxapp_post
-            WHERE is_deleted = 0
-            """
-            
-            # 构建查询参数和条件
-            params = []
-            
-            # 添加分类筛选
-            if category_id:
-                base_sql += " AND category_id = %s"
-                params.append(category_id)
-            
-            # 添加标签筛选
-            if tag:
-                base_sql += " AND tag LIKE %s"
-                params.append(f"%{tag}%")
-                
-            # 添加作者筛选
-            if openid and not favorite:  # 只有在非收藏模式下，openid才用作作者筛选
-                base_sql += " AND openid = %s"
-                params.append(openid)
-            
-            # 添加排序和分页
-            base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
-            params.extend([limit, (page - 1) * limit])
-            
-            # 构建计数SQL
-            count_sql = """
-            SELECT COUNT(*) as total FROM wxapp_post WHERE is_deleted = 0
-            """
-            
-            # 添加筛选条件到计数查询
-            count_params = []
-            if category_id:
-                count_sql += " AND category_id = %s"
-                count_params.append(category_id)
-            
-            if tag:
-                count_sql += " AND tag LIKE %s"
-                count_params.append(f"%{tag}%")
-                
-            # 添加作者筛选到计数查询
-            if openid and not favorite:  # 只有在非收藏模式下，openid才用作作者筛选
-                count_sql += " AND openid = %s"
-                count_params.append(openid)
+        params = []
         
-        # 并行执行帖子查询和总数查询
-        post_query = async_execute_custom_query(base_sql, params)
-        count_query = async_execute_custom_query(count_sql, count_params)
+        # 添加关键词筛选
+        if keywords:
+            base_sql += " AND (title LIKE %s OR content LIKE %s)"
+            params.extend([f"%{keywords}%", f"%{keywords}%"])
         
-        posts, count_result = await asyncio.gather(post_query, count_query)
+        # 添加分类筛选
+        if category_id:
+            base_sql += " AND category_id = %s"
+            params.append(category_id)
+        
+        # 添加点赞数范围筛选
+        if min_likes is not None:
+            base_sql += " AND like_count >= %s"
+            params.append(min_likes)
+            
+        if max_likes is not None:
+            base_sql += " AND like_count <= %s"
+            params.append(max_likes)
+        
+        # 使用正则表达式替换SELECT子句，更健壮
+        count_sql = re.sub(r"SELECT .*? FROM", "SELECT COUNT(*) as total FROM", base_sql, flags=re.IGNORECASE | re.DOTALL)
+        
+        # 添加排序和分页
+        base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
+        params.extend([limit, (page - 1) * limit])
+        
+        # 并行执行查询
+        post_query_coro = execute_custom_query(base_sql, params)
+        count_query_coro = execute_custom_query(count_sql, params[:-2])  # 移除分页参数
+        
+        posts, count_result = await asyncio.gather(post_query_coro, count_query_coro)
         
         # 获取总记录数
         total = count_result[0]['total'] if count_result else 0
@@ -437,15 +557,17 @@ async def get_posts(
             
             # 如果有公开帖子，查询用户信息
             if public_post_openids:
+                # 动态生成占位符
+                user_placeholders = ', '.join(['%s'] * len(public_post_openids))
                 # 使用IN查询批量获取用户信息
-                user_query = """
+                user_query = f"""
                 SELECT openid, nickname, avatar, bio 
                 FROM wxapp_user 
-                WHERE openid IN %s
+                WHERE openid IN ({user_placeholders})
                 """
-                user_results = await async_execute_custom_query(
+                user_results = await execute_custom_query(
                     user_query, 
-                    [tuple(public_post_openids)] if len(public_post_openids) > 1 else [(public_post_openids[0],)]
+                    public_post_openids
                 )
                 
                 # 构建用户信息映射
@@ -496,234 +618,12 @@ async def get_posts(
         logger.error(f"查询帖子列表异常: {str(e)}")
         return Response.error(details={"message": f"查询帖子列表失败: {str(e)}"})
 
-@router.post("/post/update")
-async def update_post(
-    request: Request,
-):
-    """更新帖子信息"""
-    try:
-        req_data = await request.json()
-        required_params = ["post_id", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
-            
-        openid = req_data.get("openid")
-        post_id = req_data.get("post_id")
-        
-        # 使用单条SQL验证帖子是否存在并且属于当前用户
-        post_result = await async_execute_custom_query(
-            "SELECT id FROM wxapp_post WHERE id = %s AND openid = %s LIMIT 1",
-            [post_id, openid]
-        )
-        
-        if not post_result:
-            return Response.not_found(resource="帖子")
-        
-        # 提取更新字段
-        update_data = {}
-        
-        if "title" in req_data:
-            update_data["title"] = sanitize_input(req_data["title"])
-        if "content" in req_data:
-            update_data["content"] = sanitize_input(req_data["content"])
-        if "image" in req_data:
-            update_data["image"] = req_data["image"]
-        if "category_id" in req_data:
-            try:
-                update_data["category_id"] = int(req_data["category_id"])
-            except (ValueError, TypeError):
-                update_data["category_id"] = 1
-        if "tag" in req_data:
-            update_data["tag"] = req_data["tag"]
-        if "phone" in req_data:
-            update_data["phone"] = req_data["phone"]
-        if "wechatId" in req_data:
-            update_data["wechatId"] = req_data["wechatId"]
-        if "qqId" in req_data:
-            update_data["qqId"] = req_data["qqId"]
-        if "allow_comment" in req_data:
-            update_data["allow_comment"] = 1 if req_data["allow_comment"] in [1, "1", True, "true", "True"] else 0
-        if "is_public" in req_data:
-            update_data["is_public"] = 1 if req_data["is_public"] in [1, "1", True, "true", "True"] else 0
-        if "location" in req_data:
-            update_data["location"] = req_data["location"]
-        
-        if not update_data:
-            return Response.bad_request(details={"message": "未提供任何更新数据"})
-            
-        # 更新帖子
-        update_success = await async_update(
-            "wxapp_post",
-            post_id,
-            update_data
-        )
-        
-        if not update_success:
-            return Response.db_error(details={"message": "更新帖子失败"})
-        
-        # 直接使用SQL获取更新后的帖子
-        fields = "id, title, content, image, tag, category_id, phone, wechatId, qqId, allow_comment, is_public, location, update_time"
-        updated_post = await async_execute_custom_query(
-            f"SELECT {fields} FROM wxapp_post WHERE id = %s LIMIT 1",
-            [post_id]
-        )
-        
-        # 更新帖子成功
-        if updated_post:
-            return Response.success(data=updated_post[0], details={"message": "更新帖子成功"})
-        else:
-            return Response.success(details={"message": "更新帖子成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"更新帖子失败: {str(e)}"})
-
-@router.post("/post/delete")
-async def delete_post(
-    request: Request,
-):
-    """删除帖子"""
-    try:
-        req_data = await request.json()
-        required_params = ["post_id", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
-            
-        openid = req_data.get("openid") 
-        post_id = req_data.get("post_id")
-        
-        # 查询当前操作用户的角色
-        user_info = await async_execute_custom_query(
-            "SELECT role FROM wxapp_user WHERE openid = %s LIMIT 1",
-            [openid]
-        )
-        user_role = user_info[0]["role"] if user_info and user_info[0] else None
-
-        # 先查询帖子是否存在
-        post_query = f"SELECT id, openid FROM wxapp_post WHERE id = %s AND is_deleted = 0"
-        post_result = await async_execute_custom_query(post_query, [post_id])
-        if not post_result:
-            return Response.not_found(resource="帖子")
-        post_owner = post_result[0]["openid"]
-
-        # 只有admin可以无视openid，普通用户只能删除自己帖子
-        if user_role != "admin" and post_owner != openid:
-            return Response.forbidden(details={"message": "只有帖子作者才能删除帖子"})
-        
-        # 逻辑删除帖子，同时减少用户的发帖数
-        # 并发执行两个SQL操作
-        delete_post_query = async_execute_custom_query(
-            "UPDATE wxapp_post SET is_deleted = 1, status = 0, update_time = NOW() WHERE id = %s",
-            [post_id],
-            fetch=False
-        )
-        update_user_query = async_execute_custom_query(
-            "UPDATE wxapp_user SET post_count = GREATEST(post_count - 1, 0) WHERE openid = %s",
-            [post_owner],
-            fetch=False
-        )
-        await asyncio.gather(delete_post_query, update_user_query)
-        
-        return Response.success(details={"message": "删除帖子成功"})
-    except Exception as e:
-        return Response.error(details={"message": f"删除帖子失败: {str(e)}"})
-
-@router.get("/post/search")
-async def search_posts(
-    request: Request,
-    keywords: Optional[str] = Query(None, description="搜索关键词"),
-    category_id: Optional[int] = Query(None, description="分类ID"),
-    min_likes: Optional[int] = Query(None, description="最小点赞数"),
-    max_likes: Optional[int] = Query(None, description="最大点赞数"),
-    page: int = Query(1, description="页码"),
-    limit: int = Query(10, description="每页数量"),
-    order_by: str = Query("create_time DESC", description="排序方式")
-):
-    """搜索帖子"""
-    try:
-        # 验证并规范排序字段
-        ALLOWED_ORDERS = {"update_time", "create_time", "view_count", "like_count", "comment_count"}
-        
-        order_by_parts = order_by.split()
-        if len(order_by_parts) != 2 or order_by_parts[0] not in ALLOWED_ORDERS or order_by_parts[1].upper() not in {"ASC", "DESC"}:
-            order_by = "create_time DESC"
-            
-        # 构建基础SQL和条件
-        base_sql = """
-        SELECT 
-            id, title, content, image, openid, nickname, avatar, bio, phone, wechatId, qqId,
-            view_count, like_count, comment_count, favorite_count, allow_comment, is_public,
-            create_time, update_time, tag, category_id, status
-        FROM wxapp_post
-        WHERE status = 1 AND is_deleted = 0 AND is_public = 1
-        """
-        
-        params = []
-        
-        # 添加关键词筛选
-        if keywords:
-            base_sql += " AND (title LIKE %s OR content LIKE %s)"
-            params.extend([f"%{keywords}%", f"%{keywords}%"])
-        
-        # 添加分类筛选
-        if category_id:
-            base_sql += " AND category_id = %s"
-            params.append(category_id)
-        
-        # 添加点赞数范围筛选
-        if min_likes is not None:
-            base_sql += " AND like_count >= %s"
-            params.append(min_likes)
-            
-        if max_likes is not None:
-            base_sql += " AND like_count <= %s"
-            params.append(max_likes)
-        
-        # 计数SQL
-        count_sql = base_sql.replace("SELECT \n            id, title, content, image, openid, nickname, avatar, bio, \n            view_count, like_count, comment_count, favorite_count, \n            create_time, update_time, tag, category_id, status", "SELECT COUNT(*) as total")
-        
-        # 添加排序和分页
-        base_sql += f" ORDER BY {order_by} LIMIT %s OFFSET %s"
-        params.extend([limit, (page - 1) * limit])
-        
-        # 并行执行查询
-        post_query = async_execute_custom_query(base_sql, params)
-        count_query = async_execute_custom_query(count_sql, params[:-2])  # 移除分页参数
-        
-        posts, count_result = await asyncio.gather(post_query, count_query)
-        
-        # 获取总记录数
-        total = count_result[0]['total'] if count_result else 0
-        
-        # 计算总页数
-        total_pages = (total + limit - 1) // limit if limit > 0 else 1
-        
-        # 构建标准分页信息
-        pagination = {
-            "total": total,
-            "page": page,
-            "page_size": limit,
-            "total_pages": total_pages,
-            "has_more": page < total_pages
-        }
-        
-        # 返回标准分页响应
-        return Response.paged(
-            data=posts,
-            pagination=pagination,
-            details={"message": "搜索帖子成功", "keywords": keywords}
-        )
-        
-    except Exception as e:
-        logger.error(f"搜索帖子异常: {str(e)}")
-        return Response.error(details={"message": f"搜索帖子失败: {str(e)}"})
-
 # 使用并行查询优化
 async def get_post_with_stats(post_id):
     """获取帖子和统计信息"""
     try:
         # 获取帖子
-        post_result = await async_query_records(
+        post_result = query_records(
             "wxapp_post",
             {"id": post_id},
             limit=1
@@ -741,7 +641,7 @@ async def get_post_with_stats(post_id):
         logger.error(f"获取帖子信息失败: {str(e)}")
         return None
 
-@router.get("/post/status")
+@router.get("/status")
 async def get_post_status(
     post_id: str = Query(..., description="帖子ID，多个ID用逗号分隔"),
     openid: str = Query(..., description="用户openid")
@@ -780,7 +680,7 @@ async def get_post_status(
         """
         
         # 执行联合查询
-        posts_with_actions = await async_execute_custom_query(
+        posts_with_actions = await execute_custom_query(
             status_sql,
             [openid, openid, openid, tuple(post_ids)]
         )
@@ -797,7 +697,7 @@ async def get_post_status(
             a.openid = %s AND a.action_type = 'follow' AND a.target_type = 'user'
         """
         
-        following_result = await async_execute_custom_query(following_sql, [openid])
+        following_result = await execute_custom_query(following_sql, [openid])
         following_openids = set()
         if following_result:
             following_openids = {item['author_openid'] for item in following_result}

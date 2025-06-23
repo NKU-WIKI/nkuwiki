@@ -9,7 +9,16 @@ import os
 import asyncio
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
+sys.path.append(str(Path(__file__).resolve().parents[2]))
+
+from config import Config
+from core.utils import register_logger
+from etl.rag.pipeline import RagPipeline
+from etl.rag.strategies import RetrievalStrategy, RerankStrategy
+
+# 配置
+config = Config()
+logger = register_logger(__name__)
 
 async def test_basic_query():
     """测试基本查询功能"""
@@ -31,7 +40,7 @@ async def test_basic_query():
                 # 使用run方法进行查询
                 results = pipeline.run(
                     query=query,
-                    retrieval_strategy=RetrievalStrategy.HYBRID,
+                    retrieval_strategy=RetrievalStrategy.HYBRID,  # 测试改进后的HYBRID
                     rerank_strategy=RerankStrategy.BGE_RERANKER,
                     skip_generation=True,
                     top_k_retrieve=5,
@@ -101,6 +110,18 @@ async def main():
     await test_wildcard_query()
     
     print("\n✅ 查询测试完成！")
+
+def test_rag_functionalities():
+    """测试RAG管道的核心功能"""
+    logger.info("--- 测试RAG管道功能 ---")
+    
+    try:
+        from etl.rag.pipeline import RagPipeline
+        rag_pipeline = RagPipeline()
+        logger.info("RAG管道初始化成功。")
+    except Exception as e:
+        logger.error(f"RAG管道初始化失败: {e}")
+        assert False, f"RAG pipeline initialization failed: {e}"
 
 if __name__ == "__main__":
     asyncio.run(main()) 
