@@ -1,6 +1,6 @@
 #!/bin/bash
-# nkuwiki_service_manager.sh - 管理nkuwiki单服务（8000端口2个worker）
-# 用法: ./nkuwiki_service_manager.sh [命令] [参数]
+# nkuwiki_service_manager.sh - 管理nkuwiki的main和dev分支服务
+# 用法: ./nkuwiki_service_manager.sh [命令] [分支] [参数]
 
 set -e
 
@@ -12,56 +12,69 @@ BLUE='\033[0;34m'
 NC='\033[0m' # 无颜色
 
 # 常量
-NGINX_CONF_DIR="/etc/nginx/conf.d"
-NGINX_SITES_DIR="/etc/nginx/sites-available"
+NGINX_CONF_DIR="/etc/nginx/sites-available"
 NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
-HTTP_CONF="${NGINX_SITES_DIR}/nkuwiki.conf"
-HTTPS_CONF="${NGINX_SITES_DIR}/nkuwiki-ssl.conf"
-SSL_CERT_PATH="/etc/ssl/certs/nkuwiki.com.crt"
-SSL_KEY_PATH="/etc/ssl/private/nkuwiki.com.key"
-PROJECT_ROOT="/home/nkuwiki/nkuwiki-shell/nkuwiki"
+PROJECT_ROOT_MAIN="/home/nkuwiki/nkuwiki-shell/nkuwiki"
+PROJECT_ROOT_DEV="/home/nkuwiki/nkuwiki-shell/nkuwiki-dev"
 MIHOMO_SERVICE="mihomo.service"
 MIHOMO_CONFIG_DIR="/etc/mihomo"
 MIHOMO_API_PORT="9090"
 ENABLE_PROXY=0
 
+# 根据分支设置变量
+function set_branch_variables {
+    BRANCH=$1
+    if [ "$BRANCH" == "main" ]; then
+        PROJECT_ROOT=$PROJECT_ROOT_MAIN
+        API_PORT=8000
+        COMPOSE_PROJECT_NAME="nkuwiki_main"
+    elif [ "$BRANCH" == "dev" ]; then
+        PROJECT_ROOT=$PROJECT_ROOT_DEV
+        API_PORT=8001
+        COMPOSE_PROJECT_NAME="nkuwiki_dev"
+    else
+        echo -e "${RED}错误: 无效的分支 '$BRANCH'. 请使用 'main' 或 'dev'.${NC}"
+        exit 1
+    fi
+    NGINX_CONF="${NGINX_CONF_DIR}/nkuwiki-${BRANCH}-locations.conf"
+}
+
 function show_help {
-    echo -e "${BLUE}nkuwiki服务管理脚本${NC}"
-    echo -e "${YELLOW}功能:${NC} 管理nkuwiki单实例服务（8000端口2个worker）"
-    echo -e "${YELLOW}版本:${NC} 1.0.0"
+    echo -e "${BLUE}NKUWiki 服务管理脚本 (main & dev)${NC}"
+    echo -e "${YELLOW}功能:${NC} 使用 Docker Compose 管理 nkuwiki 的 main 和 dev 分支服务"
+    echo -e "${YELLOW}版本:${NC} 2.0.0"
     echo ""
-    echo -e "${BLUE}用法:${NC} $0 命令 [参数]"
+    echo -e "${BLUE}用法:${NC} $0 [命令] [分支] [参数]"
     echo ""
-    echo -e "${GREEN}== 基本命令 ==${NC}"
-    echo -e "  ${YELLOW}deploy${NC}                      - 一键部署服务配置"
-    echo -e "  ${YELLOW}start${NC}                      - 启动nkuwiki服务"
-    echo -e "  ${YELLOW}restart${NC}                    - 重启nkuwiki服务"
-    echo -e "  ${YELLOW}status${NC}                     - 查看nkuwiki服务状态"
-    echo -e "  ${YELLOW}cleanup${NC}                    - 清理服务"
+    echo -e "${GREEN}== 服务命令 (需要指定分支) ==${NC}"
+    echo -e "  ${YELLOW}deploy [main|dev]${NC}            - 部署指定分支的应用服务"
+    echo -e "  ${YELLOW}start [main|dev]${NC}             - 启动指定分支的应用服务"
+    echo -e "  ${YELLOW}stop [main|dev]${NC}              - 停止指定分支的应用服务"
+    echo -e "  ${YELLOW}restart [main|dev]${NC}           - 重启指定分支的应用服务"
+    echo -e "  ${YELLOW}status [main|dev]${NC}            - 查看指定分支的应用容器状态"
+    echo -e "  ${YELLOW}logs [main|dev]${NC}              - 查看指定分支的应用日志"
+    echo -e "  ${YELLOW}cleanup [main|dev]${NC}           - 清理指定分支的应用服务 (Nginx配置和Docker容器)"
+    echo ""
+    echo -e "${GREEN}== 基础设施命令 (共享) ==${NC}"
+    echo -e "  ${YELLOW}start-infra${NC}                - 启动共享的基础设施服务 (mysql, redis, etc.)"
+    echo -e "  ${YELLOW}stop-infra${NC}                 - 停止共享的基础设施服务"
+    echo -e "  ${YELLOW}status-infra${NC}               - 查看基础设施服务状态"
+    echo -e "  ${YELLOW}logs-infra [service]${NC}        - 查看指定基础设施服务日志 (可选)"
+    echo ""
+    echo -e "${GREEN}== 全局命令 (无需指定分支) ==${NC}"
+    echo -e "  ${YELLOW}proxy-status${NC}               - 检查Mihomo代理状态"
+    echo -e "  ${YELLOW}restart-mihomo${NC}             - 重启Mihomo代理服务"
     echo -e "  ${YELLOW}help${NC}                       - 显示此帮助信息"
-    echo -e "${GREEN}== Mihomo服务命令 ==${NC}"
-    echo -e "  ${YELLOW}restart-mihomo${NC}             - 重启mihomo代理服务"
-    echo -e "  ${YELLOW}proxy-status${NC}               - 检查代理状态"
     echo ""
     echo -e "${GREEN}== 参数 ==${NC}"
-    echo -e "  ${YELLOW}--proxy${NC}                    - 启用代理 (适用于deploy/start/restart)"
-    echo -e "  ${YELLOW}--no-proxy${NC}                 - 禁用代理 (适用于deploy/start/restart) [默认]"
+    echo -e "  ${YELLOW}--proxy${NC}                    - 为容器启用代理 (适用于 deploy/start/restart)"
     echo ""
     echo -e "${GREEN}== 使用示例 ==${NC}"
-    echo -e "  $0 deploy                  - 一键部署服务配置 (默认禁用代理)"
-    echo -e "  $0 deploy --proxy          - 一键部署服务配置并启用代理"
-    echo -e "  $0 start --proxy           - 启动服务并启用代理"
-    echo -e "  $0 restart --no-proxy      - 重启服务并禁用代理"
-    echo -e "  $0 status                  - 查看服务状态"
-    echo -e "  $0 cleanup                 - 清理服务"
-    echo -e "  $0 restart-mihomo          - 重启mihomo代理服务"
-    echo -e "  $0 proxy-status            - 检查代理状态"
-    echo ""
-    echo -e "${BLUE}注意事项:${NC}"
-    echo -e "  1. 本脚本需要root权限执行"
-    echo -e "  2. 只创建一个服务：端口8000(2个worker)"
-    echo -e "  3. 清理命令会停止服务并删除服务文件"
-    echo -e "  4. 默认禁用代理，如需启用代理，请使用 --proxy 参数"
+    echo -e "  $0 start-infra               - 首先，启动所有共享服务"
+    echo -e "  $0 deploy main                 - 然后，部署 main 分支的应用"
+    echo -e "  $0 status-infra              - 查看共享服务的状态"
+    echo -e "  $0 status dev                  - 查看 dev 分支应用的状态"
+    echo -e "  $0 stop-infra                - 停止所有共享服务"
 }
 
 function check_root {
@@ -71,469 +84,341 @@ function check_root {
     fi
 }
 
-function check_port_available {
-    local port=$1
-    if netstat -tuln | grep -q ":$port "; then
-        return 1
-    else
-        return 0
+function check_docker {
+    if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null; then
+        echo -e "${RED}错误: Docker 或 Docker Compose V2 未安装或不可用。请先安装/配置它们。${NC}"
+        exit 1
     fi
 }
 
-function create_service {
-    echo -e "${BLUE}创建API服务...${NC}"
-    if ! check_port_available 8000; then
-        process=$(netstat -tulnp | grep ":8000 " | awk '{print $7}')
-        echo -e "${YELLOW}警告: 端口 8000 已被进程 $process 占用${NC}"
-        read -p "是否继续创建服务? (y/n): " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            echo -e "${RED}操作已取消${NC}"
-            exit 1
-        fi
+# 为 Docker Compose 创建 .env 文件
+function create_dotenv_file {
+    cd "$PROJECT_ROOT"
+    echo -e "${BLUE}在 $PROJECT_ROOT 为分支 '$BRANCH' 创建 .env 文件...${NC}"
+    
+    # 移除旧的环境变量设置，如果存在
+    if grep -q "http_proxy" .env 2>/dev/null; then
+        sed -i '/http_proxy/d' .env
+        sed -i '/https_proxy/d' .env
+        sed -i '/all_proxy/d' .env
+        sed -i '/no_proxy/d' .env
     fi
-    if [ $ENABLE_PROXY -eq 0 ]; then
-        exec_start_pre='ExecStartPre=/bin/bash -c "unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY"'
-    else
-        exec_start_pre='# 代理已启用，保留环境变量'
-    fi
-    local service_path="/etc/systemd/system/nkuwiki.service"
-    cat > "$service_path" << EOF
-[Unit]
-Description=NKU Wiki API Service (Port 8000, 2 Workers)
-After=network.target nginx.service mysql.service
 
-[Service]
-User=root
-WorkingDirectory=/home/nkuwiki/nkuwiki-shell/nkuwiki
-$exec_start_pre
-ExecStart=/opt/venvs/nkuwiki/bin/python3 app.py --api --port 8000 --workers 2
-Restart=always
-RestartSec=10
-Environment=PYTHONUNBUFFERED=1
-$(if [ $ENABLE_PROXY -eq 1 ]; then echo -e "Environment=\"http_proxy=http://127.0.0.1:7890\"\nEnvironment=\"https_proxy=http://127.0.0.1:7890\"\nEnvironment=\"all_proxy=socks5://127.0.0.1:7890\"\nEnvironment=\"no_proxy=localhost,127.0.0.1,192.168.*,10.*\""; fi)
-CPUQuota=70%
-MemoryLimit=4G
-TasksMax=128
-TimeoutStartSec=30
-TimeoutStopSec=30
-OOMScoreAdjust=-500
-StandardOutput=journal
-StandardError=journal
-
-[Install]
-WantedBy=multi-user.target
+    # 根据代理设置写入新的环境变量
+    if [ $ENABLE_PROXY -eq 1 ]; then
+        echo -e "${YELLOW}为容器启用代理...${NC}"
+        cat >> .env << EOF
+http_proxy=http://172.17.0.1:7890
+https_proxy=http://172.17.0.1:7890
+all_proxy=socks5://172.17.0.1:7890
+no_proxy=localhost,127.0.0.1,nkuwiki-mysql,nkuwiki-redis,nkuwiki-qdrant
 EOF
-    echo -e "${GREEN}创建服务文件: $service_path (端口: 8000, Worker: 2)${NC}"
-    systemctl daemon-reload
-    echo -e "${GREEN}服务文件已创建并加载${NC}"
+    else
+        echo -e "${GREEN}容器不使用代理。${NC}"
+        # 如果需要，可以写入空的代理变量
+    fi
 }
 
 function generate_nginx_config {
-    echo -e "${BLUE}生成Nginx配置...${NC}"
-    mkdir -p "$NGINX_SITES_ENABLED"
+    echo -e "${BLUE}为分支 '$BRANCH' 生成Nginx配置...${NC}"
     mkdir -p "$NGINX_CONF_DIR"
-    mkdir -p "$NGINX_SITES_DIR"
-    # 自动修改nginx.conf的worker_connections
-    NGINX_CONF="/etc/nginx/nginx.conf"
-    if grep -q 'worker_connections' "$NGINX_CONF"; then
-        sed -i 's/worker_connections[[:space:]]*[0-9]*;/worker_connections 2048;/' "$NGINX_CONF"
+    mkdir -p "$NGINX_SITES_ENABLED"
+    
+    # 定义 Nginx location 块的内容
+    # 注意：main 分支作为默认服务，dev 分支使用 /dev/ 路径前缀
+    if [ "$BRANCH" == "main" ]; then
+        PROXY_PATH="/"
+        SERVER_NAME="nkuwiki.com www.nkuwiki.com"
+        LISTEN_PORT="80"
     else
-        sed -i '/events {/a \    worker_connections 2048;' "$NGINX_CONF"
+        PROXY_PATH="/dev/"
+        # dev 分支不需要 server_name，它将通过 include 被主配置文件引用
+        SERVER_NAME="_"
+        LISTEN_PORT="" # 不监听，将被 include
     fi
-    cat > "$HTTP_CONF" << EOF
+
+    cat > "$NGINX_CONF" << EOF
+location ${PROXY_PATH} {
+    proxy_pass http://127.0.0.1:${API_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_buffering off;
+        proxy_read_timeout 300s;
+    
+    # 如果是 dev 分支，重写路径
+    if (\$request_uri ~* "^/dev/(.*)\$") {
+        rewrite ^/dev/(.*) /\$1 break;
+    }
+}
+EOF
+
+    echo -e "${GREEN}Nginx location 块已生成: $NGINX_CONF${NC}"
+}
+
+# 创建主 Nginx 配置文件，并包含分支的 location 配置
+function create_main_nginx_config {
+    echo -e "${BLUE}创建或更新主 Nginx 配置文件...${NC}"
+    MAIN_NGINX_CONF="${NGINX_CONF_DIR}/nkuwiki.conf"
+    
+    cat > "$MAIN_NGINX_CONF" << EOF
 server {
     listen 80;
     listen [::]:80;
     server_name nkuwiki.com www.nkuwiki.com;
+
     access_log /var/log/nginx/nkuwiki.access.log;
     error_log /var/log/nginx/nkuwiki.error.log;
+    
     charset utf-8;
+    
     add_header 'Access-Control-Allow-Origin' '*' always;
     add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
-    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range' always;
+    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
     add_header X-Content-Type-Options nosniff;
     add_header X-Frame-Options SAMEORIGIN;
     add_header X-XSS-Protection "1; mode=block";
-    location /mihomo {
-        alias /var/www/html/mihomo;
-        index index.html;
-        try_files \$uri \$uri/ /mihomo/index.html;
-    }
-    location /mihomo/assets/ {
-        alias /var/www/html/mihomo/assets/;
-        expires 1d;
-    }
-    location ^~ /mihomo-api/ {
-        proxy_pass http://127.0.0.1:9090/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
-        add_header 'Access-Control-Allow-Headers' '*' always;
-        error_log /var/log/nginx/mihomo-api.error.log debug;
-        access_log /var/log/nginx/mihomo-api.access.log;
-    }
+
+    # 包含 main 分支的 location 配置 (/)
+    include ${NGINX_CONF_DIR}/nkuwiki-main-locations.conf;
+
+    # 包含 dev 分支的 location 配置 (/dev/)
+    include ${NGINX_CONF_DIR}/nkuwiki-dev-locations.conf;
+
+    # 健康检查
     location /health {
         proxy_pass http://127.0.0.1:8000/health;
-        proxy_http_version 1.1;
         proxy_set_header Host \$host;
         access_log off;
-        proxy_read_timeout 5s;
     }
+
+    # SSL 证书申请路径
     location /.well-known/acme-challenge/ {
         root /var/www/html;
     }
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_buffering off;
-        proxy_read_timeout 300s;
-    }
-    location ~* \\.(css|js) {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    location /static/ {
-        proxy_pass http://127.0.0.1:8000/static/;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    location /assets/ {
-        proxy_pass http://127.0.0.1:8000/assets/;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    location /img/ {
-        proxy_pass http://127.0.0.1:8000/img/;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
 }
 EOF
-    if [ -f "$NGINX_SITES_ENABLED/nkuwiki.conf" ]; then
-        rm -f "$NGINX_SITES_ENABLED/nkuwiki.conf"
-    fi
-    ln -sf "$HTTP_CONF" "$NGINX_SITES_ENABLED/nkuwiki.conf"
-    cat > "$HTTPS_CONF" << EOF
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name nkuwiki.com www.nkuwiki.com;
-    ssl_certificate ${SSL_CERT_PATH};
-    ssl_certificate_key ${SSL_KEY_PATH};
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_ciphers HIGH:!aNULL:!MD5;
-    ssl_prefer_server_ciphers on;
-    ssl_session_cache shared:SSL:10m;
-    ssl_session_timeout 10m;
-    access_log /var/log/nginx/nkuwiki-ssl.access.log;
-    error_log /var/log/nginx/nkuwiki-ssl.error.log;
-    charset utf-8;
-    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Content-Type-Options nosniff;
-    add_header X-Frame-Options SAMEORIGIN;
-    add_header X-XSS-Protection "1; mode=block";
-    add_header 'Access-Control-Allow-Origin' '*' always;
-    add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
-    add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range' always;
-    location /mihomo {
-        alias /var/www/html/mihomo;
-        index index.html;
-        try_files \$uri \$uri/ /mihomo/index.html;
-    }
-    location /mihomo/assets/ {
-        alias /var/www/html/mihomo/assets/;
-        expires 1d;
-    }
-    location ^~ /mihomo-api/ {
-        proxy_pass http://127.0.0.1:9090/;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        add_header 'Access-Control-Allow-Origin' '*' always;
-        add_header 'Access-Control-Allow-Methods' 'GET, POST, OPTIONS' always;
-        add_header 'Access-Control-Allow-Headers' '*' always;
-        error_log /var/log/nginx/mihomo-api-ssl.error.log debug;
-        access_log /var/log/nginx/mihomo-api-ssl.access.log;
-    }
-    location / {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_buffering off;
-        proxy_read_timeout 300s;
-    }
-    location /health {
-        proxy_pass http://127.0.0.1:8000/health;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        access_log off;
-        proxy_read_timeout 5s;
-    }
-    location ~* \\.(css|js) {
-        proxy_pass http://127.0.0.1:8000;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    location /static/ {
-        proxy_pass http://127.0.0.1:8000/static/;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    location /assets/ {
-        proxy_pass http://127.0.0.1:8000/assets/;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-    location /img/ {
-        proxy_pass http://127.0.0.1:8000/img/;
-        proxy_cache_valid 200 1d;
-        add_header Cache-Control "public, max-age=86400";
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
-    if [ -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf" ]; then
-        rm -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf"
-    fi
-    ln -sf "$HTTPS_CONF" "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf"
-    echo -e "${BLUE}验证Nginx配置...${NC}"
-    nginx -t
-    echo -e "${GREEN}Nginx配置已生成${NC}"
+    # 启用主配置文件
+    ln -sf "$MAIN_NGINX_CONF" "${NGINX_SITES_ENABLED}/nkuwiki.conf"
+    echo -e "${GREEN}主 Nginx 配置文件已创建并启用: ${NGINX_SITES_ENABLED}/nkuwiki.conf${NC}"
 }
 
-function clean_logs_directory {
-    echo -e "${YELLOW}清空所有日志文件...${NC}"
-    if [ -d "/home/nkuwiki/nkuwiki-shell/nkuwiki/logs" ]; then
-        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs -type f -name "*.log" -exec truncate -s 0 {} \;
-        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs -type f -name "*.log.*" -delete
-        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs/*/  -type f -name "*.log" -exec truncate -s 0 {} \; 2>/dev/null || true
-        find /home/nkuwiki/nkuwiki-shell/nkuwiki/logs/*/  -type f -name "*.log.*" -delete 2>/dev/null || true
-        echo -e "${GREEN}所有日志文件已清空${NC}"
-    else
-        mkdir -p /home/nkuwiki/nkuwiki-shell/nkuwiki/logs
-        echo -e "${GREEN}logs目录已创建${NC}"
-    fi
+function deploy_service {
+    cd "$PROJECT_ROOT"
+    echo -e "${GREEN}在 $PROJECT_ROOT 部署分支 '$BRANCH'...${NC}"
+    
+    # 确保在部署前清理环境，防止冲突
+    echo -e "${YELLOW}正在停止并移除 '$BRANCH' 分支的旧应用容器...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" stop api_${BRANCH} && docker compose -p "$COMPOSE_PROJECT_NAME" rm -f api_${BRANCH}
+    
+    # 1. 生成 Nginx 配置
+    generate_nginx_config
+    
+    # 2. 总是更新主 Nginx 文件以确保 include 是正确的
+    create_main_nginx_config
+
+    # 3. 为 Docker Compose 创建 .env 文件
+    create_dotenv_file
+
+    # 4. 构建并启动 Docker Compose 服务
+    echo -e "${BLUE}使用 Docker Compose 构建和启动应用服务...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" up -d --build api_${BRANCH}
+    
+    # 5. 重启 Nginx
+    echo -e "${BLUE}重启Nginx以应用配置...${NC}"
+    systemctl restart nginx
+    
+    echo -e "${GREEN}分支 '$BRANCH' 部署完成! API 运行在端口 ${API_PORT}${NC}"
 }
 
 function start_service {
-    echo -e "${BLUE}启动nkuwiki服务...${NC}"
-    clean_logs_directory
-    echo -e "${BLUE}设置无标题帖子清理定时任务...${NC}"
-    if [ -f "${PROJECT_ROOT}/infra/deploy/cleanup.sh" ]; then
-        bash "${PROJECT_ROOT}/infra/deploy/cleanup.sh"
-    else
-        echo -e "${YELLOW}清理脚本不存在: ${PROJECT_ROOT}/infra/deploy/cleanup.sh${NC}"
-    fi
-    if systemctl is-active nkuwiki.service >/dev/null 2>&1; then
-        echo -e "${GREEN}服务 nkuwiki.service 已在运行${NC}"
-    else
-        echo -e "${YELLOW}启动 nkuwiki.service...${NC}"
-        systemctl start nkuwiki.service
-        sleep 2
-        if ! systemctl is-active nkuwiki.service >/dev/null 2>&1; then
-            echo -e "${RED}启动 nkuwiki.service 失败，检查日志: journalctl -u nkuwiki.service${NC}"
-        else
-            echo -e "${GREEN}服务 nkuwiki.service 已启动${NC}"
-        fi
-    fi
+    cd "$PROJECT_ROOT"
+    echo -e "${BLUE}启动 '$BRANCH' 分支的应用服务...${NC}"
+    create_dotenv_file # 确保代理设置正确
+    docker compose -p "$COMPOSE_PROJECT_NAME" up -d api_${BRANCH}
+    echo -e "${GREEN}服务已启动.${NC}"
 }
 
-function deploy {
-    echo -e "${BLUE}开始一键部署服务配置...${NC}"
-    create_service
-    generate_nginx_config
-    start_service
-    echo -e "${BLUE}启用nkuwiki服务开机自启...${NC}"
-    systemctl enable nkuwiki.service
-    echo -e "${BLUE}重载Nginx配置...${NC}"
-    nginx -t && systemctl reload nginx
-    echo -e "${GREEN}服务配置部署完成!${NC}"
+function stop_service {
+    cd "$PROJECT_ROOT"
+    echo -e "${YELLOW}停止 '$BRANCH' 分支的应用服务...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" stop api_${BRANCH}
+    echo -e "${GREEN}服务已停止.${NC}"
 }
 
 function restart_service {
-    unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
-    export no_proxy="*"
-    export NO_PROXY="*"
-    echo -e "${GREEN}已禁用所有代理环境变量${NC}"
-    echo -e "${BLUE}重启nkuwiki服务...${NC}"
-    clean_logs_directory
-    echo -e "${YELLOW}重启 nkuwiki.service...${NC}"
-    systemctl restart nkuwiki.service
-    if ! systemctl is-active nkuwiki.service >/dev/null 2>&1; then
-        echo -e "${RED}重启 nkuwiki.service 失败，检查日志: journalctl -u nkuwiki.service${NC}"
-    else
-        echo -e "${GREEN}服务 nkuwiki.service 已重启${NC}"
-    fi
+    cd "$PROJECT_ROOT"
+    echo -e "${BLUE}重启 '$BRANCH' 分支的应用服务...${NC}"
+    create_dotenv_file # 确保代理设置正确
+    docker compose -p "$COMPOSE_PROJECT_NAME" restart api_${BRANCH}
+    echo -e "${GREEN}服务已重启.${NC}"
+}
+
+function get_status {
+    cd "$PROJECT_ROOT"
+    echo -e "${BLUE}查看 '$BRANCH' 分支的 Docker 状态...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" ps api_${BRANCH}
+}
+
+function get_logs {
+    cd "$PROJECT_ROOT"
+    echo -e "${BLUE}查看 '$BRANCH' 分支的日志...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" logs -f --tail=100 api_${BRANCH}
 }
 
 function cleanup_service {
-    echo -e "${BLUE}清理nkuwiki服务...${NC}"
-    systemctl stop nkuwiki.service 2>/dev/null || true
-    systemctl disable nkuwiki.service 2>/dev/null || true
-    service_path="/etc/systemd/system/nkuwiki.service"
-    if [ -f "$service_path" ]; then
-        echo -e "删除 $service_path..."
-        rm -f "$service_path"
+    cd "$PROJECT_ROOT"
+    echo -e "${RED}开始清理 '$BRANCH' 分支...${NC}"
+    
+    # 1. 停止并移除 Docker 容器
+    echo -e "${YELLOW}停止并删除 Docker 应用容器...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" stop api_${BRANCH} && docker compose -p "$COMPOSE_PROJECT_NAME" rm -f api_${BRANCH}
+    
+    # 2. 删除 Nginx 配置文件
+    if [ -f "$NGINX_CONF" ]; then
+        echo -e "${YELLOW}删除 Nginx 配置文件: $NGINX_CONF${NC}"
+        rm -f "$NGINX_CONF"
     fi
-    if [ -f "$NGINX_SITES_ENABLED/nkuwiki.conf" ]; then
-        echo -e "删除 $NGINX_SITES_ENABLED/nkuwiki.conf..."
-        rm -f "$NGINX_SITES_ENABLED/nkuwiki.conf"
+    
+    # 3. 检查是否需要移除主配置文件
+    if [ ! -f "${NGINX_CONF_DIR}/nkuwiki-main-locations.conf" ] && [ ! -f "${NGINX_CONF_DIR}/nkuwiki-dev-locations.conf" ]; then
+        echo -e "${YELLOW}两个分支都已清理，删除主 Nginx 配置文件和链接...${NC}"
+        rm -f "${NGINX_CONF_DIR}/nkuwiki-main-locations.conf"
+        rm -f "${NGINX_CONF_DIR}/nkuwiki-dev-locations.conf"
+        rm -f "${NGINX_SITES_ENABLED}/nkuwiki.conf"
+    else
+        echo -e "${BLUE}另一个分支的配置仍然存在，保留主 Nginx 配置文件。${NC}"
     fi
-    if [ -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf" ]; then
-        echo -e "删除 $NGINX_SITES_ENABLED/nkuwiki-ssl.conf..."
-        rm -f "$NGINX_SITES_ENABLED/nkuwiki-ssl.conf"
-    fi
-    if [ -f "$HTTP_CONF" ]; then
-        rm -f "$HTTP_CONF"
-    fi
-    if [ -f "$HTTPS_CONF" ]; then
-        rm -f "$HTTPS_CONF"
-    fi
-    systemctl daemon-reload
-    echo -e "${BLUE}重载Nginx配置...${NC}"
-    nginx -t && systemctl reload nginx
-    echo -e "${GREEN}清理完成${NC}"
+
+    # 4. 重启 Nginx
+    systemctl restart nginx
+    
+    echo -e "${GREEN}分支 '$BRANCH' 清理完成!${NC}"
 }
 
-function check_service_status {
-    echo -e "${BLUE}检查nkuwiki服务状态...${NC}"
-    local status=$(systemctl is-active nkuwiki.service 2>/dev/null)
-    local enabled=$(systemctl is-enabled nkuwiki.service 2>/dev/null || echo "disabled")
-    case "$status" in
-        active)
-            echo -e "${GREEN}✓ nkuwiki.service - 运行中${NC} (自启: $enabled)"
-            ;;
-        failed)
-            echo -e "${RED}✗ nkuwiki.service - 失败${NC} (自启: $enabled)"
-            ;;
-        *)
-            echo -e "${YELLOW}○ nkuwiki.service - 未运行${NC} (自启: $enabled)"
-            ;;
-    esac
-    echo -e "\n${GREEN}=== Nginx状态 ===${NC}"
-    if systemctl is-active nginx >/dev/null 2>&1; then
-        echo -e "${GREEN}✓ Nginx服务运行中${NC}"
-        nginx -t 2>/dev/null
+function proxy_status {
+    echo -e "${BLUE}检查Mihomo代理状态...${NC}"
+    if curl -s -x http://127.0.0.1:7890 "https://www.google.com" -o /dev/null --head --max-time 5; then
+        echo -e "${GREEN}代理工作正常 (通过google.com测试)${NC}"
+        return 0
     else
-        echo -e "${RED}✗ Nginx服务未运行${NC}"
+        echo -e "${RED}代理无法连接到google.com${NC}"
+        return 1
     fi
-    echo -e "\n${GREEN}=== 端口状态 ===${NC}"
-    if netstat -tuln | grep -q ":8000 "; then
-        local pid=$(netstat -tulnp 2>/dev/null | grep ":8000 " | awk '{print $7}' | cut -d'/' -f1)
-        local process=$(ps -p $pid -o comm= 2>/dev/null || echo "未知")
-        echo -e "${GREEN}✓ 端口 8000 - 已使用${NC} (进程: $process, PID: $pid)"
-    else
-        echo -e "${RED}✗ 端口 8000 - 未使用${NC}"
-    fi
-    echo -e "\n${BLUE}状态检查完成${NC}"
 }
 
-# Mihomo相关函数保持不变
-# ... existing code ...
-# 主函数
+function start_infra {
+    echo -e "${BLUE}启动共享基础设施服务...${NC}"
+    docker compose -f docker-compose.infra.yml up -d
+    echo -e "${GREEN}基础设施服务已启动。${NC}"
+}
+
+function stop_infra {
+    echo -e "${YELLOW}停止共享基础设施服务...${NC}"
+    docker compose -f docker-compose.infra.yml down
+    echo -e "${GREEN}基础设施服务已停止。${NC}"
+}
+
+function status_infra {
+    echo -e "${BLUE}查看共享基础设施状态...${NC}"
+    docker compose -f docker-compose.infra.yml ps
+}
+
+function logs_infra {
+    echo -e "${BLUE}查看基础设施日志...${NC}"
+    if [ -z "$1" ]; then
+        docker compose -f docker-compose.infra.yml logs -f --tail=100
+    else
+        docker compose -f docker-compose.infra.yml logs -f --tail=100 "$1"
+    fi
+}
+
 function main {
     check_root
+    check_docker
+
     if [ $# -eq 0 ]; then
         show_help
         exit 0
     fi
-    local command="$1"
+
+    COMMAND=$1
     shift
-    while [ $# -gt 0 ]; do
-        case "$1" in
-            --proxy)
+
+    # 解析代理参数
+    if [[ " $@ " =~ " --proxy " ]]; then
                 ENABLE_PROXY=1
-                echo -e "${GREEN}已启用代理${NC}"
-                ;;
-            --no-proxy)
-                ENABLE_PROXY=0
-                echo -e "${GREEN}已禁用代理${NC}"
-                ;;
-            *)
-                echo -e "${RED}警告: 未知参数 $1${NC}"
-                ;;
-        esac
-        shift
-    done
-    case "$command" in
-        deploy)
-            deploy
-            ;;
-        start)
-            start_service
-            ;;
-        restart)
-            restart_service
-            ;;
-        status)
-            check_service_status
-            ;;
-        cleanup)
-            cleanup_service
-            ;;
+        # 从参数列表中移除 --proxy
+        set -- "${@/--proxy/}"
+    fi
+    
+    # 全局/基础设施命令
+    case "$COMMAND" in
         help)
             show_help
+            ;;
+        proxy-status)
+            proxy_status
             ;;
         restart-mihomo)
             restart_mihomo
             ;;
-        proxy-status)
-            check_proxy_status
+        start-infra)
+            start_infra
+            ;;
+        stop-infra)
+            stop_infra
+            ;;
+        status-infra)
+            status_infra
+            ;;
+        logs-infra)
+            shift # 移除 logs-infra 命令
+            logs_infra "$@"
             ;;
         *)
-            echo -e "${RED}错误: 未知命令 $command${NC}"
+            # 需要分支的应用命令
+            if [ -z "$1" ]; then
+                echo -e "${RED}错误: 此命令需要指定分支 (main 或 dev).${NC}"
+                show_help
+                exit 1
+            fi
+            
+            set_branch_variables "$1"
+        shift
+
+            case "$COMMAND" in
+        deploy)
+                    deploy_service
+            ;;
+        start)
+            start_service
+            ;;
+                stop)
+                    stop_service
+                    ;;
+        restart)
+            restart_service
+            ;;
+        status)
+                    get_status
+                    ;;
+                logs)
+                    get_logs
+            ;;
+        cleanup)
+            cleanup_service
+            ;;
+                *)
+                    echo -e "${RED}错误: 未知命令 '$COMMAND'${NC}"
             show_help
             exit 1
+                    ;;
+            esac
             ;;
     esac
 }

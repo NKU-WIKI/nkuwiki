@@ -10,15 +10,9 @@ llama-index-core==0.12.22
 llama-index-vector-stores-qdrant==0.4.3
 llama-index-readers-file
 pydantic==2.8.0
---extra-index-url https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple
---extra-index-url https://download.pytorch.org/whl/cpu 
-torch==2.3.0+cpu  # cuda-free environment
-# torch==2.3.0
-transformers>=4.49.0
-sentence-transformers==3.4.1
 numpy==1.26.4
 nltk==3.9b1
-
+# pytorch==2.3.0+cpu 注释掉，在dockerfile中单独安装
 # ========================================
 # 数据处理 (Data Processing)
 # ========================================
@@ -33,8 +27,6 @@ tiktoken
 jieba
 bm25s
 rank_bm25
-llmlingua
-llama-index-embeddings-huggingface
 jsonlines
 pypdf
 python-docx
@@ -94,13 +86,13 @@ cozepy                # Coze平台
 # 语音处理
 pydub                 # 音频处理
 SpeechRecognition     # 语音识别
-gTTS                  # Google文本转语音
-pyttsx3               # 本地文本转语音
-baidu_aip             # 百度语音
-azure-cognitiveservices-speech  # Azure语音
-edge-tts              # Edge TTS
-elevenlabs            # ElevenLabs TTS
-langid                # 语言检测
+# gTTS                  # Google文本转语音
+# pyttsx3               # 本地文本转语音
+# baidu_aip             # 百度语音
+# azure-cognitiveservices-speech  # Azure语音
+# edge-tts              # Edge TTS
+# elevenlabs            # ElevenLabs TTS
+# langid                # 语言检测
 # pysilk-mod            # SILK编码支持 (Windows)
 # pilk                  # 语音文件处理库 (Windows)
 # comtypes              # COM组件支持 (Windows语音接口)
@@ -115,8 +107,6 @@ pypng                 # PNG图像处理
 loguru                # 日志记录
 python-dotenv         # 环境变量管理
 singleton_decorator   # 单例模式装饰器
-accelerate            # 模型加速
-# pywin32               # Windows系统API (Windows)
 rich                  # 终端美化
 
 # 时间与日期
@@ -139,4 +129,3 @@ scrapy==2.11.1
 watchfiles
 websockets
 PyJWT
-

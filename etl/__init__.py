@@ -97,35 +97,35 @@ for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, MYSQL_PAT
 import nltk
 nltk.data.path.append(str(NLTK_PATH.absolute()))
 
-# 检查并下载NLTK资源
-try:
-    resources = ['wordnet', 'omw-1.4', 'wordnet2022', 'punkt', 'stopwords']
-    for resource in resources:
-        try:
-            # 检查资源是否存在
-            if resource == 'punkt':
-                resource_path = NLTK_PATH / 'tokenizers' / resource
-            else:
-                resource_path = NLTK_PATH / 'corpora' / resource
+# # 检查并下载NLTK资源
+# try:
+#     resources = ['wordnet', 'omw-1.4', 'wordnet2022', 'punkt', 'stopwords']
+#     for resource in resources:
+#         try:
+#             # 检查资源是否存在
+#             if resource == 'punkt':
+#                 resource_path = NLTK_PATH / 'tokenizers' / resource
+#             else:
+#                 resource_path = NLTK_PATH / 'corpora' / resource
             
-            # 直接检查目录是否存在，而不是使用nltk.data.find
-            if resource_path.exists():
-                logger.debug(f"NLTK资源 {resource} 已存在: {resource_path}")
-                continue
+#             # 直接检查目录是否存在，而不是使用nltk.data.find
+#             if resource_path.exists():
+#                 logger.debug(f"NLTK资源 {resource} 已存在: {resource_path}")
+#                 continue
             
-            # 如果不存在，尝试下载
-            logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
-            try:
-                nltk.download(resource, download_dir=str(NLTK_PATH.absolute()), quiet=False)
-                logger.debug(f"NLTK资源 {resource} 下载成功")
-            except Exception as e:
-                logger.error(f"NLTK资源 {resource} 下载失败: {e}")
-                logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
-        except Exception as e:
-            logger.error(f"检查NLTK资源 {resource} 时出错: {e}")
-except Exception as e:
-    logger.error(f"NLTK资源检查失败: {e}")
-    logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
+#             # 如果不存在，尝试下载
+#             logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
+#             try:
+#                 nltk.download(resource, download_dir=str(NLTK_PATH.absolute()), quiet=False)
+#                 logger.debug(f"NLTK资源 {resource} 下载成功")
+#             except Exception as e:
+#                 logger.error(f"NLTK资源 {resource} 下载失败: {e}")
+#                 logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
+#         except Exception as e:
+#             logger.error(f"检查NLTK资源 {resource} 时出错: {e}")
+# except Exception as e:
+#     logger.error(f"NLTK资源检查失败: {e}")
+#     logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
 
 # Qdrant配置
 VECTOR_SIZE = _config.get('etl.data.qdrant.vector_size', 1024)

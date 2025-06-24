@@ -1,79 +1,13 @@
 services:
-    elasticsearch:
-        image: elasticsearch:8.16.1
-        container_name: elasticsearch
-        environment:
-            - discovery.type=single-node
-            - xpack.security.enabled=false
-            - ES_JAVA_OPTS=-Xms512m -Xmx512m
-        volumes:
-            - /data/elasticsearch:/usr/share/elasticsearch/data
-            - ./etl/utils/dictionary:/usr/share/elasticsearch/config/analysis-ik/
-        ports:
-            - "9200:9200"
-            - "9300:9300"
-        networks:
-            - nkuwiki_net
-        command: >
-            sh -c "
-            if [ ! -d /usr/share/elasticsearch/plugins/analysis-ik ]; then
-              echo 'Installing IK Analysis plugin...';
-              bin/elasticsearch-plugin install --batch https://get.infini.cloud/elasticsearch/analysis-ik/8.16.1;
-            fi;
-            exec /usr/local/bin/docker-entrypoint.sh;
-            "
-
-    qdrant:
-        image: qdrant/qdrant:latest
-        container_name: qdrant
-        ports:
-            - "6333:6333"
-            - "6334:6334"
-        volumes:
-            - /data/qdrant:/qdrant/storage
-        networks:
-            - nkuwiki_net
-
-    mysql:
-        image: mysql:latest
-        container_name: mysql
-        environment:
-            - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
-            - MYSQL_DATABASE=${MYSQL_DATABASE}
-            - MYSQL_USER=${MYSQL_USER}
-            - MYSQL_PASSWORD=${MYSQL_PASSWORD}
-        ports:
-            - "3306:3306"
-        volumes:
-            - /data/mysql:/var/lib/mysql
-        networks:
-            - nkuwiki_net
-
-    redis:
-        image: redis:latest
-        container_name: redis
-        ports:
-            - "6379:6379"
-        volumes:
-            - /data/redis:/data
-        networks:
-            - nkuwiki_net
-
     api_main:
         build: .
-        container_name: nkuwiki_main
-        command: python app.py --api --host 0.0.0.0 --port 8000
+        command: python app.py --api --port 8000
         ports:
             - "8000:8000"
         volumes:
             - .:/app
             - /data/raw:/app/data/raw
             - /data/models:/app/data/models
-        depends_on:
-            - mysql
-            - redis
-            - qdrant
-            - elasticsearch
         networks:
             - nkuwiki_net
         environment:
@@ -81,19 +15,13 @@ services:
 
     api_dev:
         build: .
-        container_name: nkuwiki_dev
-        command: python app.py --api --host 0.0.0.0 --port 8001
+        command: python app.py --api --port 8001
         ports:
             - "8001:8001"
         volumes:
             - .:/app
             - /data/raw:/app/data/raw
             - /data/models:/app/data/models
-        depends_on:
-            - mysql
-            - redis
-            - qdrant
-            - elasticsearch
         networks:
             - nkuwiki_net
         environment:
@@ -101,7 +29,8 @@ services:
 
 networks:
     nkuwiki_net:
-        driver: bridge
+        external:
+            name: nkuwiki_nkuwiki_net
 
 volumes:
   es_data:

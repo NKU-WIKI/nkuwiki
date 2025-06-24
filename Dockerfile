@@ -1,15 +1,37 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
 # 设置工作目录
 WORKDIR /app
 
 # 优化pip
-RUN pip install --no-cache-dir --upgrade pip
+# 默认情况下，pip会使用自身的缓存，除非您明确指定 --no-cache-dir
 
-# 复制依赖文件并安装
-# 这样做可以利用Docker的层缓存机制，只有当requirements.txt改变时，才会重新安装依赖
+# 设置主要的pip镜像源（例如清华源）
+# global.index-url 只能配置一个主源
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
+
+# Step 1: Install base dependencies from the main requirements file
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# 在此步中，pip将尝试使用自身的缓存（如果存在），同时也会利用Docker的层缓存。
+# 另外，除了主源（清华源），再添加一个额外的源（阿里云），以备某些包在主源找不到时可以从额外源获取。
+RUN pip install -r requirements.txt \
+    --default-timeout=100 \
+    --extra-index-url https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com
+
+
+# Step 2: Install the correct torch version from the official source
+# PyTorch通常有自己的独立官方源，这里直接指定使用它。pip也会尝试缓存此下载。
+RUN pip install torch==2.3.0+cpu --extra-index-url https://download.pytorch.org/whl/cpu
+
+# Step 3: Install torch-dependent packages
+COPY requirements-torch.txt .
+# 同样，对于这些依赖，如果它们依赖于torch的特定构建，可能也需要PyTorch的官方源。
+# 同时保留阿里云作为备用。pip会尝试缓存这些包。
+RUN pip install -r requirements-torch.txt \
+    --default-timeout=100 \
+    --extra-index-url https://mirrors.aliyun.com/pypi/simple/ \
+    --trusted-host mirrors.aliyun.com
 
 # 复制所有应用代码
 COPY . .
@@ -18,4 +40,4 @@ COPY . .
 EXPOSE 8000
 
 # 启动应用的命令
-CMD ["python", "app.py", "--api", "--port", "8000"] 
+CMD ["python", "app.py", "--api", "--port", "8000"]
