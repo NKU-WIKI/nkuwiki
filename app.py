@@ -249,18 +249,18 @@ async def health_check():
     )
 
 # 挂载静态文件目录，用于微信校验文件等
-# app.mount("/static", StaticFiles(directory="static"), name="static_files")
+app.mount("/static", StaticFiles(directory="static"), name="static_files")
 
 # 挂载Mihomo控制面板静态文件
-# app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
+app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
 
 # 网站路由 - 确保具体路径挂载在根路径之前
-# website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
-# app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
-# app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
+website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
+app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
+app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
 
 # 挂载网站根目录 - 放在最后
-# app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
+app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
 
 # =============================================================================
 # 服务启动相关函数
