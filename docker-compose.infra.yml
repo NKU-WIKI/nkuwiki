@@ -1,6 +1,6 @@
 services:
     elasticsearch:
-        image: elasticsearch:8.16.1
+        image: elasticsearch:9.0.2
         environment:
             - discovery.type=single-node
             - xpack.security.enabled=false
@@ -15,9 +15,10 @@ services:
             - nkuwiki_net
         command: >
             sh -c "
+            chown -R elasticsearch:elasticsearch /usr/share/elasticsearch/data;
             if [ ! -d /usr/share/elasticsearch/plugins/analysis-ik ]; then
               echo 'Installing IK Analysis plugin...';
-              bin/elasticsearch-plugin install --batch https://get.infini.cloud/elasticsearch/analysis-ik/8.16.1;
+              bin/elasticsearch-plugin install --batch https://get.infini.cloud/elasticsearch/analysis-ik/9.0.2;
             fi;
             exec /usr/local/bin/docker-entrypoint.sh;
             "
@@ -57,4 +58,5 @@ services:
 
 networks:
     nkuwiki_net:
+        name: nkuwiki_net
         driver: bridge 

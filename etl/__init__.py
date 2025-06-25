@@ -42,11 +42,11 @@ NLTK_PATH = BASE_PATH / _config.get("etl.data.nltk.path", "/nltk").lstrip("/")
 QDRANT_PATH = BASE_PATH / _config.get("etl.data.qdrant.path", "/qdrant").lstrip("/")
 
 # --- 数据库与向量存储相关配置 ---
-DB_HOST: str = _config.get('etl.data.mysql.host', 'localhost')
-DB_PORT: int = _config.get('etl.data.mysql.port', 3306)
-DB_USER: str = _config.get('etl.data.mysql.user', 'nkuwiki')
-DB_PASSWORD: str = _config.get('etl.data.mysql.password', '')
-DB_NAME: str = _config.get('etl.data.mysql.name', 'nkuwiki')
+DB_HOST: str = os.environ.get('DB_HOST', _config.get('etl.data.mysql.host', 'localhost'))
+DB_PORT: int = int(os.environ.get('DB_PORT', _config.get('etl.data.mysql.port', 3306)))
+DB_USER: str = os.environ.get('DB_USER', _config.get('etl.data.mysql.user', 'nkuwiki'))
+DB_PASSWORD: str = os.environ.get('DB_PASSWORD', _config.get('etl.data.mysql.password', ''))
+DB_NAME: str = os.environ.get('DB_NAME', _config.get('etl.data.mysql.name', 'nkuwiki'))
 
 # --- 数据库连接池配置 (硬编码默认值，因为它们不应由用户频繁更改) ---
 DB_POOL_RESIZE_INTERVAL: int = 60
@@ -54,13 +54,13 @@ DB_POOL_MIN_SIZE: int = 2
 DB_POOL_MAX_SIZE: int = 16
 DB_POOL_MAX_OVERFLOW: int = 8
 
-REDIS_HOST: str = _config.get('etl.data.redis.host', 'localhost')
-REDIS_PORT: int = _config.get('etl.data.redis.port', 6379)
-REDIS_DB: int = _config.get('etl.data.redis.db', 0)
-REDIS_PASSWORD: Optional[str] = _config.get('etl.data.redis.password')
+REDIS_HOST: str = os.environ.get('REDIS_HOST', _config.get('etl.data.redis.host', 'localhost'))
+REDIS_PORT: int = int(os.environ.get('REDIS_PORT', _config.get('etl.data.redis.port', 6379)))
+REDIS_DB: int = int(os.environ.get('REDIS_DB', _config.get('etl.data.redis.db', 0)))
+REDIS_PASSWORD: Optional[str] = os.environ.get('REDIS_PASSWORD', _config.get('etl.data.redis.password'))
 
-QDRANT_URL: str = _config.get("etl.data.qdrant.url", "http://localhost:6333")
-QDRANT_API_KEY: Optional[str] = _config.get("etl.data.qdrant.api_key", None)
+QDRANT_URL: str = os.environ.get('QDRANT_URL', _config.get("etl.data.qdrant.url", "http://localhost:6333"))
+QDRANT_API_KEY: Optional[str] = os.environ.get('QDRANT_API_KEY', _config.get("etl.data.qdrant.api_key", None))
 QDRANT_COLLECTION: str = _config.get("etl.data.qdrant.collection", "main_index")
 QDRANT_TIMEOUT: float = _config.get("etl.data.qdrant.timeout", 30.0)
 QDRANT_BATCH_SIZE: int = _config.get("etl.data.qdrant.batch_size", 32)
@@ -76,8 +76,8 @@ STOPWORDS_PATH: str = _config.get('etl.retrieval.bm25.stopwords_path', str(NLTK_
 BM25_ENABLE_CHUNKING: bool = _config.get('etl.retrieval.bm25.enable_chunking', False)
 
 # --- Elasticsearch 索引相关配置 ---
-ES_HOST: str = _config.get('etl.data.elasticsearch.host', 'localhost')
-ES_PORT: int = _config.get('etl.data.elasticsearch.port', 9200)
+ES_HOST: str = os.environ.get('ES_HOST', _config.get('etl.data.elasticsearch.host', 'localhost'))
+ES_PORT: int = int(os.environ.get('ES_PORT', _config.get('etl.data.elasticsearch.port', 9200)))
 ES_INDEX_NAME: str = _config.get('etl.data.elasticsearch.index', 'nkuwiki')
 ES_ENABLE_CHUNKING: bool = _config.get('etl.data.elasticsearch.enable_chunking', False)
 

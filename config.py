@@ -5,6 +5,8 @@ import copy
 from singleton_decorator import singleton
 from typing import Any, Dict, Optional
 
+from core.utils.environment import is_running_in_docker
+
 # 默认配置值，config.json中未配置的项会使用此处的默认值
 available_setting = {
     # 核心配置 - 包含核心功能和智能体相关配置
@@ -537,7 +539,28 @@ class Config(dict):
             self.logger.exception(f"[config] 加载配置文件失败: {str(e)}")
         
         self.load_user_datas()
+        self._override_config_for_docker()
         return self
+
+    def _override_config_for_docker(self):
+        """如果检测到在Docker容器中运行，则覆盖服务主机配置。"""
+        if is_running_in_docker():
+            self.logger.info("检测到Docker环境，正在覆盖服务主机配置...")
+            
+            services_to_override = {
+                "mysql": "mysql",
+                "redis": "redis",
+                "qdrant": "qdrant",
+                "elasticsearch": "elasticsearch"
+            }
+            
+            for service, host in services_to_override.items():
+                service_host_key = f"etl.data.{service}.host"
+                current_host = self.get(service_host_key)
+                
+                if current_host in ["localhost", "127.0.0.1"]:
+                    self.logger.info(f"  - 将 {service} 的主机从 '{current_host}' 修改为 '{host}'")
+                    self.set(service_host_key, host)
 
     def write_plugin_config(self, pconf: dict):
         """写入插件配置"""
