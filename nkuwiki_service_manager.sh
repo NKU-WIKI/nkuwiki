@@ -53,6 +53,11 @@ function show_help {
     echo -e "  ${YELLOW}logs [main|dev]${NC}      - 查看指定分支的应用日志"
     echo -e "  ${YELLOW}update-nginx${NC}       - 更新并重载Nginx配置 (通常在start时自动完成)"
     echo ""
+    echo -e "${GREEN}== Systemd 服务管理 (需要root权限) ==${NC}"
+    echo -e "  ${YELLOW}install-service [main|dev]${NC} - 为指定分支安装并启用 systemd 服务"
+    echo -e "  ${YELLOW}uninstall-service [main|dev]${NC}- 卸载指定分支的 systemd 服务"
+    echo -e "  ${YELLOW}cleanup-services${NC}           - 清理已卸载的服务模板"
+    echo ""
     echo -e "${GREEN}== 基础设施命令 (共享) ==${NC}"
     echo -e "  ${YELLOW}start-infra${NC}        - 启动共享的基础设施服务 (mysql, redis, etc.)"
     echo -e "  ${YELLOW}stop-infra${NC}         - 停止共享的基础设施服务"
@@ -150,6 +155,10 @@ function start_service {
     # 3. 确保 Nginx 配置是最新的
     update_nginx
     
+    # 4. 自动安装/更新 systemd 服务
+    echo -e "${BLUE}正在安装/更新 systemd 服务...${NC}"
+    install_service
+    
     echo -e "${GREEN}分支 '$BRANCH' 部署完成! API 运行在端口 ${API_PORT}${NC}"
     docker compose -p "$COMPOSE_PROJECT_NAME" ps
 }
@@ -180,6 +189,87 @@ function get_logs {
     echo -e "${BLUE}== 查看分支 '$BRANCH' 日志 ==${NC}"
     cd "$SCRIPT_DIR"
     docker compose -p "$COMPOSE_PROJECT_NAME" logs -f --tail=100 api
+}
+
+
+# --- Systemd Service Management ---
+function install_service {
+    SERVICE_INSTANCE="nkuwiki@${BRANCH}.service"
+    SERVICE_TEMPLATE_FILE="/etc/systemd/system/nkuwiki@.service"
+
+    echo -e "${GREEN}== 为分支 '$BRANCH' 安装 systemd 服务 ==${NC}"
+
+    # 1. 创建服务模板文件
+    echo -e "${BLUE}在 ${SERVICE_TEMPLATE_FILE} 创建 systemd 服务模板...${NC}"
+    cat > "${SERVICE_TEMPLATE_FILE}" << EOF
+[Unit]
+Description=NKUWiki Service (%i branch)
+Documentation=https://github.com/NKU-Wiki/NKU-Wiki-Shell
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=${SCRIPT_DIR}
+ExecStart=${SCRIPT_DIR}/nkuwiki_service_manager.sh start %i
+ExecStop=${SCRIPT_DIR}/nkuwiki_service_manager.sh stop %i
+# Docker-compose 自行处理容器重启，因此禁用 systemd 的重启
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # 2. 重载 systemd
+    echo -e "${BLUE}重载 systemd daemon...${NC}"
+    systemctl daemon-reload
+
+    # 3. 启用特定实例
+    echo -e "${BLUE}启用服务实例 ${SERVICE_INSTANCE}...${NC}"
+    systemctl enable "${SERVICE_INSTANCE}"
+
+    echo -e "${GREEN}服务 ${SERVICE_INSTANCE} 已成功安装.${NC}"
+    echo -e "${YELLOW}服务已启用，将随系统启动。如需手动管理，请使用 'systemctl [start|stop|status] ${SERVICE_INSTANCE}'${NC}"
+}
+
+function uninstall_service {
+    SERVICE_INSTANCE="nkuwiki@${BRANCH}.service"
+    
+    echo -e "${RED}== 卸载分支 '$BRANCH' 的 systemd 服务 ==${NC}"
+
+    # 1. 停止并禁用实例
+    echo -e "${BLUE}正在停止并禁用 ${SERVICE_INSTANCE}...${NC}"
+    if systemctl is-active --quiet "${SERVICE_INSTANCE}"; then
+        systemctl stop "${SERVICE_INSTANCE}"
+    fi
+    if systemctl is-enabled --quiet "${SERVICE_INSTANCE}"; then
+        systemctl disable "${SERVICE_INSTANCE}"
+    fi
+
+    echo -e "${GREEN}服务实例 ${SERVICE_INSTANCE} 已停止并禁用.${NC}"
+    echo -e "${YELLOW}服务模板文件 (/etc/systemd/system/nkuwiki@.service) 仍保留以备其他分支使用.${NC}"
+    echo -e "${YELLOW}在卸载所有分支的服务后，可运行 'cleanup-services' 来移除它.${NC}"
+    
+    # 2. 重载 systemd
+    systemctl daemon-reload
+}
+
+function cleanup_services {
+    SERVICE_TEMPLATE_FILE="/etc/systemd/system/nkuwiki@.service"
+    if [ -f "${SERVICE_TEMPLATE_FILE}" ]; then
+        echo -e "${RED}正在清理服务模板 ${SERVICE_TEMPLATE_FILE}...${NC}"
+        # 检查是否仍有已启用的 nkuwiki 服务实例
+        if systemctl list-unit-files | grep -q "nkuwiki@.*\.service.*enabled"; then
+            echo -e "${RED}错误: 存在一个或多个已启用的 nkuwiki 服务。请先将其卸载.${NC}"
+            systemctl list-unit-files | grep "nkuwiki@.*\.service"
+            exit 1
+        fi
+        rm -f "${SERVICE_TEMPLATE_FILE}"
+        systemctl daemon-reload
+        echo -e "${GREEN}服务模板已移除.${NC}"
+    else
+        echo -e "${YELLOW}未找到服务模板，无需清理.${NC}"
+    fi
 }
 
 
@@ -232,6 +322,7 @@ function main {
         stop-infra) stop_infra; exit 0 ;;
         status-infra) status_infra; exit 0 ;;
         logs-infra) logs_infra "$@"; exit 0 ;;
+        cleanup-services) cleanup_services; exit 0 ;;
     esac
 
     # 需要分支的应用命令
@@ -250,6 +341,8 @@ function main {
         restart) restart_service ;;
         status) get_status ;;
         logs) get_logs ;;
+        install-service) install_service ;;
+        uninstall-service) uninstall_service ;;
         *)
             echo -e "${RED}错误: 未知命令 '$COMMAND'${NC}"
             show_help

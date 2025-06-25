@@ -436,31 +436,45 @@ async def generate_and_save_insights(
 
 
 def get_time_window(args: argparse.Namespace) -> Tuple[datetime, datetime]:
-    """
-    根据命令行参数计算并返回UTC时间窗口。
-    如果只提供了日期 (YYYY-MM-DD)，则将开始时间设为当天00:00:00，结束时间设为当天23:59:59。
-    """
-    # 确定结束时间
-    if args.end_time:
-        end_time_utc = parse_datetime_utc(args.end_time)
-        # 如果是纯日期格式，则扩展到当天结束
-        if end_time_utc and re.match(r"^\d{4}-\d{2}-\d{2}$", args.end_time):
-            end_time_utc = end_time_utc.replace(hour=23, minute=59, second=59, microsecond=999999)
-    else:
-        # --hours 参数增强: 如果未提供 end_time，则 end_time 默认为当前时刻
-        end_time_utc = datetime.now(timezone.utc)
+    """根据命令行参数计算并返回UTC时间窗口 (start_time, end_time)"""
+    now = datetime.now(timezone.utc)
 
-    # 确定开始时间
-    if args.start_time:
-        start_time_utc = parse_datetime_utc(args.start_time)
-        # 如果是纯日期格式，确保为当天开始 (尽管 parse_datetime_utc 已处理，但为清晰起见)
-        if start_time_utc and re.match(r"^\d{4}-\d{2}-\d{2}$", args.start_time):
+    # 优先处理 --start_time 和 --end_time
+    if args.start_time or args.end_time:
+        start_time_utc = parse_datetime_utc(args.start_time) if args.start_time else None
+        end_time_utc = parse_datetime_utc(args.end_time) if args.end_time else now
+
+        if start_time_utc and args.start_time and re.match(r"^\d{4}-\d{2}-\d{2}$", args.start_time):
             start_time_utc = start_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-    else:
-        start_time_utc = end_time_utc - timedelta(hours=args.hours)
 
-    if not start_time_utc or not end_time_utc:
-        raise ValueError("无法解析开始或结束时间，请检查输入格式。")
+        if end_time_utc and args.end_time and re.match(r"^\d{4}-\d{2}-\d{2}$", args.end_time):
+            end_time_utc = end_time_utc.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        if start_time_utc is None:
+            # 如果只提供了 end_time，则默认从24小时前开始
+            start_time_utc = end_time_utc - timedelta(hours=24)
+
+    # 然后处理 --days，这会覆盖 --hours
+    elif args.days is not None:
+        today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_time_utc = today_midnight - timedelta(microseconds=1)  # 昨天 23:59:59.999999
+        start_time_utc = today_midnight - timedelta(days=args.days) # N天前的 00:00:00
+    
+    # 接着处理 --hours
+    elif args.hours is not None:
+        end_time_utc = now
+        start_time_utc = end_time_utc - timedelta(hours=args.hours)
+    
+    # 最后是默认情况
+    else:
+        # 默认回溯1天 (滚动窗口)
+        end_time_utc = now
+        start_time_utc = end_time_utc - timedelta(days=1)
+
+    if start_time_utc >= end_time_utc:
+        raise ValueError(
+            f"计算出的开始时间 {start_time_utc.isoformat()} 不能晚于或等于结束时间 {end_time_utc.isoformat()}"
+        )
 
     return start_time_utc, end_time_utc
 
@@ -557,7 +571,7 @@ def main_cli():
         "--hours", type=int, help="从现在开始回溯的小时数"
     )
     parser.add_argument(
-        "--days", type=int, default=1, help="从现在开始回溯的天数（默认1天）"
+        "--days", type=int, help="从现在开始回溯的天数。如果未指定任何时间参数，默认为1天。"
     )
     parser.add_argument(
         "--start_time", type=str, help="开始时间 (格式: 'YYYY-MM-DD HH:MM:SS')"

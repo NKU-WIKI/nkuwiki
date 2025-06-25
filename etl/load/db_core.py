@@ -23,8 +23,8 @@ async def _execute_query(query: str, params: Optional[Union[List, Tuple]] = None
     Returns:
         Any: 查询结果，根据fetch参数决定。
     """
-    try:
-        async with get_db_connection() as conn:
+    async with get_db_connection() as conn:
+        try:
             async with conn.cursor(aiomysql.DictCursor) as cursor:
                 await cursor.execute(query, params)
                 if fetch == 'one':
@@ -32,15 +32,12 @@ async def _execute_query(query: str, params: Optional[Union[List, Tuple]] = None
                 elif fetch == 'all':
                     return await cursor.fetchall()
                 else:
-                    await conn.commit()  # autocommit=False后需要手动提交
-                    # 对于INSERT, UPDATE, DELETE等写操作
-                    # await conn.commit()
-                    # 返回最后插入的ID或影响的行数
+                    await conn.commit()
                     return cursor.lastrowid or cursor.rowcount
-    except Exception as e:
-        logger.error(f"数据库查询失败: {query} | 参数: {params}", exc_info=True)
-        # 在上层处理或根据需要重新抛出
-        raise e
+        except Exception as e:
+            logger.error(f"数据库查询失败，正在回滚: {query} | 参数: {params}", exc_info=True)
+            await conn.rollback()
+            raise e
 
 
 async def execute_custom_query(query: str, params: Optional[Union[List, Tuple]] = None, fetch: str = 'all') -> Any:

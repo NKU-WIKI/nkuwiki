@@ -331,6 +331,13 @@ async def get_posts(
         # 批量数据增强
         enriched_posts = await batch_enrich_posts_with_user_info(posts_data, openid)
         
+        # 使用最新的用户信息覆盖帖子顶层的过时信息
+        for post in enriched_posts:
+            user_info = post.get("user_info")
+            if user_info:
+                post["nickname"] = user_info.get("nickname", post.get("nickname"))
+                post["avatar"] = user_info.get("avatar", post.get("avatar"))
+
         pagination = PaginationInfo(
             total=total,
             page=page,

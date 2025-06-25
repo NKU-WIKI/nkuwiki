@@ -487,9 +487,9 @@ class Config(dict):
     def get_appdata_dir(self):
         """获取应用数据存储目录"""
         data_path = self.get("etl.data.base_path", "") + self.get("etl.data.cache.path", "")
-        if not os.path.exists(data_path):
-            self.logger.info("[INIT] data path not exists, create it: {}".format(data_path))
-            os.makedirs(data_path)
+        # if not os.path.exists(data_path):
+        #     self.logger.info("[INIT] data path not exists, create it: {}".format(data_path))
+        #     os.makedirs(data_path)
         return data_path
 
     def get_user_data(self, user) -> dict:
