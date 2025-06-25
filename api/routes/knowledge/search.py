@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 import hashlib
 from pathlib import Path
 import os
+import json
 
 from api.models.common import Response, Request, validate_params
 from etl.load import (
@@ -717,84 +718,119 @@ async def _elasticsearch_search_internal(
     max_content_length: int = 300,
     openid: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    内部Elasticsearch搜索函数，执行查询并返回处理后的结果。
-    """
-    from elasticsearch import Elasticsearch
-    from config import Config
-    
-    config = Config()
-    es_host = config.get("etl.data.elasticsearch.host")
-    es_port = config.get("etl.data.elasticsearch.port")
+    """使用Elasticsearch进行内部复合查询"""
     
     es_client = AsyncElasticsearch(
-        [{'host': es_host, 'port': es_port, 'scheme': 'http'}]
+        [f"http://{Config().get('etl.data.elasticsearch.host')}:{Config().get('etl.data.elasticsearch.port')}"]
     )
 
     try:
-        start_time = time.time()
-        
         search_query = {
-            "from": offset,
-            "size": size,
             "query": {
-                "bool": {
-                    "must": [
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["title^3", "content", "author^2", "tag"],
-                                "type": "best_fields",
-                                "fuzziness": "AUTO"
-                            }
-                        }
-                    ],
-                    "should": [
-                        {
-                            "match_phrase": {
-                                "title": {
-                                    "query": query,
-                                    "boost": 4
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "is_official": {
-                                    "value": True,
-                                    "boost": 1.5
-                                }
-                            }
-                        }
-                    ]
+                "multi_match": {
+                    "query": query,
+                    "fields": ["title^2", "content"],
+                    "type": "best_fields"
                 }
             },
+            "size": size,
+            "from": offset,
             "highlight": {
+                "pre_tags": ["<mark>"],
+                "post_tags": ["</mark>"],
                 "fields": {
-                    "title": {},
-                    "content": {}
+                    "content": {
+                        "fragment_size": 150,
+                        "number_of_fragments": 3
+                    }
                 }
             }
         }
-        
-        if platform:
-            platforms = [p.strip() for p in platform.split(',')]
-            search_query["query"]["bool"]["filter"] = [
-                {
-                    "terms": {
-                        "platform.keyword": platforms
-                    }
+
+        # 如果提供了 enhanced_query，也将其加入查询以提高召回率
+        if enhanced_query and enhanced_query != query:
+            # 使用 bool 查询来合并原始查询和增强查询
+            search_query["query"] = {
+                "bool": {
+                    "should": [
+                        {"multi_match": search_query["query"]["multi_match"]},
+                        {
+                            "multi_match": {
+                                "query": enhanced_query,
+                                "fields": ["title^2", "content"],
+                                "type": "best_fields"
+                            }
+                        }
+                    ],
+                    "minimum_should_match": 1
                 }
-            ]
+            }
         
-        logger.debug(f"Executing ES query: {search_query}")
+        # 添加平台筛选
+        if platform:
+            platform_list = [p.strip() for p in platform.split(',') if p.strip()]
+            if platform_list:
+                # 确保 bool 查询存在
+                if "bool" not in search_query["query"]:
+                    # 如果之前没有 bool 查询，需要将 multi_match 包装进去
+                    original_query = search_query["query"]
+                    search_query["query"] = {"bool": {"must": [original_query]}}
+
+                search_query["query"]["bool"]["filter"] = [
+                    {"terms": {"platform.keyword": platform_list}}
+                ]
+
+        logger.debug(f"Executing ES query: {json.dumps(search_query, indent=2, ensure_ascii=False)}")
         response = await es_client.search(index=ES_INDEX_NAME, body=search_query)
         
-        hits = response['hits']['hits']
+        return response
+    except Exception as e:
+        logger.exception(f"Elasticsearch 内部查询失败: {e}")
+        # 返回一个空的、符合ES格式的响应
+        return {
+            "hits": {
+                "total": {"value": 0, "relation": "eq"},
+                "max_score": None,
+                "hits": []
+            }
+        }
+    finally:
+        await es_client.close()
+
+@router.get("/es-search", summary="Elasticsearch 复合查询接口")
+async def elasticsearch_search_endpoint(
+    query: str = Query(..., description="搜索关键词"),
+    openid: str = Query(..., description="用户openid"),
+    platform: Optional[str] = Query(None, description="平台筛选，多个用逗号分隔"),
+    page: int = Query(1, description="分页页码"),
+    page_size: int = Query(10, description="每页结果数"),
+    max_content_length: int = Query(300, description="内容最大长度")
+):
+    """
+    使用Elasticsearch进行检索，支持通配符和数据源筛选。
+    """
+    try:
+        start_time = time.time()
+        
+        offset = (page - 1) * page_size
+        response = await _elasticsearch_search_internal(
+            query=query,
+            platform=platform,
+            size=page_size,
+            offset=offset,
+            max_content_length=max_content_length,
+            openid=openid
+        )
+
+        if 'error' in response:
+            logger.error(f"ES内部检索失败: {response['error']}")
+            return Response.error(message=response['error'], code=500)
+        
+        results = response['hits']['hits']
         total_hits = response['hits']['total']['value']
         
         processed_results = []
-        for hit in hits:
+        for hit in results:
             source = hit['_source']
             score = hit['_score']
             
@@ -831,9 +867,9 @@ async def _elasticsearch_search_internal(
         
         pagination = {
             "total": total_hits,
-            "page": offset // size + 1,
-            "page_size": size,
-            "total_pages": (total_hits + size - 1) // size if size > 0 else 1
+            "page": offset // page_size + 1,
+            "page_size": page_size,
+            "total_pages": (total_hits + page_size - 1) // page_size if page_size > 0 else 1
         }
         
         platform_stats = {p: 0 for p in set(r['platform'] for r in processed_results)}
@@ -852,59 +888,11 @@ async def _elasticsearch_search_internal(
         if openid:
             asyncio.create_task(_record_search_history(query, openid))
         
-        await es_client.close()
-        
         return {
             "data": processed_results,
             "pagination": pagination
         }
 
-    except Exception as e:
-        logger.error(f"ES检索失败: {str(e)}")
-        if es_client:
-            await es_client.close()
-        return {"error": f"ES检索失败: {str(e)}"}
-
-@router.get("/es-search", summary="Elasticsearch 复合查询接口")
-async def elasticsearch_search_endpoint(
-    query: str = Query(..., description="搜索关键词"),
-    openid: str = Query(..., description="用户openid"),
-    platform: Optional[str] = Query(None, description="平台筛选，多个用逗号分隔"),
-    page: int = Query(1, description="分页页码"),
-    page_size: int = Query(10, description="每页结果数"),
-    max_content_length: int = Query(300, description="内容最大长度")
-):
-    """
-    使用Elasticsearch进行检索，支持通配符和数据源筛选。
-    """
-    try:
-        start_time = time.time()
-        
-        offset = (page - 1) * page_size
-        response = await _elasticsearch_search_internal(
-            query=query,
-            platform=platform,
-            size=page_size,
-            offset=offset,
-            max_content_length=max_content_length,
-            openid=openid
-        )
-
-        if 'error' in response:
-            logger.error(f"ES内部检索失败: {response['error']}")
-            return Response.error(message=response['error'], code=500)
-        
-        results = response['data']
-        pagination = response['pagination']
-        
-        total_time = time.time() - start_time
-        
-        details = {"message": "ES检索成功", "query": query, "response_time": total_time}
-        if platform:
-            details["platform_filter"] = platform
-        
-        return Response.paged(data=results, pagination=pagination, details=details)
-        
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()

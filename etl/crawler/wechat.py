@@ -144,8 +144,15 @@ class Wechat(BaseCrawler):
             self.counter['error'] += 1
             self.logger.error(f'get articles from {self.authors} error, {type(e)}: {e}')
             return total_articles
-
+        fg = False
         for author in self.authors:
+            if(author == '统院拾光'):
+                fg = True
+                continue
+            if(not fg):
+                continue
+     
+
             await self.random_sleep()
             try:
                 button = self.page.get_by_text('选择其他账号')
