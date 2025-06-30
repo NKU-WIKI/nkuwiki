@@ -6,9 +6,10 @@
 
 此接口用于执行所有状态切换类的操作，例如：点赞/取消点赞、收藏/取消收藏、关注/取消关注。
 
-- **Endpoint**: `POST /api/wxapp/action/toggle`
+- **Endpoint**: `POST /wxapp/action/toggle`
 - **Tags**: `wxapp-action`
 - **Summary**: 通用点赞/收藏/关注操作
+- **Permissions**: `Authenticated User`
 
 ### 请求体 (Body)
 
@@ -53,7 +54,7 @@
 
 ### 1. 创建评论
 
-**接口**：`POST /api/wxapp/action/comment`
+**接口**：`POST /wxapp/action/comment`
 
 **功能描述**：在一个资源（如帖子或知识）下创建新的评论或回复。
 
@@ -116,7 +117,7 @@
 
 ### 2. 点赞/取消点赞评论
 
-**接口**：`POST /api/wxapp/action/comment/like`
+**接口**：`POST /wxapp/action/comment/like`
 
 **功能描述**：对指定ID的评论进行点赞。如果用户已点赞，则会取消点赞。这是一个切换（toggle）操作。
 
@@ -169,7 +170,7 @@
 
 ### 3. 点赞/取消点赞帖子
 
-**接口**：`POST /api/wxapp/post/like`
+**接口**：`POST /wxapp/post/like`
 
 **功能描述**：对指定ID的帖子进行点赞。如果用户已点赞，则会取消点赞。这是一个切换（toggle）操作。
 
@@ -202,7 +203,7 @@
 
 ### 4. 收藏/取消收藏帖子
 
-**接口**：`POST /api/wxapp/post/favorite`
+**接口**：`POST /wxapp/post/favorite`
 
 **功能描述**：对指定ID的帖子进行收藏。如果用户已收藏，则会取消收藏。这是一个切换（toggle）操作。
 
@@ -235,7 +236,7 @@
 
 ### 1.4 获取操作状态
 
-**接口**: `GET /api/wxapp/action/status`
+**接口**: `GET /wxapp/action/status`
 **描述**: 批量获取用户对多个目标（帖子/评论）的操作状态（如是否点赞、收藏）
 **查询参数**:
 
@@ -267,7 +268,7 @@
 
 ### 2.1 获取单条评论详情
 
-**接口**：`GET /api/wxapp/comment/detail`  
+**接口**：`GET /wxapp/comment/detail`  
 **描述**：获取单条评论的完整信息，包括其所有层级的子评论（回复）。  
 **查询参数**：
 
@@ -379,7 +380,7 @@
 
 ### 2.2 获取评论的回复列表
 
-**接口**：`GET /api/wxapp/comment/replies`  
+**接口**：`GET /wxapp/comment/replies`  
 **描述**：分页获取单条评论的直接回复列表。  
 **查询参数**：
 

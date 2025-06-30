@@ -386,7 +386,21 @@ async def generate_and_save_insights(
             logger.info(f"分类 '{category}' 中没有新文档，跳过洞察生成。")
             continue
 
-        logger.info(f"开始为分类 '{category}' 生成洞察 (基于 {len(doc_list)} 个文档)...")
+        # 确定该分类洞察的日期，应基于该分类下最新的文档发布日期
+        # doc_list 已按发布日期降序排序，所以第一个文档就是最新的
+        latest_publish_time_str = doc_list[0].get("publish_time")
+        insight_date = parse_datetime_utc(latest_publish_time_str)
+        if not insight_date:
+            # 如果最新的文档没有有效的发布时间，则回退到使用end_time
+            logger.warning(
+                f"无法从分类 '{category}' 的最新文档中解析发布日期 "
+                f"(路径: {doc_list[0].get('_file_path')})，将使用任务结束日期作为洞察日期。"
+            )
+            insight_date = end_time
+        
+        insight_date = insight_date.date() # 取日期部分
+
+        logger.info(f"开始为分类 '{category}' 生成洞察 (基于 {len(doc_list)} 个文档)，洞察日期: {insight_date}")
         try:
             prompt = build_insight_prompt(
                 doc_list, category, char_limit=insight_char_limit
@@ -420,7 +434,7 @@ async def generate_and_save_insights(
                         "title": insight.get("title"),
                         "content": insight.get("content"),
                         "category": category,
-                        "insight_date": end_time.date(),
+                        "insight_date": insight_date,
                     })
                 else:
                     logger.warning(f"分类 '{category}' 中有一条洞察格式不正确，已跳过: {insight}")
@@ -592,4 +606,3 @@ def main_cli():
 
 if __name__ == "__main__":
     main_cli()
-

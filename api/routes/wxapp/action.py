@@ -54,28 +54,25 @@ async def toggle_action(
 
         async with _get_db_connection() as conn:
             async with conn.cursor(aiomysql.DictCursor) as cursor:
-                # 查找现有动作记录
-                query = "SELECT * FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s"
-                await cursor.execute(query, (openid, action_type, target_id, target_type))
-                row = await cursor.fetchone()
-                existing_action = dict(row) if row else None
+                # 尝试直接删除动作，根据影响的行数判断是取消还是执行
+                delete_query = "DELETE FROM wxapp_action WHERE openid = %s AND action_type = %s AND target_id = %s AND target_type = %s"
+                affected_rows = await cursor.execute(delete_query, (openid, action_type, target_id, target_type))
 
-                is_active = False
-                if not existing_action:
-                    # 如果没有记录，则创建新记录
+                if affected_rows > 0:
+                    # 删除了记录，说明是取消操作
+                    is_active = False
+                    amount = -1
+                else:
+                    # 未删除任何记录，说明是新增操作
                     insert_query = "INSERT INTO wxapp_action (openid, action_type, target_id, target_type) VALUES (%s, %s, %s, %s)"
                     await cursor.execute(insert_query, (openid, action_type, target_id, target_type))
                     is_active = True
-                else:
-                    delete_query = "DELETE FROM wxapp_action WHERE id = %s"
-                    await cursor.execute(delete_query, (existing_action['id'],))
-                    is_active = False
+                    amount = 1
 
                 # 使用新的通用函数更新计数
-                amount = 1 if is_active else -1
                 count_field_map = {
                     "post": {"like": "like_count", "favorite": "favorite_count"},
-                    "comment": {"like": "like_count"},
+                    "comment": {"like": "like_count", "favorite": "favorite_count"},
                     "user": {"follow": "follower_count"}
                 }
                 
@@ -84,9 +81,13 @@ async def toggle_action(
                 if count_field and table_name:
                     await _update_count(cursor, table_name, count_field, target_id, amount, id_column=id_column)
                 
-                # 单独处理关注者的 following_count
+                # 单独处理操作发起者的计数
                 if target_type == "user" and action_type == "follow":
+                    # 更新被关注者的粉丝数在上面已处理，这里更新关注者自己的关注数
                     await _update_count(cursor, "wxapp_user", "following_count", openid, amount, id_column='openid')
+                elif action_type == "favorite":
+                    # 更新收藏者自己的总收藏数
+                    await _update_count(cursor, "wxapp_user", "favorite_count", openid, amount, id_column='openid')
 
                 await conn.commit()
 

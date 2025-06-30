@@ -6,7 +6,7 @@
 
 ## 1. 站内综合搜索 (推荐)
 
-- **Endpoint**: `GET /api/knowledge/es-search`
+- **Endpoint**: `GET /knowledge/es-search`
 - **Tags**: `knowledge`, `elasticsearch`
 - **Summary**: **（推荐）** 直接调用 Elasticsearch 进行高效、精准的全文检索
 
@@ -50,7 +50,7 @@
 
 > **[注意]** 此接口直接查询数据库，在数据量大时性能较低，且不如 `es-search` 功能强大。**不推荐**在生产环境使用。
 
-- **Endpoint**: `GET /api/knowledge/search`
+- **Endpoint**: `GET /knowledge/search`
 - **Tags**: `knowledge`
 - **Summary**: (不推荐) 提供跨多个数据源的关键词搜索功能
 
@@ -106,7 +106,7 @@
 
 > **[注意]** 此接口为内部实验性接口，会加载大模型，消耗大量内存资源，且响应较慢。**不推荐**在生产环境或内存有限的设备上使用。
 
-- **Endpoint**: `GET /api/knowledge/advanced-search`
+- **Endpoint**: `GET /knowledge/advanced-search`
 - **Tags**: `knowledge`, `rag`
 - **Summary**: (不推荐) 利用RAG管道进行高级搜索，召回并重排文档
 
@@ -124,12 +124,12 @@
 ### 响应
 
 - **200 OK**:
-```json
-{
-  "code": 200,
-  "message": "success",
-  "data": [
-    {
+  ```json
+  {
+    "code": 200,
+    "message": "success",
+    "data": [
+      {
         "id": "doc_id_1",
         "text": "南开大学的详细介绍...",
         "metadata": {
@@ -138,9 +138,9 @@
           "platform": "website"
         },
         "score": 0.92
-    }
-  ],
-  "details": {
+      }
+    ],
+    "details": {
       "message": "高级检索成功",
       "query": "南开大学",
       "retrieval_strategy": "hybrid",
@@ -148,9 +148,9 @@
       "documents_retrieved": 20,
       "documents_reranked": 10,
       "response_time": 5.43
+    }
   }
-}
-```
+  ```
 
 ---
 
@@ -158,7 +158,7 @@
 
 ### 4.1 获取搜索建议
 
-- **Endpoint**: `GET /api/knowledge/suggestion`
+- **Endpoint**: `GET /knowledge/suggestion`
 - **Tags**: `knowledge`
 - **Summary**: 根据用户输入提供搜索建议
 
@@ -187,7 +187,7 @@
 
 ### 4.2 获取搜索历史
 
-- **Endpoint**: `GET /api/knowledge/history`
+- **Endpoint**: `GET /knowledge/history`
 - **Tags**: `knowledge`, `user`
 - **Summary**: 获取指定用户的搜索历史记录
 
@@ -217,7 +217,7 @@
 
 ### 4.3 清空搜索历史
 
-- **Endpoint**: `POST /api/knowledge/history/clear`
+- **Endpoint**: `POST /knowledge/history/clear`
 - **Tags**: `knowledge`, `user`
 - **Summary**: 清空指定用户的搜索历史
 
@@ -239,8 +239,8 @@
       "data": {
           "message": "历史记录已清空"
       }
-}
-```
+  }
+  ```
 
 ---
 
@@ -248,7 +248,7 @@
 
 ### 5.1 小程序内搜索
 
-- **Endpoint**: `GET /api/knowledge/search-wxapp`
+- **Endpoint**: `GET /knowledge/search-wxapp`
 - **Tags**: `knowledge`, `wxapp`
 - **Summary**: 专门用于小程序内的内容搜索
 
@@ -288,7 +288,7 @@
 
 ### 5.2 获取热门搜索
 
-- **Endpoint**: `GET /api/knowledge/hot`
+- **Endpoint**: `GET /knowledge/hot`
 - **Tags**: `knowledge`
 - **Summary**: 获取热门搜索词条列表
 
@@ -316,7 +316,7 @@
 
 ### 5.3 获取网页快照
 
-- **Endpoint**: `GET /api/knowledge/snapshot`
+- **Endpoint**: `GET /knowledge/snapshot`
 - **Tags**: `knowledge`, `utils`
 - **Summary**: 获取指定 URL 的网页快照
 

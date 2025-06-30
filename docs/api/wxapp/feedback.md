@@ -4,7 +4,8 @@
 
 ## 1. 提交反馈
 
-- **Endpoint**: `POST /api/wxapp/feedback/`
+- **Endpoint**: `POST /wxapp/feedback/`
+- **Permissions**: `Authenticated User`
 - **Tags**: `wxapp-feedback`
 - **Summary**: 用户提交一条新的反馈。
 
@@ -40,7 +41,8 @@
 
 ## 2. 获取反馈列表
 
-- **Endpoint**: `GET /api/wxapp/feedback/list`
+- **Endpoint**: `GET /wxapp/feedback/list`
+- **Permissions**: `Authenticated User`
 - **Tags**: `wxapp-feedback`
 - **Summary**: 获取反馈列表，支持按分类和状态筛选。
 
@@ -87,7 +89,8 @@
 
 ## 3. 获取反馈详情
 
-- **Endpoint**: `GET /api/wxapp/feedback/detail`
+- **Endpoint**: `GET /wxapp/feedback/detail`
+- **Permissions**: `Authenticated User`
 - **Tags**: `wxapp-feedback`
 - **Summary**: 获取单条反馈的详细信息，包括处理历史。
 
@@ -138,9 +141,10 @@
 
 ---
 
-## 4. 更新反馈状态 (管理员)
+## 4. 更新反馈状态
 
-- **Endpoint**: `PUT /api/wxapp/feedback/{feedback_id}/status`
+- **Endpoint**: `PUT /wxapp/feedback/{feedback_id}/status`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-feedback`
 - **Summary**: 更新指定反馈的状态。
 
@@ -168,9 +172,10 @@
 
 ---
 
-## 5. 回复反馈 (管理员)
+## 5. 回复反馈
 
-- **Endpoint**: `POST /api/wxapp/feedback/{feedback_id}/reply`
+- **Endpoint**: `POST /wxapp/feedback/{feedback_id}/reply`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-feedback`
 - **Summary**: 回复指定反馈，并自动将状态更新为 `replied`。
 
@@ -198,9 +203,10 @@
 
 ---
 
-## 6. 删除反馈 (管理员)
+## 6. 删除反馈
 
-- **Endpoint**: `POST /api/wxapp/feedback/delete`
+- **Endpoint**: `POST /wxapp/feedback/delete`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-feedback`
 - **Summary**: 删除一条反馈及其处理历史。
 

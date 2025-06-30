@@ -4,7 +4,8 @@
 
 ## 1. 获取整个敏感词库
 
-- **Endpoint**: `GET /api/wxapp/banwords/`
+- **Endpoint**: `GET /wxapp/banwords/`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 获取所有敏感词分类及其词汇。
 
@@ -38,7 +39,8 @@
 
 ## 2. 获取敏感词分类列表
 
-- **Endpoint**: `GET /api/wxapp/banwords/categories`
+- **Endpoint**: `GET /wxapp/banwords/categories`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 只获取所有敏感词的分类名称。
 
@@ -65,7 +67,8 @@
 
 ## 3. 添加敏感词
 
-- **Endpoint**: `POST /api/wxapp/banwords/`
+- **Endpoint**: `POST /wxapp/banwords/`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 向指定分类添加一个或多个新的敏感词。
 
@@ -98,7 +101,8 @@
 
 ## 4. 删除敏感词
 
-- **Endpoint**: `POST /api/wxapp/banwords/delete-word`
+- **Endpoint**: `POST /wxapp/banwords/delete-word`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 从指定分类中删除一个敏感词。
 
@@ -128,7 +132,8 @@
 
 ## 5. 更新整个分类的敏感词
 
-- **Endpoint**: `POST /api/wxapp/banwords/update-category/{category}`
+- **Endpoint**: `POST /wxapp/banwords/update-category/{category}`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 使用新的词汇列表完全替换指定分类下的所有敏感词。
 

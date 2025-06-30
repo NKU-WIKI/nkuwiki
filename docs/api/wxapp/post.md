@@ -4,7 +4,8 @@
 
 ## 1. 创建新帖子
 
-- **Endpoint**: `POST /api/wxapp/post/create`
+- **Endpoint**: `POST /wxapp/post/create`
+- **Permissions**: `Authenticated User`
 - **Tags**: `wxapp-post`
 - **Summary**: 创建新帖子
 
@@ -49,7 +50,8 @@
 
 ## 2. 获取帖子详情
 
-- **Endpoint**: `GET /api/wxapp/post/detail`
+- **Endpoint**: `GET /wxapp/post/detail`
+- **Permissions**: `Public`
 - **Tags**: `wxapp-post`
 - **Summary**: 获取帖子详情
 
@@ -116,7 +118,8 @@
 
 获取帖子列表，支持按分类、热度、收藏、关注等多种方式筛选和排序。
 
-- **Endpoint**: `GET /api/wxapp/post/list`
+- **Endpoint**: `GET /wxapp/post/list`
+- **Permissions**: `Public`
 - **Tags**: `wxapp-post`
 - **Summary**: 获取帖子列表
 
@@ -193,7 +196,8 @@
 
 根据关键词、分类、点赞数等条件搜索帖子。
 
-- **Endpoint**: `GET /api/wxapp/post/search`
+- **Endpoint**: `GET /wxapp/post/search`
+- **Permissions**: `Public`
 - **Tags**: `wxapp-post`
 - **Summary**: 搜索帖子
 
@@ -267,7 +271,8 @@
 
 ## 5. 更新帖子
 
-- **Endpoint**: `POST /api/wxapp/post/update`
+- **Endpoint**: `POST /wxapp/post/update`
+- **Permissions**: `Post Author`
 - **Tags**: `wxapp-post`
 - **Summary**: 更新帖子
 
@@ -301,7 +306,8 @@
 
 ## 6. 删除帖子
 
-- **Endpoint**: `POST /api/wxapp/post/delete`
+- **Endpoint**: `POST /wxapp/post/delete`
+- **Permissions**: `Post Author`
 - **Tags**: `wxapp-post`
 - **Summary**: 删除帖子
 
@@ -333,7 +339,8 @@
 
 批量获取帖子的互动状态。
 
-- **Endpoint**: `GET /api/wxapp/post/status`
+- **Endpoint**: `GET /wxapp/post/status`
+- **Permissions**: `Public`
 - **Tags**: `wxapp-post`
 - **Summary**: 获取帖子状态
 

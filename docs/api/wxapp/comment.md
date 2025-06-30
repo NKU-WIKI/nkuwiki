@@ -6,9 +6,10 @@
 
 发布一条新的评论或者回复另一条评论。
 
-- **Endpoint**: `POST /api/wxapp/comment/create`
+- **Endpoint**: `POST /wxapp/comment/create`
 - **Tags**: `wxapp-comment`
 - **Summary**: 发布评论
+- **Permissions**: `Authenticated User`
 
 ### 请求体 (Body)
 
@@ -44,9 +45,10 @@
 
 获取单条评论的完整信息，包括其所有嵌套的子评论和当前用户的点赞状态。
 
-- **Endpoint**: `GET /api/wxapp/comment/detail`
+- **Endpoint**: `GET /wxapp/comment/detail`
 - **Tags**: `wxapp-comment`
 - **Summary**: 获取单条评论详情
+- **Permissions**: `Public`
 
 ### 查询参数 (Query)
 
@@ -94,9 +96,10 @@
 
 分页获取指定评论下的直接回复。
 
-- **Endpoint**: `GET /api/wxapp/comment/replies`
+- **Endpoint**: `GET /wxapp/comment/replies`
 - **Tags**: `wxapp-comment`
 - **Summary**: 获取单条评论的回复列表
+- **Permissions**: `Public`
 
 ### 查询参数 (Query)
 
@@ -141,9 +144,10 @@
 
 分页获取某个资源（如帖子）下的顶级评论。
 
-- **Endpoint**: `GET /api/wxapp/comment/list`
+- **Endpoint**: `GET /wxapp/comment/list`
 - **Tags**: `wxapp-comment`
 - **Summary**: 获取评论列表
+- **Permissions**: `Public`
 
 ### 查询参数 (Query)
 
@@ -162,9 +166,10 @@
 
 分页获取指定用户发表的所有评论。
 
-- **Endpoint**: `GET /api/wxapp/comment/user`
+- **Endpoint**: `GET /wxapp/comment/user`
 - **Tags**: `wxapp-comment`
 - **Summary**: 获取用户的评论列表
+- **Permissions**: `Public`
 
 ### 查询参数 (Query)
 
@@ -183,9 +188,10 @@
 
 更新一条已存在的评论内容。
 
-- **Endpoint**: `POST /api/wxapp/comment/update`
+- **Endpoint**: `POST /wxapp/comment/update`
 - **Tags**: `wxapp-comment`
 - **Summary**: 更新评论
+- **Permissions**: `Comment Author`
 
 ### 请求体 (Body)
 
@@ -213,9 +219,10 @@
 
 删除一条评论。
 
-- **Endpoint**: `POST /api/wxapp/comment/delete`
+- **Endpoint**: `POST /wxapp/comment/delete`
 - **Tags**: `wxapp-comment`
 - **Summary**: 删除评论
+- **Permissions**: `Comment Author` or `Post Author`
 
 ### 请求体 (Body)
 
@@ -242,9 +249,10 @@
 
 批量获取多条评论的状态，主要用于判断当前用户是否对这些评论点了赞。
 
-- **Endpoint**: `GET /api/wxapp/comment/status`
+- **Endpoint**: `GET /wxapp/comment/status`
 - **Tags**: `wxapp-comment`
 - **Summary**: 获取评论状态
+- **Permissions**: `Public`
 
 ### 查询参数 (Query)
 

@@ -1,36 +1,36 @@
-import re
 import time
+import json
+from typing import Dict, Any, Optional, List
 import asyncio
 from datetime import datetime
-from fastapi import Query, APIRouter, Body, Depends, HTTPException
-# from fastapi.responses import HTMLResponse
-from typing import Optional, List, Dict, Any
+import re
 import hashlib
 from pathlib import Path
-import os
-import json
 
-from api.models.common import Response, Request, validate_params
-from etl.load import (
-    query_records,
-    execute_custom_query,
-    count_records,
-    db_core
-)
+from elasticsearch import AsyncElasticsearch
+from fastapi import Query, APIRouter, Body, HTTPException
+from pydantic import BaseModel, Field
+import jieba.analyse
+
+from api.models.common import Response, Request, validate_params, PaginationInfo
+from config import Config
 from core.utils.logger import register_logger
-from api.routes.wxapp.post import batch_enrich_posts_with_user_info
-
+from etl.load import (
+    query_records, 
+    insert_record, 
+    update_record, 
+    execute_custom_query, 
+    count_records,
+    get_by_id
+)
+from etl import ES_INDEX_NAME
 from etl.rag.pipeline import RagPipeline
 from etl.rag.strategies import RetrievalStrategy, RerankStrategy
-from config import Config
-from elasticsearch import Elasticsearch, AsyncElasticsearch
-
-# 从etl模块导入正确的索引名称常量
-from etl import ES_INDEX_NAME
+from api.routes.wxapp._utils import batch_enrich_posts_with_user_info
+from etl.utils.const import official_author as OFFICIAL_AUTHORS_WHITELIST
 
 router = APIRouter()
-
-logger = register_logger('api')
+logger = register_logger('api.routes.knowledge.search')
 
 TABLE_MAPPING = {
     # 微信小程序平台
@@ -436,7 +436,6 @@ async def search_knowledge(
             if "tag" in item and item["tag"]:
                 try:
                     if isinstance(item["tag"], str):
-                        import json
                         tag_val = json.loads(item["tag"])
                     else:
                         tag_val = item["tag"]
@@ -837,6 +836,7 @@ async def elasticsearch_search_endpoint(
             title = source.get('title', '无标题')
             platform = source.get('platform', '')
             author = source.get('author', '')
+            original_url = source.get('original_url', '')
             original_content_length = len(source.get('content', ''))
             
             logger.debug(f"  文档 ID={hit['_id']}, 分数={score:.4f}, 平台={platform}")
@@ -850,10 +850,15 @@ async def elasticsearch_search_endpoint(
                 is_truncated = True
                 logger.debug(f"    内容已截断: {original_content_length} -> {max_content_length}字符")
             
+            # 动态判断是否为官方来源
+            is_official = source.get('is_official', False)
+            if platform == 'website' or author in OFFICIAL_AUTHORS_WHITELIST:
+                is_official = True
+            
             result_item = {
                 "title": title,
                 "content": content,
-                "original_url": source.get('original_url', ''),
+                "original_url": original_url,
                 "author": author,
                 "platform": platform,
                 "tag": source.get('tag', '') if source.get('tag') else "",
@@ -861,16 +866,16 @@ async def elasticsearch_search_endpoint(
                 "update_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
                 "relevance": score,
                 "is_truncated": is_truncated,
-                "is_official": source.get('is_official', False)
+                "is_official": is_official
             }
             processed_results.append(result_item)
         
-        pagination = {
-            "total": total_hits,
-            "page": offset // page_size + 1,
-            "page_size": page_size,
-            "total_pages": (total_hits + page_size - 1) // page_size if page_size > 0 else 1
-        }
+        pagination = PaginationInfo(
+            total=total_hits,
+            page=page,
+            page_size=page_size,
+            total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1
+        )
         
         platform_stats = {p: 0 for p in set(r['platform'] for r in processed_results)}
         for result in processed_results:
@@ -888,10 +893,10 @@ async def elasticsearch_search_endpoint(
         if openid:
             asyncio.create_task(_record_search_history(query, openid))
         
-        return {
-            "data": processed_results,
-            "pagination": pagination
-        }
+        return Response.paged(
+            data=processed_results,
+            pagination=pagination
+        )
 
     except Exception as e:
         import traceback
@@ -1243,14 +1248,11 @@ async def get_snapshot(url: str = Query(..., description="要获取快照的原�
     获取指定URL的网页快照
     """
     try:
-        import hashlib
-        from pathlib import Path
-        
         # 计算URL的MD5哈希
         url_hash = hashlib.md5(url.encode()).hexdigest()
         
         # 构建快照文件路径
-        snapshots_dir = Path(config.get('etl.data.storage.base_path', '/data') + '/raw/website/snapshots')
+        snapshots_dir = Path(Config().get('etl.data.storage.base_path', '/data') + '/raw/website/snapshots')
         snapshot_path = snapshots_dir / f"{url_hash}.html"
         
         if snapshot_path.exists():
