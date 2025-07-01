@@ -19,9 +19,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &> /dev/null && pwd)"
 
 # 主 Nginx 配置文件模板的路径
 NGINX_CONF_TEMPLATE="${SCRIPT_DIR}/nkuwiki.nginx.conf"
+NGINX_SSL_CONF_TEMPLATE="${SCRIPT_DIR}/nkuwiki-ssl.nginx.conf"
 
 # Nginx 最终配置文件的路径
 NGINX_CONF_FINAL="/etc/nginx/sites-available/nkuwiki.conf"
+NGINX_SSL_CONF_FINAL="/etc/nginx/sites-available/nkuwiki-ssl.conf"
 NGINX_SITES_ENABLED="/etc/nginx/sites-enabled"
 
 # 根据分支设置变量
@@ -115,16 +117,20 @@ EOF
 
 function update_nginx {
     echo -e "${BLUE}更新Nginx配置...${NC}"
-    if [ ! -f "$NGINX_CONF_TEMPLATE" ]; then
-        echo -e "${RED}错误: Nginx模板文件未找到: $NGINX_CONF_TEMPLATE${NC}"
+    if [ ! -f "$NGINX_CONF_TEMPLATE" ] || [ ! -f "$NGINX_SSL_CONF_TEMPLATE" ]; then
+        echo -e "${RED}错误: Nginx模板文件未找到。请确保 nkuwiki.nginx.conf 和 nkuwiki-ssl.nginx.conf 都存在。${NC}"
         exit 1
     fi
     
-    # 复制模板到最终位置
+    # 复制 HTTP 和 HTTPS 配置文件
+    echo -e "${BLUE}复制 HTTP 和 HTTPS 的Nginx配置文件...${NC}"
     cp "$NGINX_CONF_TEMPLATE" "$NGINX_CONF_FINAL"
+    cp "$NGINX_SSL_CONF_TEMPLATE" "$NGINX_SSL_CONF_FINAL"
     
-    # 启用配置文件
+    # 启用两个配置文件
+    echo -e "${BLUE}在 sites-enabled 中创建软链接...${NC}"
     ln -sf "$NGINX_CONF_FINAL" "${NGINX_SITES_ENABLED}/nkuwiki.conf"
+    ln -sf "$NGINX_SSL_CONF_FINAL" "${NGINX_SITES_ENABLED}/nkuwiki-ssl.conf"
     
     # 测试并重载 Nginx
     echo -e "${BLUE}测试并重载Nginx配置...${NC}"
