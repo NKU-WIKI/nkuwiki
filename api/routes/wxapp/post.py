@@ -321,7 +321,7 @@ async def update_post(
         # 验证帖子是否存在且属于该用户
         post_check = await get_by_id("wxapp_post", post_id)
         if not post_check or post_check['openid'] != openid:
-            return Response.permission_denied(details={"message": "无权修改该帖子"})
+            return Response.forbidden(details={"message": "无权修改该帖子"})
         
         # 提取更新字段
         update_data = {}
@@ -351,6 +351,8 @@ async def update_post(
             update_data["is_public"] = 1 if req_data["is_public"] in [1, "1", True, "true", "True"] else 0
         if "location" in req_data and isinstance(req_data["location"], dict):
             update_data["location"] = json.dumps(req_data["location"], ensure_ascii=False)
+        if "url_link" in req_data:
+            update_data["url_link"] = req_data["url_link"]
         
         if not update_data:
             return Response.bad_request(details={"message": "未提供任何更新数据"})
