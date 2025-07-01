@@ -42,6 +42,7 @@ temp/
 logs/
 log/
 data/
+backups/
 
 # 数据库
 *.sqlite
