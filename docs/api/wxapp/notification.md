@@ -4,9 +4,10 @@
 
 ## 1. 获取通知列表
 
-- **Endpoint**: `GET /api/wxapp/notification/list`
+- **Endpoint**: `GET /wxapp/notification/list`
 - **Tags**: `wxapp-notification`
 - **Summary**: 获取通知列表，并将未读通知标记为已读。
+- **Permissions**: `Authenticated User`
 
 ### 查询参数 (Query)
 
@@ -56,9 +57,10 @@
 
 ## 2. 获取通知详情
 
-- **Endpoint**: `GET /api/wxapp/notification/detail`
+- **Endpoint**: `GET /wxapp/notification/detail`
 - **Tags**: `wxapp-notification`
 - **Summary**: 获取单条通知详情，并将其标记为已读。
+- **Permissions**: `Authenticated User`
 
 ### 查询参数 (Query)
 
@@ -98,9 +100,10 @@
 
 ## 3. 获取未读通知数量
 
-- **Endpoint**: `GET /api/wxapp/notification/count`
+- **Endpoint**: `GET /wxapp/notification/count`
 - **Tags**: `wxapp-notification`
 - **Summary**: 获取用户未读通知的总数。
+- **Permissions**: `Authenticated User`
 
 ### 查询参数 (Query)
 
@@ -127,9 +130,10 @@
 
 ## 4. 批量标记通知为已读
 
-- **Endpoint**: `POST /api/wxapp/notification/read`
+- **Endpoint**: `POST /wxapp/notification/read`
 - **Tags**: `wxapp-notification`
 - **Summary**: 将一个或多个通知标记为已读。
+- **Permissions**: `Authenticated User`
 
 ### 请求体 (Body)
 
@@ -157,9 +161,10 @@
 
 ## 5. 删除通知
 
-- **Endpoint**: `POST /api/wxapp/notification/delete`
+- **Endpoint**: `POST /wxapp/notification/delete`
 - **Tags**: `wxapp-notification`
 - **Summary**: 删除单条通知。
+- **Permissions**: `Authenticated User`
 
 ### 请求体 (Body)
 
@@ -187,9 +192,10 @@
 
 ## 6. 获取通知摘要
 
-- **Endpoint**: `GET /api/wxapp/notification/summary`
+- **Endpoint**: `GET /wxapp/notification/summary`
 - **Tags**: `wxapp-notification`
 - **Summary**: 获取未读通知的摘要信息。
+- **Permissions**: `Authenticated User`
 
 ### 查询参数 (Query)
 

@@ -36,17 +36,17 @@ import argparse
 import asyncio
 from pathlib import Path
 from typing import Dict, Any
+import logging
+
+# 关键修改：配置Python内置的logging模块以捕获第三方库的DEBUG日志
+# 这将使我们能够看到 elasticsearch-py 库详细的网络活动
+logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 
 # 添加项目根目录到路径
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-# 设置控制台日志级别
-from loguru import logger
-# 移除默认处理器（如果有）
-for handler_id in logger._core.handlers:
-    logger.remove(handler_id)
-# 添加INFO级别的控制台处理器
-logger.add(sys.stderr, level="INFO")
+from core.utils.logger import register_logger
+logger = register_logger("etl.build_indexes")
 
 # 导入配置和ETL路径
 from etl import BASE_PATH, INDEX_PATH, QDRANT_PATH, MYSQL_PATH, NLTK_PATH, MODELS_PATH
@@ -54,11 +54,6 @@ from etl.indexing.bm25_indexer import BM25Indexer
 from etl.indexing.qdrant_indexer import QdrantIndexer
 from etl.indexing.elasticsearch_indexer import ElasticsearchIndexer
 from etl.indexing.mysql_indexer import MySQLIndexer
-
-# 使用项目统一的日志记录器
-from core.utils.logger import register_logger
-logger = register_logger("etl.build_indexes")
-
 
 async def build_all_indexes(limit: int = None, test_mode: bool = False, only: str = None, data_source: str = "raw_files", 
                           batch_size: int = -1, start_batch: int = 0, max_batches: int = None, incremental: bool = False) -> Dict[str, Any]:

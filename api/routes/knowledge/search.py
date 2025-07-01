@@ -1,28 +1,36 @@
-import re
 import time
+import json
+from typing import Dict, Any, Optional, List
 import asyncio
 from datetime import datetime
-from fastapi import Query, APIRouter, Body, Depends, HTTPException
-# from fastapi.responses import HTMLResponse
-from typing import Optional, List, Dict, Any
+import re
 import hashlib
 from pathlib import Path
 
-from api.models.common import Response, Request, validate_params
-from etl.load import (
-    query_records,
-    execute_custom_query,
-    count_records
-)
-from core.utils.logger import register_logger
-from api.routes.wxapp.post import batch_enrich_posts_with_user_info
+from elasticsearch import AsyncElasticsearch
+from fastapi import Query, APIRouter, Body, HTTPException
+from pydantic import BaseModel, Field
+import jieba.analyse
 
+from api.models.common import Response, Request, validate_params, PaginationInfo
+from config import Config
+from core.utils.logger import register_logger
+from etl.load import (
+    query_records, 
+    insert_record, 
+    update_record, 
+    execute_custom_query, 
+    count_records,
+    get_by_id
+)
+from etl import ES_INDEX_NAME
 from etl.rag.pipeline import RagPipeline
 from etl.rag.strategies import RetrievalStrategy, RerankStrategy
+from api.routes.wxapp._utils import batch_enrich_posts_with_user_info
+from etl.utils.const import official_author as OFFICIAL_AUTHORS_WHITELIST
 
 router = APIRouter()
-
-logger = register_logger('api')
+logger = register_logger('api.routes.knowledge.search')
 
 TABLE_MAPPING = {
     # 微信小程序平台
@@ -428,7 +436,6 @@ async def search_knowledge(
             if "tag" in item and item["tag"]:
                 try:
                     if isinstance(item["tag"], str):
-                        import json
                         tag_val = json.loads(item["tag"])
                     else:
                         tag_val = item["tag"]
@@ -706,104 +713,90 @@ async def _elasticsearch_search_internal(
     enhanced_query: str = None,
     platform: Optional[str] = None,
     size: int = 10,
-    offset: int = 0
+    offset: int = 0,
+    max_content_length: int = 300,
+    openid: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    内部共享的Elasticsearch检索函数
-    """
-    from elasticsearch import Elasticsearch
-    from config import Config
+    """使用Elasticsearch进行内部复合查询"""
     
-    config = Config()
-    es_host = config.get("etl.data.elasticsearch.host", "localhost")
-    es_port = config.get("etl.data.elasticsearch.port", 9200)
-    index_name = config.get("etl.data.elasticsearch.index_name", "nkuwiki")
-    
-    es_client = Elasticsearch([{'host': es_host, 'port': es_port, 'scheme': 'http'}])
-    if not es_client.ping():
-        raise HTTPException(status_code=503, detail=f"无法连接到Elasticsearch ({es_host}:{es_port})")
-    if not es_client.indices.exists(index=index_name):
-        raise HTTPException(status_code=404, detail=f"索引 '{index_name}' 不存在")
-    
-    # 分析查询分词结果
-    try:
-        # 获取原始查询的分词结果
-        analyze_response = es_client.indices.analyze(
-            index=index_name,
-            body={
-                "analyzer": "ik_smart",
-                "text": query
-            }
-        )
-        tokens = [token['token'] for token in analyze_response['tokens']]
-        logger.debug(f"ES分词结果 - 原始查询: '{query}' -> 分词: {tokens}")
-        
-        # 如果有增强查询，也分析其分词结果
-        if enhanced_query and enhanced_query != query:
-            enhanced_analyze_response = es_client.indices.analyze(
-                index=index_name,
-                body={
-                    "analyzer": "ik_smart",
-                    "text": enhanced_query
-                }
-            )
-            enhanced_tokens = [token['token'] for token in enhanced_analyze_response['tokens']]
-            logger.debug(f"ES分词结果 - 增强查询: '{enhanced_query}' -> 分词: {enhanced_tokens}")
-    except Exception as e:
-        logger.warning(f"获取分词结果失败: {str(e)}")
-        
-    # 构建查询，使用ik_smart分析器
-    should_clauses = []
-    # 优先使用增强查询
-    if enhanced_query:
-        should_clauses.extend([
-            {"match": {"title": {"query": enhanced_query, "analyzer": "ik_smart", "boost": 2.5}}},
-            {"match": {"content": {"query": enhanced_query, "analyzer": "ik_smart", "boost": 1.5}}}
-        ])
-    
-    # 始终包含原始查询以保证广度
-    should_clauses.extend([
-        {"match": {"title": {"query": query, "analyzer": "ik_smart", "boost": 2.0}}},
-        {"match": {"content": {"query": query, "analyzer": "ik_smart", "boost": 1.0}}}
-    ])
-
-    main_query = {
-        "bool": {
-            "should": should_clauses,
-            "minimum_should_match": 1
-        }
-    }
-    
-    # 添加平台过滤
-    filter_clauses = []
-    if platform and platform != 'all':
-        platform_list = [p.strip() for p in platform.split(',') if p.strip()]
-        if platform_list:
-            filter_clauses.append({"terms": {"platform": platform_list}})
-            logger.debug(f"ES平台过滤: {platform_list}")
-            
-    es_query = {"query": {"bool": {"must": [main_query], "filter": filter_clauses}} if filter_clauses else main_query}
-    
-    # 记录ES查询结构
-    logger.debug(f"ES查询结构: {es_query}")
-    
-    # 执行搜索
-    response = es_client.search(
-        index=index_name,
-        body=es_query,
-        size=size,
-        from_=offset
+    es_client = AsyncElasticsearch(
+        [f"http://{Config().get('etl.data.elasticsearch.host')}:{Config().get('etl.data.elasticsearch.port')}"]
     )
-    
-    # 记录检索统计信息
-    total_hits = response['hits']['total']['value']
-    max_score = response['hits']['max_score']
-    actual_hits = len(response['hits']['hits'])
-    logger.debug(f"ES检索统计: 总匹配={total_hits}, 最高分={max_score}, 返回数量={actual_hits}")
-    
-    return response
 
-@router.get("/es-search")
+    try:
+        search_query = {
+            "query": {
+                "multi_match": {
+                    "query": query,
+                    "fields": ["title^2", "content"],
+                    "type": "best_fields"
+                }
+            },
+            "size": size,
+            "from": offset,
+            "highlight": {
+                "pre_tags": ["<mark>"],
+                "post_tags": ["</mark>"],
+                "fields": {
+                    "content": {
+                        "fragment_size": 150,
+                        "number_of_fragments": 3
+                    }
+                }
+            }
+        }
+
+        # 如果提供了 enhanced_query，也将其加入查询以提高召回率
+        if enhanced_query and enhanced_query != query:
+            # 使用 bool 查询来合并原始查询和增强查询
+            search_query["query"] = {
+                "bool": {
+                    "should": [
+                        {"multi_match": search_query["query"]["multi_match"]},
+                        {
+                            "multi_match": {
+                                "query": enhanced_query,
+                                "fields": ["title^2", "content"],
+                                "type": "best_fields"
+                            }
+                        }
+                    ],
+                    "minimum_should_match": 1
+                }
+            }
+        
+        # 添加平台筛选
+        if platform:
+            platform_list = [p.strip() for p in platform.split(',') if p.strip()]
+            if platform_list:
+                # 确保 bool 查询存在
+                if "bool" not in search_query["query"]:
+                    # 如果之前没有 bool 查询，需要将 multi_match 包装进去
+                    original_query = search_query["query"]
+                    search_query["query"] = {"bool": {"must": [original_query]}}
+
+                search_query["query"]["bool"]["filter"] = [
+                    {"terms": {"platform.keyword": platform_list}}
+                ]
+
+        logger.debug(f"Executing ES query: {json.dumps(search_query, indent=2, ensure_ascii=False)}")
+        response = await es_client.search(index=ES_INDEX_NAME, body=search_query)
+        
+        return response
+    except Exception as e:
+        logger.exception(f"Elasticsearch 内部查询失败: {e}")
+        # 返回一个空的、符合ES格式的响应
+        return {
+            "hits": {
+                "total": {"value": 0, "relation": "eq"},
+                "max_score": None,
+                "hits": []
+            }
+        }
+    finally:
+        await es_client.close()
+
+@router.get("/es-search", summary="Elasticsearch 复合查询接口")
 async def elasticsearch_search_endpoint(
     query: str = Query(..., description="搜索关键词"),
     openid: str = Query(..., description="用户openid"),
@@ -823,27 +816,30 @@ async def elasticsearch_search_endpoint(
             query=query,
             platform=platform,
             size=page_size,
-            offset=offset
+            offset=offset,
+            max_content_length=max_content_length,
+            openid=openid
         )
+
+        if 'error' in response:
+            logger.error(f"ES内部检索失败: {response['error']}")
+            return Response.error(message=response['error'], code=500)
         
-        # 处理结果
-        results = []
-        hits = response['hits']['hits']
+        results = response['hits']['hits']
         total_hits = response['hits']['total']['value']
         
-        logger.debug(f"ES检索到的文档详情:")
-        for i, hit in enumerate(hits):
+        processed_results = []
+        for hit in results:
             source = hit['_source']
             score = hit['_score']
-            doc_id = hit.get('_id', 'unknown')
             
-            # 记录每个文档的详细信息
             title = source.get('title', '无标题')
             platform = source.get('platform', '')
             author = source.get('author', '')
+            original_url = source.get('original_url', '')
             original_content_length = len(source.get('content', ''))
             
-            logger.debug(f"  文档#{i+1}: ID={doc_id}, 分数={score:.4f}, 平台={platform}")
+            logger.debug(f"  文档 ID={hit['_id']}, 分数={score:.4f}, 平台={platform}")
             logger.debug(f"    标题: {title[:50]}{'...' if len(title) > 50 else ''}")
             logger.debug(f"    作者: {author}, 内容长度: {original_content_length}字符")
             
@@ -854,10 +850,15 @@ async def elasticsearch_search_endpoint(
                 is_truncated = True
                 logger.debug(f"    内容已截断: {original_content_length} -> {max_content_length}字符")
             
+            # 动态判断是否为官方来源
+            is_official = source.get('is_official', False)
+            if platform == 'website' or author in OFFICIAL_AUTHORS_WHITELIST:
+                is_official = True
+            
             result_item = {
                 "title": title,
                 "content": content,
-                "original_url": source.get('original_url', ''),
+                "original_url": original_url,
                 "author": author,
                 "platform": platform,
                 "tag": source.get('tag', '') if source.get('tag') else "",
@@ -865,42 +866,38 @@ async def elasticsearch_search_endpoint(
                 "update_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
                 "relevance": score,
                 "is_truncated": is_truncated,
-                "is_official": source.get('is_official', False)
+                "is_official": is_official
             }
-            results.append(result_item)
-            
-        pagination = {
-            "total": total_hits,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (total_hits + page_size - 1) // page_size if page_size > 0 else 1
-        }
+            processed_results.append(result_item)
         
-        total_time = time.time() - start_time
+        pagination = PaginationInfo(
+            total=total_hits,
+            page=page,
+            page_size=page_size,
+            total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1
+        )
         
-        # 汇总日志
-        platform_stats = {}
-        for result in results:
-            result_platform = result.get('platform', 'unknown')
-            platform_stats[result_platform] = platform_stats.get(result_platform, 0) + 1
+        platform_stats = {p: 0 for p in set(r['platform'] for r in processed_results)}
+        for result in processed_results:
+            platform_stats[result.get('platform', 'unknown')] += 1
         
         logger.debug(f"ES检索完成汇总:")
         logger.debug(f"  查询: '{query}', 平台过滤: {platform}")
-        logger.debug(f"  检索耗时: {total_time:.2f}秒")
-        logger.debug(f"  命中总数: {total_hits}, 返回数量: {len(results)}")
+        logger.debug(f"  检索耗时: {time.time() - start_time:.2f}秒")
+        logger.debug(f"  命中总数: {total_hits}, 返回数量: {len(processed_results)}")
         logger.debug(f"  平台分布: {platform_stats}")
-        if results:
-            scores = [r['relevance'] for r in results]
+        if processed_results:
+            scores = [r['relevance'] for r in processed_results]
             logger.debug(f"  分数范围: {min(scores):.4f} ~ {max(scores):.4f}")
         
-        asyncio.create_task(_record_search_history(query, openid))
+        if openid:
+            asyncio.create_task(_record_search_history(query, openid))
         
-        details = {"message": "ES检索成功", "query": query, "response_time": total_time}
-        if platform:
-            details["platform_filter"] = platform
-        
-        return Response.paged(data=results, pagination=pagination, details=details)
-        
+        return Response.paged(
+            data=processed_results,
+            pagination=pagination
+        )
+
     except Exception as e:
         import traceback
         error_detail = traceback.format_exc()
@@ -1251,14 +1248,11 @@ async def get_snapshot(url: str = Query(..., description="要获取快照的原�
     获取指定URL的网页快照
     """
     try:
-        import hashlib
-        from pathlib import Path
-        
         # 计算URL的MD5哈希
         url_hash = hashlib.md5(url.encode()).hexdigest()
         
         # 构建快照文件路径
-        snapshots_dir = Path(config.get('etl.data.storage.base_path', '/data') + '/raw/website/snapshots')
+        snapshots_dir = Path(Config().get('etl.data.storage.base_path', '/data') + '/raw/website/snapshots')
         snapshot_path = snapshots_dir / f"{url_hash}.html"
         
         if snapshot_path.exists():

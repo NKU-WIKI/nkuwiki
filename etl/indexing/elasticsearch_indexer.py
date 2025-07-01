@@ -5,7 +5,7 @@ Elasticsearch索引构建器
 """
 
 import sys
-import logging
+import loguru
 import asyncio
 import json
 from pathlib import Path
@@ -15,6 +15,8 @@ import aiofiles
 import aiofiles.os
 from tqdm.asyncio import tqdm
 from elasticsearch import Elasticsearch, helpers, AsyncElasticsearch
+import os
+import loguru
 
 # 添加项目根目录到路径
 sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
@@ -23,17 +25,14 @@ from etl.load import db_core
 # 导入ETL模块的统一路径配置
 from etl import (RAW_PATH, ES_INDEX_NAME, ES_HOST, ES_PORT, ES_ENABLE_CHUNKING, CHUNK_SIZE, CHUNK_OVERLAP)
 
-logger = logging.getLogger(__name__)
-
-
 class ElasticsearchIndexer:
     """Elasticsearch索引构建器
     
     负责从MySQL数据构建Elasticsearch全文检索索引，支持通配符查询和复杂文本匹配。
     """
     
-    def __init__(self, logger: Optional[logging.Logger] = None):
-        self.logger = logger or logging.getLogger(__name__)
+    def __init__(self, logger):
+        self.logger = logger
         
         # 从ETL模块统一配置获取参数
         self.index_name = ES_INDEX_NAME
@@ -44,6 +43,9 @@ class ElasticsearchIndexer:
         self.enable_chunking = ES_ENABLE_CHUNKING
         self.chunk_size = CHUNK_SIZE
         self.chunk_overlap = CHUNK_OVERLAP
+        
+        self.es_client: Optional[AsyncElasticsearch] = None
+        self.logger.info(f"ElasticsearchIndexer 初始化完成。连接目标: http://{self.es_host}:{self.es_port}")
         
     async def build_indexes(self, 
                      limit: int = None, 
@@ -187,39 +189,44 @@ class ElasticsearchIndexer:
 
     async def _init_es_client(self) -> Optional[AsyncElasticsearch]:
         """初始化Elasticsearch客户端"""
+        if self.es_client and await self.es_client.ping():
+            return self.es_client
+            
         try:
-            print("🔍 初始化Elasticsearch客户端...")
-            # 构建完整的Elasticsearch URL
+            self.logger.info("🔍 正在初始化或重新初始化Elasticsearch异步客户端...")
+            
+            # 使用在 __init__ 中已经设置好的主机和端口
             es_url = f"http://{self.es_host}:{self.es_port}"
             
-            # 使用新版本Elasticsearch客户端的正确初始化方式
-            es_client = AsyncElasticsearch(
+            self.es_client = AsyncElasticsearch(
                 hosts=[es_url],
                 verify_certs=False,
                 http_compress=True,
-                request_timeout=10,  # 减少超时时间
-                max_retries=3,       # 减少重试次数
-                retry_on_timeout=False
+                request_timeout=30,
+                max_retries=3, 
+                retry_on_timeout=True
             )
             
-            # 测试连接（设置较短超时）
+           # 测试连接（设置较短超时）
             try:
-                ping_result = await asyncio.wait_for(es_client.ping(), timeout=5.0)
+                ping_result = await asyncio.wait_for(self.es_client.ping(), timeout=5.0)
                 if not ping_result:
-                    await es_client.close()
+                    await self.es_client.close() 
                     self.logger.debug("Elasticsearch服务器ping失败")
                     return None
             except asyncio.TimeoutError:
-                await es_client.close()
+                await self.es_client.close()
                 self.logger.debug("Elasticsearch连接超时")
                 return None
             
             self.logger.info(f"成功连接到Elasticsearch: {es_url}")
-            return es_client
-            
+            return self.es_client
+                
         except Exception as e:
-            self.logger.debug(f"连接Elasticsearch失败: {e}")
-            # 在测试模式下，返回None但不抛出异常
+            self.logger.error(f"❌ 初始化Elasticsearch客户端时发生异常: {e}")
+            if self.es_client:
+                await self.es_client.close()
+            self.es_client = None
             return None
 
     async def _setup_index(self, es_client: AsyncElasticsearch):
@@ -562,35 +569,16 @@ class ElasticsearchIndexer:
                 return []
 
     async def _load_pagerank_mapping(self) -> Dict[str, float]:
-        """从MySQL加载PageRank分数映射"""
+        """从MySQL加载PageRank分数"""
+        pagerank_map = {}
+        query = "SELECT original_url, pagerank_score FROM link_graph"
         try:
-            # 首先尝试从website_nku表获取（已整合的PageRank分数）
-            query = """
-            SELECT original_url, pagerank_score 
-            FROM website_nku 
-            WHERE pagerank_score > 0
-            """
-            records = await db_core.execute_query(query, fetch=True)
-            
+            # 使用正确的函数名 execute_custom_query
+            records = await db_core.execute_custom_query(query, fetch='all')
             if records:
-                mapping = {record['original_url']: float(record['pagerank_score']) for record in records}
-                self.logger.info(f"从website_nku表加载了 {len(mapping)} 个PageRank分数")
-                return mapping
-            
-            # 如果website_nku表没有数据，尝试从pagerank_scores表获取
-            query = """
-            SELECT url, pagerank_score 
-            FROM pagerank_scores
-            """
-            records = await db_core.execute_query(query, fetch=True)
-            
-            if records:
-                mapping = {record['url']: float(record['pagerank_score']) for record in records}
-                self.logger.info(f"从pagerank_scores表加载了 {len(mapping)} 个PageRank分数")
-                return mapping
-            
-            self.logger.warning("两个表中都没有找到PageRank数据")
-            return {}
+                pagerank_map = {rec['original_url']: rec['pagerank_score'] for rec in records}
+            self.logger.info(f"✅ 成功从MySQL加载 {len(pagerank_map)} 条PageRank记录")
+            return pagerank_map
             
         except Exception as e:
             self.logger.warning(f"加载PageRank分数时出错: {e}")

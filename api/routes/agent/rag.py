@@ -232,6 +232,8 @@ async def rag_endpoint(request: Request):
         request_stream = req_data.get("stream", False)
         rewrite_query_enabled = req_data.get("rewrite_query", False)  # 新增参数，默认为False
         
+        logger.info(f"RAG请求开始: query='{query}', stream={request_stream}, rewrite={rewrite_query_enabled}")
+
         # 1. 根据参数决定是否查询改写
         if rewrite_query_enabled:
             logger.debug(f"开始改写查询: {query}")
@@ -250,9 +252,10 @@ async def rag_endpoint(request: Request):
             size=max_results
         )
 
-        retrieved_docs = response['hits']['hits']
+        retrieved_docs = response.get('hits', {}).get('hits', [])
         logger.debug(f"ES检索到 {len(retrieved_docs)} 条相关文档")
         
+        # 3. 处理检索结果
         sources = []
         for hit in retrieved_docs:
             source_data = hit['_source']
@@ -271,24 +274,31 @@ async def rag_endpoint(request: Request):
 
         logger.debug(f"从 Elasticsearch 获取到 {len(sources)} 条搜索结果")
 
-        # 如果没有搜索结果
+        # 如果未找到文档，则直接返回
         if not sources:
+            logger.warning("未找到相关文档，直接返回。")
             result = {
+                "response": "抱歉，我没有找到与您问题相关的信息。请尝试换一种问法。",
+                "sources": [],
                 "original_query": query,
                 "rewritten_query": enhanced_query,
-                "response": "抱歉，没有找到相关信息。",
-                "sources": [],
-                "suggested_questions": ["你可以尝试其他问题"],
-                "format": request_format,
-                "retrieved_count": 0,
-                "response_time": time.time() - start_time
+                "suggested_questions": []
             }
-            if request_stream:
-                return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
-            else:
-                return Response.success(data=result)
+            return Response.success(data=result)
         
-        # 3. 使用sources生成答案
+        # 如果请求格式为json，则直接返回源数据
+        if request_format == "json":
+            logger.info(f"请求格式为json，直接返回 {len(sources)} 条源文档")
+            result = {
+                "response": f"成功检索到{len(sources)}条相关内容。",
+                "sources": sources,
+                "original_query": query,
+                "rewritten_query": enhanced_query,
+                "suggested_questions": [],
+            }
+            return Response.success(data=result)
+
+        # 4. 使用sources生成答案
         logger.debug(f"开始生成答案: sources数量={len(sources)}")
         answer_result = await generate_answer(query, enhanced_query, sources, 'answerGenerate')
         
@@ -309,12 +319,13 @@ async def rag_endpoint(request: Request):
         logger.debug(f"最终响应内容:\n{'-'*30}\n{(answer_result['response'] or '')[:500]}...\n{'-'*30}")
         
         if request_stream:
-            return StreamingResponse(get_stream_generator(result)(), media_type="text/event-stream")
+            logger.info("请求为流式响应，开始生成事件流。")
+            stream_gen = get_stream_generator(result)
+            return StreamingResponse(stream_gen(), media_type="text/event-stream")
         else:
+            logger.info("请求为非流式响应，返回完整JSON。")
             return Response.success(data=result)
     
     except Exception as e:
-        import traceback
-        error_detail = traceback.format_exc()
-        logger.error(f"RAG处理失败: {str(e)}\n{error_detail}")
-        return Response.error(message=f"处理失败: {str(e)}")
+        logger.exception(f"RAG处理失败: {e}")
+        return Response.error(message=f"RAG process failed: {e}", status_code=500)

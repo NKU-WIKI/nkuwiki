@@ -162,9 +162,9 @@ def register_logger(module_name: str):
     file_path = Path("logs") / file_name
     # 创建绑定了模块名的日志记录器
     module_logger = logger.bind(name=module_name)
-    # 只为etl相关模块添加文件handler
+    # 为所有通过此函数注册的模块创建独立日志文件
     key = (module_name, str(file_path))
-    if "etl" in module_name and key not in _added_log_handlers:
+    if key not in _added_log_handlers:
         module_logger.add(
             file_path,
             rotation="10 MB",

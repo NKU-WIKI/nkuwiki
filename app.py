@@ -248,11 +248,15 @@ async def health_check():
         }
     )
 
-# 挂载静态文件目录，用于微信校验文件等
-app.mount("/static", StaticFiles(directory="static"), name="static_files")
+# 静态文件服务
+STATIC_FILES_DIR = "/app/static"
+app.mount("/static", StaticFiles(directory=STATIC_FILES_DIR), name="static")
 
-# 挂载Mihomo控制面板静态文件
-app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
+# Mihomo Dashboard (如果存在)
+MIHOMO_DASHBOARD_DIR = "/var/www/html/mihomo"
+# if os.path.exists(MIHOMO_DASHBOARD_DIR):
+#     logger.info(f"✅ 挂载 Mihomo Dashboard: {MIHOMO_DASHBOARD_DIR}")
+#     app.mount("/mihomo", StaticFiles(directory=MIHOMO_DASHBOARD_DIR, html=True), name="mihomo_dashboard")
 
 # 网站路由 - 确保具体路径挂载在根路径之前
 website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))

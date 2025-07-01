@@ -1,4 +1,4 @@
-### GET /api/wxapp/about
+### GET /wxapp/about
 
 **功能描述**：获取应用的"关于"信息，如版本号、描述、联系方式等。
 

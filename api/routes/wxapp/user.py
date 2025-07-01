@@ -190,7 +190,7 @@ async def get_user_list(
             fields=fields,
             limit=page_size,
             offset=offset,
-            order_by="create_time DESC"
+            order_by={"create_time": "DESC"}
         )
         
         total_users = users_result.get('total', 0)
@@ -208,7 +208,7 @@ async def get_user_list(
     except Exception as e:
         return Response.error(details={"message": f"获取用户列表失败: {str(e)}"})
 
-@router.get("/followers", summary="获取粉丝列表")
+@router.get("/follower", summary="获取粉丝列表")
 async def get_followers(
     openid: str = Query(..., description="目标用户的openid"),
     page: int = 1,
@@ -226,7 +226,7 @@ async def get_followers(
             "target_type": "user"
         },
         fields=["openid", "create_time"],
-        order_by="create_time DESC"
+        order_by={"create_time": "DESC"}
     )
 
     if not all_followers_actions or not all_followers_actions.get('data'):
@@ -279,7 +279,7 @@ async def get_following(
             "target_type": "user"
         },
         fields=["target_id", "create_time"],
-        order_by="create_time DESC"
+        order_by={"create_time": "DESC"}
     )
 
     if not all_following_actions or not all_following_actions.get('data'):
@@ -325,9 +325,15 @@ async def get_user_favorites(
     # 首先，获取用户收藏的帖子ID
     favorites = await query_records(
         "wxapp_action",
-        conditions={"openid": openid, "target_type": "post", "action_type": "favorite"},
-        fields=["target_id"],
-        order_by="create_time DESC",
+        conditions={
+            "openid": openid,
+            "target_type": "post",
+            "action_type": "favorite",
+            "is_active": True
+        },
+        order_by={"create_time": "DESC"},
+        limit=page_size,
+        offset=(page - 1) * page_size
     )
     
     if not favorites or not favorites.get('data'):
@@ -377,9 +383,15 @@ async def get_user_likes(
     # 首先，获取用户点赞的帖子ID
     likes = await query_records(
         "wxapp_action",
-        conditions={"openid": openid, "target_type": "post", "action_type": "like"},
-        fields=["target_id"],
-        order_by="create_time DESC",
+        conditions={
+            "openid": openid,
+            "target_type": "post",
+            "action_type": "like",
+            "is_active": True
+        },
+        order_by={"create_time": "DESC"},
+        limit=page_size,
+        offset=(page - 1) * page_size,
     )
     
     if not likes or not likes.get('data'):
@@ -429,10 +441,14 @@ async def get_user_comments(
         
         comments = await query_records(
             "wxapp_comment",
-            conditions={"openid": openid},
+            conditions={
+                "openid": openid,
+                "action_type": "comment",
+                "is_active": True
+            },
+            order_by={"create_time": "DESC"},
             limit=page_size,
-            offset=offset,
-            order_by="create_time DESC"
+            offset=(page - 1) * page_size,
         )
         
         if not comments or not comments.get('data'):
@@ -570,7 +586,7 @@ async def sync_user_info(
     body: Dict[str, Any] = Body(...)
 ):
     """
-    根据openid同步用户信息，如果用户不存在则创建，如果存在则更新。
+    根据openid同步用户信息，如果用户不存在则创建，如果存在则仅更新登录时间或传入的字段。
     这是小程序端登录或更新信息的统一入口。
     """
     openid = body.get("openid")
@@ -581,37 +597,40 @@ async def sync_user_info(
         # 1. 检查用户是否存在
         existing_user = await get_by_id("wxapp_user", openid, id_column='openid')
         
-        # 2. 准备要写入的数据
-        user_data = {
-            "nickname": body.get("nickname", "微信用户"),
-            "avatar": body.get("avatar") if body.get("avatar") else default_avatar,
-            "gender": body.get("gender"),
-            "country": body.get("country"),
-            "province": body.get("province"),
-            "city": body.get("city"),
-            "language": body.get("language"),
-            "last_login_time": time.strftime('%Y-%m-%d %H:%M:%S')
-        }
-        # 移除值为None的键，避免覆盖数据库中的现有值
-        user_data = {k: v for k, v in user_data.items() if v is not None}
-
         if existing_user:
-            # 用户存在，执行更新
-            logger.debug(f"用户 {openid} 已存在，执行更新。")
+            # 用户存在，只更新最后登录时间，忽略请求体中的所有其他字段
+            logger.debug(f"用户 {openid} 已存在，仅更新登录时间。")
+            
+            update_data = {
+                "last_login_time": time.strftime('%Y-%m-%d %H:%M:%S')
+            }
+
             await update_record(
                 "wxapp_user",
                 conditions={"openid": openid},
-                data=user_data
+                data=update_data
             )
-            # 为了获取完整的用户信息（包括ID等），我们再次查询
             user_info = await get_by_id("wxapp_user", openid, id_column='openid')
         else:
-            # 用户不存在，执行插入
+            # 用户不存在，执行插入，此时使用默认值是合理的
             logger.debug(f"用户 {openid} 不存在，执行创建。")
-            user_data["openid"] = openid
-            user_data["role"] = "user" # 新用户默认为普通用户
             
-            user_id = await insert_record("wxapp_user", user_data)
+            new_user_data = {
+                "openid": openid,
+                "nickname": body.get("nickname", "微信用户"),
+                "avatar": body.get("avatar") or default_avatar,
+                "gender": body.get("gender"),
+                "country": body.get("country"),
+                "province": body.get("province"),
+                "city": body.get("city"),
+                "language": body.get("language"),
+                "last_login_time": time.strftime('%Y-%m-%d %H:%M:%S'),
+                "role": "user" # 新用户默认为普通用户
+            }
+            # 移除值为None的键
+            new_user_data = {k: v for k, v in new_user_data.items() if v is not None}
+
+            user_id = await insert_record("wxapp_user", new_user_data)
             if not user_id:
                 return Response.db_error(details={"message": "创建新用户失败"})
             user_info = await get_by_id("wxapp_user", user_id)

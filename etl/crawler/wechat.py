@@ -144,8 +144,15 @@ class Wechat(BaseCrawler):
             self.counter['error'] += 1
             self.logger.error(f'get articles from {self.authors} error, {type(e)}: {e}')
             return total_articles
-
+        fg = False
         for author in self.authors:
+            if(author == '统院拾光'):
+                fg = True
+                continue
+            if(not fg):
+                continue
+     
+
             await self.random_sleep()
             try:
                 button = self.page.get_by_text('选择其他账号')
@@ -559,7 +566,7 @@ if __name__ == "__main__":
         """异步主函数"""
         # accounts = school_official_accounts + club_official_accounts + company_accounts
         accounts = university_official_accounts + school_official_accounts + club_official_accounts + unofficial_accounts
-        wechat = Wechat(authors=accounts, debug=False, headless=True, use_proxy=True)
+        wechat = Wechat(authors=accounts, debug=False, headless=True, use_proxy=False)
         
         try:
             await wechat.async_init()  # 确保在调用download前初始化
@@ -568,8 +575,10 @@ if __name__ == "__main__":
             start_time = today_str
             end_time = today_str
             enable_abstract = False
+            start_time = '2025-03-25'
+            end_time = '2025-06-26'
             try:
-                await wechat.scrape(max_article_num=100, total_max_article_num=1e10, time_range=(start_time, end_time))
+                await wechat.scrape(max_article_num=1000, total_max_article_num=1e10, time_range=(start_time, end_time))
             finally:
                 # 清理cookies并关闭当前页面
                 if wechat.context:
@@ -584,7 +593,7 @@ if __name__ == "__main__":
         finally:
             # 优雅地关闭浏览器和playwright资源，防止事件循环错误
             if wechat:
-                await wechat.async_close()
+                await wechat.close()
 
     # 运行异步主函数
     asyncio.run(main())

@@ -99,7 +99,7 @@ def save_banwords_to_json(library_data: Dict[str, Any]) -> bool:
         logger.error(f"保存敏感词文件失败: {e}")
         return False
 
-@router.get("/")
+@router.get("/library")
 async def get_banwords():
     """获取所有敏感词分类和词汇"""
     try:
@@ -139,7 +139,7 @@ async def get_banword_categories():
         logger.error(f"获取敏感词分类失败: {e}")
         raise HTTPException(status_code=500, detail="获取敏感词分类失败")
 
-@router.post("/")
+@router.post("/library")
 async def add_banwords(request: BanwordRequest):
     """添加敏感词到指定分类"""
     try:
