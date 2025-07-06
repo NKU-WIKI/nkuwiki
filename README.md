@@ -69,7 +69,7 @@ git submodule update --init --recursive
 
     # 激活虚拟环境
     # Linux/MacOS
-    source .venv/bin/activate
+    source .venv/bin/activate 
     # Windows
     .venv\\Scripts\\activate
     ```
