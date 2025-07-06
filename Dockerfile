@@ -21,9 +21,12 @@ RUN pip install -r requirements.txt \
     --trusted-host mirrors.aliyun.com
 
 
-# Step 2: Install the correct torch version from the official source
-# PyTorch通常有自己的独立官方源，这里直接指定使用它。pip也会尝试缓存此下载。
-RUN pip install torch==2.3.0+cpu --no-cache-dir --extra-index-url https://download.pytorch.org/whl/cpu
+# Step 2: Install the correct torch version from the local wheel file
+# Copy the local wheel file into the image
+COPY static/wheels/torch-2.3.0+cpu-cp312-cp312-linux_x86_64.whl /tmp/
+# Install from the local file and remove it in the same layer
+RUN pip install /tmp/torch-2.3.0+cpu-cp312-cp312-linux_x86_64.whl --no-cache-dir && \
+    rm /tmp/torch-2.3.0+cpu-cp312-cp312-linux_x86_64.whl
 
 # Step 3: Install torch-dependent packages
 COPY requirements-torch.txt .

@@ -1,6 +1,7 @@
 services:
     api:
         build: .
+        restart: always
         command: python app.py --api --port ${API_PORT:-8000}
         ports:
             - "${API_PORT:-8000}:${API_PORT:-8000}"
