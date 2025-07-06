@@ -112,8 +112,8 @@ if command -v docker &>/dev/null; then
     echo "--- 清理构建缓存 ---"
     docker builder prune -f
     
-    echo "--- 清理所有未使用的镜像 ---"
-    docker image prune -a -f
+    echo "--- 清理所有悬空镜像 (更安全的方式) ---"
+    docker image prune -f
 
     echo "--- 清理后Docker磁盘使用情况 ---"
     docker system df
@@ -140,7 +140,7 @@ if command -v crontab &> /dev/null; then
 
     # 检查定时任务是否已存在
     # crontab -l 可能因没有cron job而返回非0退出码，所以用|| true来忽略
-    if ! (crontab -l 2>/dev/null || true) | grep -Fxq "${CRON_COMMAND}"; then
+    if ! (crontab -l 2>/dev/null || true) | grep -Fxq -- "${CRON_JOB}"; then
         echo "未找到定时清理任务，正在添加..."
         # 使用子shell将现有任务和新任务合并，然后导入crontab
         (crontab -l 2>/dev/null; echo "${CRON_JOB}") | crontab -
@@ -153,7 +153,7 @@ if command -v crontab &> /dev/null; then
     else
         echo "定时清理任务已存在，无需操作。"
         # 高亮显示已存在的任务
-        (crontab -l 2>/dev/null || true) | grep --color=always "${CRON_COMMAND}"
+        (crontab -l 2>/dev/null || true) | grep --color=always -F -- "${CRON_JOB}"
     fi
 else
     echo "未找到crontab命令，请手动设置定时任务。"

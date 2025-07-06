@@ -8,6 +8,7 @@ import time
 import argparse
 import atexit
 import warnings
+import os
 from pathlib import Path
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
@@ -249,14 +250,14 @@ async def health_check():
     )
 
 # 静态文件服务
-STATIC_FILES_DIR = "/app/static"
+STATIC_FILES_DIR = "./static"
 app.mount("/static", StaticFiles(directory=STATIC_FILES_DIR), name="static")
 
 # Mihomo Dashboard (如果存在)
 MIHOMO_DASHBOARD_DIR = "/var/www/html/mihomo"
-# if os.path.exists(MIHOMO_DASHBOARD_DIR):
-#     logger.info(f"✅ 挂载 Mihomo Dashboard: {MIHOMO_DASHBOARD_DIR}")
-#     app.mount("/mihomo", StaticFiles(directory=MIHOMO_DASHBOARD_DIR, html=True), name="mihomo_dashboard")
+if os.path.exists(MIHOMO_DASHBOARD_DIR):
+    logger.info(f"✅ 挂载 Mihomo Dashboard: {MIHOMO_DASHBOARD_DIR}")
+    app.mount("/mihomo", StaticFiles(directory=MIHOMO_DASHBOARD_DIR, html=True), name="mihomo_dashboard")
 
 # 网站路由 - 确保具体路径挂载在根路径之前
 website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
