@@ -48,11 +48,20 @@ fi
 
 # 5. 清理所有系统日志
 echo "=== 清理所有系统日志 ==="
+echo "清空主要的系统日志文件..."
+truncate -s 0 /var/log/syslog >/dev/null 2>&1
+truncate -s 0 /var/log/kern.log >/dev/null 2>&1
+
+echo "删除旧的轮转日志、.log文件和归档..."
+rm -f /var/log/syslog.*
+rm -f /var/log/kern.log.*
 # 清理/var/log/下的所有.log文件和归档文件
 find /var/log -name "*.log" -print -delete
 find /var/log -name "*.gz" -print -delete
+
 # 清理journald日志
 if command -v journalctl &> /dev/null; then
+    echo "清理journald日志..."
     journalctl --rotate
     journalctl --vacuum-time=1d
 fi
@@ -74,7 +83,18 @@ echo "=== 清理临时文件 ==="
 /bin/rm -rf /tmp/*
 /bin/rm -rf /var/tmp/*
 
-# 8. 清理无标题帖子（如脚本存在）
+# 8. 清理Docker容器日志
+echo "=== 清理正在运行的Docker容器日志 ==="
+if command -v docker &> /dev/null && [ -n "$(docker ps -q)" ]; then
+    echo "查找并清空所有正在运行容器的日志文件..."
+    # 使用 xargs 并行处理，提高效率
+    docker ps -q | xargs docker inspect --format='{{.LogPath}}' | xargs -r -L1 truncate -s 0
+    echo "Docker容器日志清理完成。"
+else
+    echo "没有正在运行的Docker容器或未安装Docker，跳过日志清理。"
+fi
+
+# 9. 清理无标题帖子（如脚本存在）
 echo "=== 清理无标题帖子 ==="
 if [ -f "$CLEANUP_PY" ]; then
     # 检测python路径
@@ -100,32 +120,26 @@ else
     echo "未找到 $CLEANUP_PY，跳过无标题帖子清理。"
 fi
 
-# 9. 清理Docker系统
+# 10. 清理Docker系统
 echo "=== 清理Docker系统 ==="
 if command -v docker &>/dev/null; then
-    echo "--- 清理已停止的容器、无用的网络和悬空镜像 ---"
-    docker system prune -f
+    echo "--- 清理所有未使用的Docker资源 (包括非悬空镜像和构建缓存) ---"
+    docker system prune -af
     
     echo "--- 清理无用的数据卷 ---"
     docker volume prune -f
     
-    echo "--- 清理构建缓存 ---"
-    docker builder prune -f
-    
-    echo "--- 清理所有悬空镜像 (更安全的方式) ---"
-    docker image prune -f
-
     echo "--- 清理后Docker磁盘使用情况 ---"
     docker system df
 else
     echo "Docker未安装，跳过Docker清理。"
 fi
 
-# 10. 显示当前空间占用前20的大文件（未自动删除，仅供参考）
+# 11. 显示当前空间占用前20的大文件（未自动删除，仅供参考）
 echo "=== 当前空间占用前20的大文件（未自动删除，仅供参考）==="
 find / -type f -size +100M -exec ls -lh {} \; 2>/dev/null | sort -k 5 -rh | head -20
 
-# 11. 设置或验证定时任务
+# 12. 设置或验证定时任务
 echo "=== 设置或验证定时任务 ==="
 if command -v crontab &> /dev/null; then
     # 获取脚本的绝对路径，确保在crontab中能正确执行
