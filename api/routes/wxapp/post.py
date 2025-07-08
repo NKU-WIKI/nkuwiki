@@ -320,6 +320,13 @@ async def update_post(
         
         # 验证帖子是否存在且属于该用户
         post_check = await get_by_id("wxapp_post", post_id)
+
+        # 添加日志以进行调试
+        if post_check:
+            logger.info(f"权限检查: DB openid='{post_check.get('openid')}', Request openid='{openid}'")
+        else:
+            logger.warning(f"权限检查: 找不到 post_id 为 {post_id} 的帖子")
+
         if not post_check or post_check['openid'] != openid:
             return Response.forbidden(details={"message": "无权修改该帖子"})
         
@@ -358,29 +365,20 @@ async def update_post(
             return Response.bad_request(details={"message": "未提供任何更新数据"})
             
         # 更新帖子
-        update_success = update_record(
+        update_success = await update_record(
             "wxapp_post",
-            post_id,
+            {"id": post_id},
             update_data
         )
         
         if not update_success:
             return Response.db_error(details={"message": "更新帖子失败"})
         
-        # 直接使用SQL获取更新后的帖子
-        fields = "id, title, content, image, tag, category_id, phone, wechatId, qqId, allow_comment, is_public, location, update_time"
-        updated_post = await execute_custom_query(
-            f"SELECT {fields} FROM wxapp_post WHERE id = %s LIMIT 1",
-            [post_id]
-        )
-        
-        if not updated_post:
-            return Response.db_error(details={"message": "更新帖子失败"})
-
         # 获取完整帖子信息以返回
         post_detail = await get_post_with_stats(post_id)
         return Response.success(data=post_detail, details={"message": "帖子更新成功"})
     except Exception as e:
+        logger.error(f"更新帖子失败: {e}", exc_info=True)
         return Response.error(details={"message": f"更新帖子失败: {str(e)}"})
 
 @router.post("/delete", summary="删除帖子")
@@ -584,7 +582,7 @@ async def get_post_with_stats(post_id):
     """获取帖子和统计信息"""
     try:
         # 获取帖子
-        post_result = query_records(
+        post_result = await query_records(
             "wxapp_post",
             {"id": post_id},
             limit=1
