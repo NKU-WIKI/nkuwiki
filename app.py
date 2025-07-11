@@ -8,6 +8,7 @@ import time
 import argparse
 import atexit
 import warnings
+import os
 from pathlib import Path
 from contextvars import ContextVar
 from contextlib import asynccontextmanager
@@ -248,19 +249,23 @@ async def health_check():
         }
     )
 
-# 挂载静态文件目录，用于微信校验文件等
-# app.mount("/static", StaticFiles(directory="static"), name="static_files")
+# 静态文件服务
+STATIC_FILES_DIR = "./static"
+app.mount("/static", StaticFiles(directory=STATIC_FILES_DIR), name="static")
 
-# 挂载Mihomo控制面板静态文件
-# app.mount("/mihomo", StaticFiles(directory="/var/www/html/mihomo", html=True), name="mihomo_dashboard")
+# Mihomo Dashboard (如果存在)
+MIHOMO_DASHBOARD_DIR = "/var/www/html/mihomo"
+if os.path.exists(MIHOMO_DASHBOARD_DIR):
+    logger.info(f"✅ 挂载 Mihomo Dashboard: {MIHOMO_DASHBOARD_DIR}")
+    app.mount("/mihomo", StaticFiles(directory=MIHOMO_DASHBOARD_DIR, html=True), name="mihomo_dashboard")
 
 # 网站路由 - 确保具体路径挂载在根路径之前
-# website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
-# app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
-# app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
+website_dir = config.get("services.website.directory", str(Path("services/website").absolute()))
+app.mount("/img", StaticFiles(directory=str(Path(website_dir) / "img")), name="img_files")
+app.mount("/assets", StaticFiles(directory=str(Path(website_dir) / "assets")), name="asset_files")
 
 # 挂载网站根目录 - 放在最后
-# app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
+app.mount("/", StaticFiles(directory=website_dir, html=True), name="website")
 
 # =============================================================================
 # 服务启动相关函数
@@ -298,6 +303,11 @@ def run_api_service(port, workers=1):
     if DEBUG:
         logger.info(f"Swagger UI: {protocol}://{host}:{port}/api/docs")
         logger.info(f"ReDoc: {protocol}://{host}:{port}/api/redoc")
+    
+    # 检测是否在Docker容器中运行（通过检查是否存在.dockerenv文件）
+    is_docker = Path("/.dockerenv").exists()
+    if is_docker:
+        logger.info("检测到Docker环境，禁用自动重载功能")
         
     # 启动Uvicorn服务器
     uvicorn.run(
@@ -306,7 +316,7 @@ def run_api_service(port, workers=1):
         port=port,
         workers=workers,
         log_level="info",
-        reload=True
+        reload=not is_docker  # 在Docker环境中禁用reload
     )
 
 # =============================================================================

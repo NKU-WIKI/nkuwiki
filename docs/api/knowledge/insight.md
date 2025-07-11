@@ -2,7 +2,8 @@
 
 获取特定日期的所有洞察报告。
 
-- **路径**: `/api/knowledge/insight`
+- **Endpoint**: `GET /knowledge/insight`
+- **Permissions**: `Public`
 - **方法**: `GET`
 - **速率限制**: `100/minute`
 

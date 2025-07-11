@@ -42,6 +42,7 @@ temp/
 logs/
 log/
 data/
+backups/
 
 # 数据库
 *.sqlite
@@ -50,6 +51,7 @@ data/
 
 # 配置文件
 config.json
+config-new.json
 plugins.json
 
 # 敏感词库（包含敏感内容，不提交到版本库）
@@ -75,4 +77,4 @@ htmlcov/
 temp*/
 ./*.png
 static/
- etl/crawler/webpage_spider/log.txt
+ etl/crawler/webpage_spider/log.txtconfig-new.json

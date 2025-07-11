@@ -42,11 +42,11 @@ NLTK_PATH = BASE_PATH / _config.get("etl.data.nltk.path", "/nltk").lstrip("/")
 QDRANT_PATH = BASE_PATH / _config.get("etl.data.qdrant.path", "/qdrant").lstrip("/")
 
 # --- 数据库与向量存储相关配置 ---
-DB_HOST: str = _config.get('etl.data.mysql.host', 'localhost')
-DB_PORT: int = _config.get('etl.data.mysql.port', 3306)
-DB_USER: str = _config.get('etl.data.mysql.user', 'nkuwiki')
-DB_PASSWORD: str = _config.get('etl.data.mysql.password', '')
-DB_NAME: str = _config.get('etl.data.mysql.name', 'nkuwiki')
+DB_HOST: str = os.environ.get('DB_HOST', _config.get('etl.data.mysql.host', 'localhost'))
+DB_PORT: int = int(os.environ.get('DB_PORT', _config.get('etl.data.mysql.port', 3306)))
+DB_USER: str = os.environ.get('DB_USER', _config.get('etl.data.mysql.user', 'nkuwiki'))
+DB_PASSWORD: str = os.environ.get('DB_PASSWORD', _config.get('etl.data.mysql.password', ''))
+DB_NAME: str = os.environ.get('DB_NAME', _config.get('etl.data.mysql.name', 'nkuwiki'))
 
 # --- 数据库连接池配置 (硬编码默认值，因为它们不应由用户频繁更改) ---
 DB_POOL_RESIZE_INTERVAL: int = 60
@@ -54,13 +54,13 @@ DB_POOL_MIN_SIZE: int = 2
 DB_POOL_MAX_SIZE: int = 16
 DB_POOL_MAX_OVERFLOW: int = 8
 
-REDIS_HOST: str = _config.get('etl.data.redis.host', 'localhost')
-REDIS_PORT: int = _config.get('etl.data.redis.port', 6379)
-REDIS_DB: int = _config.get('etl.data.redis.db', 0)
-REDIS_PASSWORD: Optional[str] = _config.get('etl.data.redis.password')
+REDIS_HOST: str = os.environ.get('REDIS_HOST', _config.get('etl.data.redis.host', 'localhost'))
+REDIS_PORT: int = int(os.environ.get('REDIS_PORT', _config.get('etl.data.redis.port', 6379)))
+REDIS_DB: int = int(os.environ.get('REDIS_DB', _config.get('etl.data.redis.db', 0)))
+REDIS_PASSWORD: Optional[str] = os.environ.get('REDIS_PASSWORD', _config.get('etl.data.redis.password'))
 
-QDRANT_URL: str = _config.get("etl.data.qdrant.url", "http://localhost:6333")
-QDRANT_API_KEY: Optional[str] = _config.get("etl.data.qdrant.api_key", None)
+QDRANT_URL: str = os.environ.get('QDRANT_URL', _config.get("etl.data.qdrant.url", "http://localhost:6333"))
+QDRANT_API_KEY: Optional[str] = os.environ.get('QDRANT_API_KEY', _config.get("etl.data.qdrant.api_key", None))
 QDRANT_COLLECTION: str = _config.get("etl.data.qdrant.collection", "main_index")
 QDRANT_TIMEOUT: float = _config.get("etl.data.qdrant.timeout", 30.0)
 QDRANT_BATCH_SIZE: int = _config.get("etl.data.qdrant.batch_size", 32)
@@ -76,8 +76,8 @@ STOPWORDS_PATH: str = _config.get('etl.retrieval.bm25.stopwords_path', str(NLTK_
 BM25_ENABLE_CHUNKING: bool = _config.get('etl.retrieval.bm25.enable_chunking', False)
 
 # --- Elasticsearch 索引相关配置 ---
-ES_HOST: str = _config.get('etl.data.elasticsearch.host', 'localhost')
-ES_PORT: int = _config.get('etl.data.elasticsearch.port', 9200)
+ES_HOST: str = os.environ.get('ES_HOST', _config.get('etl.data.elasticsearch.host', 'localhost'))
+ES_PORT: int = int(os.environ.get('ES_PORT', _config.get('etl.data.elasticsearch.port', 9200)))
 ES_INDEX_NAME: str = _config.get('etl.data.elasticsearch.index', 'nkuwiki')
 ES_ENABLE_CHUNKING: bool = _config.get('etl.data.elasticsearch.enable_chunking', False)
 
@@ -97,35 +97,35 @@ for path in [BASE_PATH, RAW_PATH, CACHE_PATH, INDEX_PATH, QDRANT_PATH, MYSQL_PAT
 import nltk
 nltk.data.path.append(str(NLTK_PATH.absolute()))
 
-# 检查并下载NLTK资源
-try:
-    resources = ['wordnet', 'omw-1.4', 'wordnet2022', 'punkt', 'stopwords']
-    for resource in resources:
-        try:
-            # 检查资源是否存在
-            if resource == 'punkt':
-                resource_path = NLTK_PATH / 'tokenizers' / resource
-            else:
-                resource_path = NLTK_PATH / 'corpora' / resource
+# # 检查并下载NLTK资源
+# try:
+#     resources = ['wordnet', 'omw-1.4', 'wordnet2022', 'punkt', 'stopwords']
+#     for resource in resources:
+#         try:
+#             # 检查资源是否存在
+#             if resource == 'punkt':
+#                 resource_path = NLTK_PATH / 'tokenizers' / resource
+#             else:
+#                 resource_path = NLTK_PATH / 'corpora' / resource
             
-            # 直接检查目录是否存在，而不是使用nltk.data.find
-            if resource_path.exists():
-                logger.debug(f"NLTK资源 {resource} 已存在: {resource_path}")
-                continue
+#             # 直接检查目录是否存在，而不是使用nltk.data.find
+#             if resource_path.exists():
+#                 logger.debug(f"NLTK资源 {resource} 已存在: {resource_path}")
+#                 continue
             
-            # 如果不存在，尝试下载
-            logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
-            try:
-                nltk.download(resource, download_dir=str(NLTK_PATH.absolute()), quiet=False)
-                logger.debug(f"NLTK资源 {resource} 下载成功")
-            except Exception as e:
-                logger.error(f"NLTK资源 {resource} 下载失败: {e}")
-                logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
-        except Exception as e:
-            logger.error(f"检查NLTK资源 {resource} 时出错: {e}")
-except Exception as e:
-    logger.error(f"NLTK资源检查失败: {e}")
-    logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
+#             # 如果不存在，尝试下载
+#             logger.warning(f"NLTK资源 {resource} 未找到，正在下载...")
+#             try:
+#                 nltk.download(resource, download_dir=str(NLTK_PATH.absolute()), quiet=False)
+#                 logger.debug(f"NLTK资源 {resource} 下载成功")
+#             except Exception as e:
+#                 logger.error(f"NLTK资源 {resource} 下载失败: {e}")
+#                 logger.warning(f"请手动执行: python -m nltk.downloader {resource} -d {str(NLTK_PATH.absolute())}")
+#         except Exception as e:
+#             logger.error(f"检查NLTK资源 {resource} 时出错: {e}")
+# except Exception as e:
+#     logger.error(f"NLTK资源检查失败: {e}")
+#     logger.warning(f"请确保已手动下载所需NLTK资源到: {str(NLTK_PATH.absolute())}")
 
 # Qdrant配置
 VECTOR_SIZE = _config.get('etl.data.qdrant.vector_size', 1024)

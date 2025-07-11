@@ -386,7 +386,21 @@ async def generate_and_save_insights(
             logger.info(f"分类 '{category}' 中没有新文档，跳过洞察生成。")
             continue
 
-        logger.info(f"开始为分类 '{category}' 生成洞察 (基于 {len(doc_list)} 个文档)...")
+        # 确定该分类洞察的日期，应基于该分类下最新的文档发布日期
+        # doc_list 已按发布日期降序排序，所以第一个文档就是最新的
+        latest_publish_time_str = doc_list[0].get("publish_time")
+        insight_date = parse_datetime_utc(latest_publish_time_str)
+        if not insight_date:
+            # 如果最新的文档没有有效的发布时间，则回退到使用end_time
+            logger.warning(
+                f"无法从分类 '{category}' 的最新文档中解析发布日期 "
+                f"(路径: {doc_list[0].get('_file_path')})，将使用任务结束日期作为洞察日期。"
+            )
+            insight_date = end_time
+        
+        insight_date = insight_date.date() # 取日期部分
+
+        logger.info(f"开始为分类 '{category}' 生成洞察 (基于 {len(doc_list)} 个文档)，洞察日期: {insight_date}")
         try:
             prompt = build_insight_prompt(
                 doc_list, category, char_limit=insight_char_limit
@@ -420,7 +434,7 @@ async def generate_and_save_insights(
                         "title": insight.get("title"),
                         "content": insight.get("content"),
                         "category": category,
-                        "insight_date": end_time.date(),
+                        "insight_date": insight_date,
                     })
                 else:
                     logger.warning(f"分类 '{category}' 中有一条洞察格式不正确，已跳过: {insight}")
@@ -436,31 +450,45 @@ async def generate_and_save_insights(
 
 
 def get_time_window(args: argparse.Namespace) -> Tuple[datetime, datetime]:
-    """
-    根据命令行参数计算并返回UTC时间窗口。
-    如果只提供了日期 (YYYY-MM-DD)，则将开始时间设为当天00:00:00，结束时间设为当天23:59:59。
-    """
-    # 确定结束时间
-    if args.end_time:
-        end_time_utc = parse_datetime_utc(args.end_time)
-        # 如果是纯日期格式，则扩展到当天结束
-        if end_time_utc and re.match(r"^\d{4}-\d{2}-\d{2}$", args.end_time):
-            end_time_utc = end_time_utc.replace(hour=23, minute=59, second=59, microsecond=999999)
-    else:
-        # --hours 参数增强: 如果未提供 end_time，则 end_time 默认为当前时刻
-        end_time_utc = datetime.now(timezone.utc)
+    """根据命令行参数计算并返回UTC时间窗口 (start_time, end_time)"""
+    now = datetime.now(timezone.utc)
 
-    # 确定开始时间
-    if args.start_time:
-        start_time_utc = parse_datetime_utc(args.start_time)
-        # 如果是纯日期格式，确保为当天开始 (尽管 parse_datetime_utc 已处理，但为清晰起见)
-        if start_time_utc and re.match(r"^\d{4}-\d{2}-\d{2}$", args.start_time):
+    # 优先处理 --start_time 和 --end_time
+    if args.start_time or args.end_time:
+        start_time_utc = parse_datetime_utc(args.start_time) if args.start_time else None
+        end_time_utc = parse_datetime_utc(args.end_time) if args.end_time else now
+
+        if start_time_utc and args.start_time and re.match(r"^\d{4}-\d{2}-\d{2}$", args.start_time):
             start_time_utc = start_time_utc.replace(hour=0, minute=0, second=0, microsecond=0)
-    else:
-        start_time_utc = end_time_utc - timedelta(hours=args.hours)
 
-    if not start_time_utc or not end_time_utc:
-        raise ValueError("无法解析开始或结束时间，请检查输入格式。")
+        if end_time_utc and args.end_time and re.match(r"^\d{4}-\d{2}-\d{2}$", args.end_time):
+            end_time_utc = end_time_utc.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        if start_time_utc is None:
+            # 如果只提供了 end_time，则默认从24小时前开始
+            start_time_utc = end_time_utc - timedelta(hours=24)
+
+    # 然后处理 --days，这会覆盖 --hours
+    elif args.days is not None:
+        today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_time_utc = today_midnight - timedelta(microseconds=1)  # 昨天 23:59:59.999999
+        start_time_utc = today_midnight - timedelta(days=args.days) # N天前的 00:00:00
+    
+    # 接着处理 --hours
+    elif args.hours is not None:
+        end_time_utc = now
+        start_time_utc = end_time_utc - timedelta(hours=args.hours)
+    
+    # 最后是默认情况
+    else:
+        # 默认回溯1天 (滚动窗口)
+        end_time_utc = now
+        start_time_utc = end_time_utc - timedelta(days=1)
+
+    if start_time_utc >= end_time_utc:
+        raise ValueError(
+            f"计算出的开始时间 {start_time_utc.isoformat()} 不能晚于或等于结束时间 {end_time_utc.isoformat()}"
+        )
 
     return start_time_utc, end_time_utc
 
@@ -557,7 +585,7 @@ def main_cli():
         "--hours", type=int, help="从现在开始回溯的小时数"
     )
     parser.add_argument(
-        "--days", type=int, default=1, help="从现在开始回溯的天数（默认1天）"
+        "--days", type=int, help="从现在开始回溯的天数。如果未指定任何时间参数，默认为1天。"
     )
     parser.add_argument(
         "--start_time", type=str, help="开始时间 (格式: 'YYYY-MM-DD HH:MM:SS')"
@@ -578,4 +606,3 @@ def main_cli():
 
 if __name__ == "__main__":
     main_cli()
-

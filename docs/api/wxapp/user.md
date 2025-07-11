@@ -4,7 +4,7 @@
 
 ### 1. 获取用户公开信息
 
-**接口**：`GET /api/wxapp/user/profile`
+**接口**：`GET /wxapp/user/profile`
 
 **功能描述**：获取指定用户的公开信息，包括昵称、头像、简介和各项统计数据。
 
@@ -57,7 +57,7 @@
 
 ### 2. 获取当前登录用户的完整信息
 
-**接口**：`GET /api/wxapp/user/my/profile`
+**接口**：`GET /wxapp/user/my/profile`
 
 **功能描述**：获取当前登录用户的完整个人信息，通常用于"我的"页面或个人资料编辑页。返回的数据比公开信息更完整。
 
@@ -109,7 +109,7 @@
 
 ### 3. 更新用户信息
 
-**接口**：`POST /api/wxapp/user/update`
+**接口**：`POST /wxapp/user/update`
 
 **功能描述**：更新当前登录用户的个人信息。只传递需要更新的字段即可。
 
@@ -158,7 +158,7 @@
 
 ### 4. 获取用户列表
 
-**接口**：`GET /api/wxapp/user/list`
+**接口**：`GET /wxapp/user/list`
 
 **功能描述**：获取用户列表，支持分页和排序。
 
@@ -215,7 +215,7 @@
 
 ### 5. 获取粉丝列表
 
-**接口**：`GET /api/wxapp/user/followers`
+**接口**：`GET /wxapp/user/followers`
 
 **功能描述**：获取指定用户的粉丝列表，返回关注者的简要信息。
 
@@ -256,7 +256,7 @@
 
 ### 6. 获取关注列表
 
-**接口**：`GET /api/wxapp/user/following`
+**接口**：`GET /wxapp/user/following`
 
 **功能描述**：获取指定用户正在关注的用户列表。
 
@@ -297,7 +297,7 @@
 
 ### 7. 获取用户收藏的帖子列表
 
-**接口**：`GET /api/wxapp/user/favorite`
+**接口**：`GET /wxapp/user/favorite`
 
 **功能描述**：获取用户收藏的帖子列表。
 
@@ -343,7 +343,7 @@
 
 ### 8. 获取用户点赞的帖子列表
 
-**接口**：`GET /api/wxapp/user/like`
+**接口**：`GET /wxapp/user/like`
 
 **功能描述**：获取用户点赞过的帖子列表。
 
@@ -389,7 +389,7 @@
 
 ### 9. 获取用户的评论列表
 
-**接口**：`GET /api/wxapp/user/comment`
+**接口**：`GET /wxapp/user/comment`
 
 **功能描述**：获取指定用户发表过的所有评论。
 
@@ -442,7 +442,7 @@
 
 ### 10. 查询用户关系状态
 
-**接口**：`GET /api/wxapp/user/status`
+**接口**：`GET /wxapp/user/status`
 
 **功能描述**：查询当前登录用户与目标用户的关系状态，例如是否关注了对方。
 
@@ -475,7 +475,7 @@
 
 ### 11. 同步微信用户信息（登录/注册）
 
-**接口**：`POST /api/wxapp/user/sync`
+**接口**：`POST /wxapp/user/sync`
 
 **功能描述**：接收小程序端发送的临时登录凭证（code）和用户信息，在后端完成登录或注册。如果用户不存在，则创建新用户；如果存在，则更新用户信息并返回登录态。
 

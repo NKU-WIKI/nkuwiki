@@ -1,0 +1,5 @@
+transformers>=4.49.0
+sentence-transformers==3.4.1
+accelerate
+llama-index-embeddings-huggingface
+llmlingua

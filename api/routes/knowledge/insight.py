@@ -12,7 +12,7 @@ from etl.load import db_core
 from core.utils.logger import register_logger
 
 # 遵循规范，创建模块专用的日志记录器
-logger = register_logger('api.routes.knowledge.insight')
+logger = register_logger('api.insight')
 
 router = APIRouter(tags=["Knowledge"])
 

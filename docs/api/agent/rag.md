@@ -4,7 +4,7 @@
 
 ## 1. 智能问答接口
 
-`POST /api/agent/rag`
+`POST /agent/rag`
 
 ### a. 功能描述
 
@@ -27,7 +27,7 @@
 ### c. 请求示例 (非流式)
 
 ```bash
-curl -X POST "http://127.0.0.1:8000/api/agent/rag" \
+curl -X POST "http://127.0.0.1:8000/agent/rag" \
 -H "Content-Type: application/json" \
 -d '{
   "query": "南开大学有哪些知名校友？",

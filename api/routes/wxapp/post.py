@@ -20,67 +20,12 @@ from etl.load import (
 )
 from config import Config
 from core.utils.logger import register_logger
+from ._utils import batch_enrich_posts_with_user_info
 
 # 获取配置
 config = Config()
 router = APIRouter()
 logger = register_logger('api.routes.wxapp.post')
-
-async def batch_enrich_posts_with_user_info(posts: List[Dict[str, Any]], current_user_openid: Optional[str]) -> List[Dict[str, Any]]:
-    if not posts:
-        return []
-
-    post_ids = [post['id'] for post in posts]
-    author_openids = list(set(post.get('openid') for post in posts if post.get('openid')))
-
-    user_info_map = {}
-    actions_map = {}
-    following_map = {}
-
-    # 1. 批量获取作者信息
-    if author_openids:
-        placeholders = ', '.join(['%s'] * len(author_openids))
-        user_query = f"SELECT openid, nickname, avatar, bio FROM wxapp_user WHERE openid IN ({placeholders})"
-        user_results = await execute_custom_query(user_query, author_openids, fetch='all')
-        user_info_map = {user['openid']: user for user in user_results}
-
-    # 2. 批量获取当前用户的互动状态 (点赞、收藏)
-    if current_user_openid:
-        placeholders_posts = ', '.join(['%s'] * len(post_ids))
-        action_query = f"""
-            SELECT target_id, action_type 
-            FROM wxapp_action 
-            WHERE openid = %s AND target_type = 'post' AND target_id IN ({placeholders_posts})
-        """
-        action_results = await execute_custom_query(action_query, [current_user_openid] + post_ids, fetch='all')
-        for action in action_results:
-            if action['target_id'] not in actions_map:
-                actions_map[action['target_id']] = set()
-            actions_map[action['target_id']].add(action['action_type'])
-        
-        # 3. 批量检查是否关注了作者
-        if author_openids:
-            placeholders_authors = ', '.join(['%s'] * len(author_openids))
-            follow_query = f"""
-                SELECT target_id 
-                FROM wxapp_action 
-                WHERE openid = %s AND target_type = 'user' AND action_type = 'follow' AND target_id IN ({placeholders_authors})
-            """
-            follow_results = await execute_custom_query(follow_query, [current_user_openid] + author_openids, fetch='all')
-            following_map = {result['target_id'] for result in follow_results}
-
-
-    # 4. 组装最终结果
-    for post in posts:
-        author_openid = post.get('openid')
-        post['user_info'] = user_info_map.get(author_openid, {})
-        
-        post_actions = actions_map.get(post['id'], set())
-        post['is_liked'] = 'like' in post_actions
-        post['is_favorited'] = 'favorite' in post_actions
-        post['is_following_author'] = author_openid in following_map
-            
-    return posts
 
 def sanitize_input(text):
     """清理可能包含SQL注入的文本输入"""
@@ -225,9 +170,16 @@ async def get_post_detail(
             [author_openid], 
             fetch='one'
         )
-        post['user_info'] = user_data
+        if user_data:
+            post.update(user_data) # 合并用户信息到post字典
     else:
-        post['user_info'] = {}
+        # 即使没有作者信息，也初始化一些空字段以保证前端结构一致
+        post.update({
+            'openid': None,
+            'nickname': '匿名用户',
+            'avatar': '',
+            'bio': ''
+        })
 
     # 如果提供了当前用户openid，查询互动状态
     if openid and author_openid:
@@ -331,6 +283,13 @@ async def get_posts(
         # 批量数据增强
         enriched_posts = await batch_enrich_posts_with_user_info(posts_data, openid)
         
+        # 使用最新的用户信息覆盖帖子顶层的过时信息
+        for post in enriched_posts:
+            user_info = post.get("user_info")
+            if user_info:
+                post["nickname"] = user_info.get("nickname", post.get("nickname"))
+                post["avatar"] = user_info.get("avatar", post.get("avatar"))
+
         pagination = PaginationInfo(
             total=total,
             page=page,
@@ -361,8 +320,15 @@ async def update_post(
         
         # 验证帖子是否存在且属于该用户
         post_check = await get_by_id("wxapp_post", post_id)
+
+        # 添加日志以进行调试
+        if post_check:
+            logger.info(f"权限检查: DB openid='{post_check.get('openid')}', Request openid='{openid}'")
+        else:
+            logger.warning(f"权限检查: 找不到 post_id 为 {post_id} 的帖子")
+
         if not post_check or post_check['openid'] != openid:
-            return Response.permission_denied(details={"message": "无权修改该帖子"})
+            return Response.forbidden(details={"message": "无权修改该帖子"})
         
         # 提取更新字段
         update_data = {}
@@ -392,34 +358,27 @@ async def update_post(
             update_data["is_public"] = 1 if req_data["is_public"] in [1, "1", True, "true", "True"] else 0
         if "location" in req_data and isinstance(req_data["location"], dict):
             update_data["location"] = json.dumps(req_data["location"], ensure_ascii=False)
+        if "url_link" in req_data:
+            update_data["url_link"] = req_data["url_link"]
         
         if not update_data:
             return Response.bad_request(details={"message": "未提供任何更新数据"})
             
         # 更新帖子
-        update_success = update_record(
+        update_success = await update_record(
             "wxapp_post",
-            post_id,
+            {"id": post_id},
             update_data
         )
         
         if not update_success:
             return Response.db_error(details={"message": "更新帖子失败"})
         
-        # 直接使用SQL获取更新后的帖子
-        fields = "id, title, content, image, tag, category_id, phone, wechatId, qqId, allow_comment, is_public, location, update_time"
-        updated_post = await execute_custom_query(
-            f"SELECT {fields} FROM wxapp_post WHERE id = %s LIMIT 1",
-            [post_id]
-        )
-        
-        if not updated_post:
-            return Response.db_error(details={"message": "更新帖子失败"})
-
         # 获取完整帖子信息以返回
         post_detail = await get_post_with_stats(post_id)
         return Response.success(data=post_detail, details={"message": "帖子更新成功"})
     except Exception as e:
+        logger.error(f"更新帖子失败: {e}", exc_info=True)
         return Response.error(details={"message": f"更新帖子失败: {str(e)}"})
 
 @router.post("/delete", summary="删除帖子")
@@ -623,7 +582,7 @@ async def get_post_with_stats(post_id):
     """获取帖子和统计信息"""
     try:
         # 获取帖子
-        post_result = query_records(
+        post_result = await query_records(
             "wxapp_post",
             {"id": post_id},
             limit=1

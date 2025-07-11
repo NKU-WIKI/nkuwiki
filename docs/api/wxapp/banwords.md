@@ -4,7 +4,8 @@
 
 ## 1. 获取整个敏感词库
 
-- **Endpoint**: `GET /api/wxapp/banwords/`
+- **Endpoint**: `GET /wxapp/banwords/library`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 获取所有敏感词分类及其词汇。
 
@@ -38,7 +39,8 @@
 
 ## 2. 获取敏感词分类列表
 
-- **Endpoint**: `GET /api/wxapp/banwords/categories`
+- **Endpoint**: `GET /wxapp/banwords/categories`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 只获取所有敏感词的分类名称。
 
@@ -65,12 +67,20 @@
 
 ## 3. 添加敏感词
 
-- **Endpoint**: `POST /api/wxapp/banwords/`
+- **Endpoint**: `POST /wxapp/banwords/library`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 向指定分类添加一个或多个新的敏感词。
 
 ### 请求体 (Body)
 
+| 参数 | 类型 | 是否必须 | 描述 |
+| :--- | :--- | :--- | :--- |
+| `category` | `string` | 是 | 敏感词所属的分类名称。 |
+| `words` | `List[string]` | 是 | 要添加的敏感词列表。 |
+| `risk` | `integer` | 否 | 风险等级，默认为3。 |
+
+**示例:**
 ```json
 {
     "category": "advertisement",
@@ -98,12 +108,19 @@
 
 ## 4. 删除敏感词
 
-- **Endpoint**: `POST /api/wxapp/banwords/delete-word`
+- **Endpoint**: `POST /wxapp/banwords/delete-word`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 从指定分类中删除一个敏感词。
 
 ### 请求体 (Body)
 
+| 参数 | 类型 | 是否必须 | 描述 |
+| :--- | :--- | :--- | :--- |
+| `category` | `string` | 是 | 敏感词所属的分类名称。 |
+| `word` | `string` | 是 | 要删除的敏感词。 |
+
+**示例:**
 ```json
 {
     "category": "advertisement",
@@ -128,18 +145,24 @@
 
 ## 5. 更新整个分类的敏感词
 
-- **Endpoint**: `POST /api/wxapp/banwords/update-category/{category}`
+- **Endpoint**: `POST /wxapp/banwords/update-category/{category}`
+- **Permissions**: `Admin`
 - **Tags**: `wxapp-banwords`
 - **Summary**: 使用新的词汇列表完全替换指定分类下的所有敏感词。
 
 ### 路径参数 (Path)
 
 | 参数 | 类型 | 描述 |
-| --- | --- | --- |
+| :--- | :--- | :--- |
 | `category` | `string` | 要更新的分类名称。 |
 
 ### 请求体 (Body)
 
+| 参数 | 类型 | 是否必须 | 描述 |
+| :--- | :--- | :--- | :--- |
+| `words` | `List[string]` | 是 | 新的敏感词列表。 |
+
+**示例:**
 ```json
 {
     "words": [
