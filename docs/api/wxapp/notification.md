@@ -1,19 +1,18 @@
 # 微信小程序：通知接口
 
-本文档详细说明了与微信小程序中用户通知功能相关的所有API接口。
+本文档详细说明了与微信小程序中用户通知功能相关的所有API接口。所有接口都需要用户通过JWT进行认证。
 
 ## 1. 获取通知列表
 
 - **Endpoint**: `GET /wxapp/notification/list`
 - **Tags**: `wxapp-notification`
-- **Summary**: 获取通知列表，并将未读通知标记为已读。
+- **Summary**: 获取当前用户的通知列表，按时间倒序排列。
 - **Permissions**: `Authenticated User`
 
-### 查询参数 (Query)
+### 查询参数
 
 | 参数 | 类型 | 是否必须 | 默认值 | 描述 |
 | --- | --- | --- | --- | --- |
-| `openid` | `string` | 是 | `null` | 要查询通知的用户的OpenID。 |
 | `page` | `integer` | 否 | 1 | 页码。 |
 | `page_size` | `integer`| 否 | 10 | 每页数量。 |
 
@@ -25,25 +24,32 @@
     "message": "success",
     "data": [
         {
-            "id": 6,
-            "openid": "oLx8G7ADjzh23EzAJavndryh76rE",
-            "title": null,
-            "content": "关注了你",
+            "id": 1,
+            "title": "有人关注了你",
+            "content": "用户 '南开小透明' 刚刚关注了你。",
             "type": "follow",
-            "is_read": 1,
-            "sender": "{\"avatar\": \"avatar_url_3\", \"openid\": \"test_user_003\", \"nickname\": \"测试用户3\"}",
-            "target_id": "test_user_003",
+            "is_read": false,
+            "target_id": "user_id_of_sender",
             "target_type": "user",
-            "extra_data": null,
-            "create_time": "2025-06-21T09:05:02",
-            "update_time": "2025-06-21T09:05:02",
-            "status": 1
+            "create_time": "2025-07-13T10:00:00",
+            "sender_nickname": "南开小透明",
+            "sender_avatar": "https://path/to/avatar.png"
+        },
+        {
+            "id": 2,
+            "title": "系统通知",
+            "content": "欢迎使用NKU-WIKI！",
+            "type": "system",
+            "is_read": true,
+            "target_id": null,
+            "target_type": "system",
+            "create_time": "2025-07-12T18:00:00",
+            "sender_nickname": "系统通知",
+            "sender_avatar": null
         }
     ],
-    "details": null,
-    "timestamp": "2025-06-21T17:05:49.306481",
     "pagination": {
-        "total": 3,
+        "total": 2,
         "page": 1,
         "page_size": 10,
         "total_pages": 1,
@@ -51,66 +57,16 @@
     }
 }
 ```
-> **注意**: 调用此接口会把返回列表中的未读通知自动标记为已读。
 
 ---
 
-## 2. 获取通知详情
+## 2. 获取未读通知数量
 
-- **Endpoint**: `GET /wxapp/notification/detail`
-- **Tags**: `wxapp-notification`
-- **Summary**: 获取单条通知详情，并将其标记为已读。
-- **Permissions**: `Authenticated User`
-
-### 查询参数 (Query)
-
-| 参数 | 类型 | 是否必须 | 描述 |
-| --- | --- | --- | --- |
-| `notification_id` | `integer` | 是 | 要查询的通知ID。 |
-| `openid` | `string` | 是 | 当前用户的OpenID，用于权限验证。 |
-
-### 响应 (200 OK)
-
-```json
-{
-    "code": 200,
-    "message": "success",
-    "data": {
-        "id": 4,
-        "openid": "oLx8G7ADjzh23EzAJavndryh76rE",
-        "title": null,
-        "content": "赞了你的帖子",
-        "type": "like",
-        "is_read": 1,
-        "sender": "{\"avatar\": \"avatar_url_1\", \"openid\": \"test_user_001\", \"nickname\": \"测试用户1\"}",
-        "target_id": 1,
-        "target_type": "post",
-        "extra_data": null,
-        "create_time": "2025-06-21T09:05:02",
-        "update_time": "2025-06-21T09:05:08",
-        "status": 1
-    },
-    "details": null,
-    "timestamp": "2025-06-21T17:05:57.073199",
-    "pagination": null
-}
-```
-
----
-
-## 3. 获取未读通知数量
-
-- **Endpoint**: `GET /wxapp/notification/count`
+- **Endpoint**: `GET /wxapp/notification/unread-count`
 - **Tags**: `wxapp-notification`
 - **Summary**: 获取用户未读通知的总数。
 - **Permissions**: `Authenticated User`
 
-### 查询参数 (Query)
-
-| 参数 | 类型 | 是否必须 | 描述 |
-| --- | --- | --- | --- |
-| `openid` | `string` | 是 | 要查询的用户的OpenID。 |
-
 ### 响应 (200 OK)
 
 ```json
@@ -118,29 +74,30 @@
     "code": 200,
     "message": "success",
     "data": {
-        "unread_count": 0
-    },
-    "details": null,
-    "timestamp": "2025-06-21T17:06:07.034283",
-    "pagination": null
+        "unread_count": 5
+    }
 }
 ```
 
 ---
 
-## 4. 批量标记通知为已读
+## 3. 标记通知为已读
 
 - **Endpoint**: `POST /wxapp/notification/read`
 - **Tags**: `wxapp-notification`
 - **Summary**: 将一个或多个通知标记为已读。
 - **Permissions**: `Authenticated User`
 
-### 请求体 (Body)
+### 请求体
 
+| 参数 | 类型 | 是否必须 | 描述 |
+| --- | --- | --- | --- |
+| `notification_ids` | `array[integer]` | 是 | 要标记为已读的通知ID列表。 |
+
+**示例:**
 ```json
 {
-    "notification_ids": [4, 5],
-    "openid": "oLx8G7ADjzh23EzAJavndryh76rE"
+    "notification_ids": [1, 2, 3]
 }
 ```
 
@@ -149,29 +106,50 @@
 ```json
 {
     "code": 200,
-    "message": "操作成功",
-    "data": null,
-    "details": null,
-    "timestamp": "2025-06-21T17:06:21.238797",
-    "pagination": null
+    "message": "操作成功"
 }
 ```
+---
 
+## 4. 全部标记为已读
+
+- **Endpoint**: `POST /wxapp/notification/read-all`
+- **Tags**: `wxapp-notification`
+- **Summary**: 将当前用户的所有未读通知标记为已读。
+- **Permissions**: `Authenticated User`
+
+### 请求体
+
+无
+
+### 响应 (200 OK)
+
+```json
+{
+    "code": 200,
+    "message": "所有未读通知已标记为已读"
+}
+```
 ---
 
 ## 5. 删除通知
 
 - **Endpoint**: `POST /wxapp/notification/delete`
 - **Tags**: `wxapp-notification`
-- **Summary**: 删除单条通知。
+- **Summary**: 逻辑删除单条通知。
 - **Permissions**: `Authenticated User`
 
-### 请求体 (Body)
+### 请求体
 
+| 参数 | 类型 | 是否必须 | 描述 |
+| --- | --- | --- | --- |
+| `notification_id` | `integer` | 是 | 要删除的通知ID。 |
+
+
+**示例:**
 ```json
 {
-    "notification_id": 1,
-    "openid": "oLx8G7ADjzh23EzAJavndryh76rE"
+    "notification_id": 1
 }
 ```
 
@@ -180,11 +158,7 @@
 ```json
 {
     "code": 200,
-    "message": "删除成功",
-    "data": null,
-    "details": null,
-    "timestamp": "2025-06-21T17:10:31.491047",
-    "pagination": null
+    "message": "删除成功"
 }
 ```
 
@@ -194,14 +168,8 @@
 
 - **Endpoint**: `GET /wxapp/notification/summary`
 - **Tags**: `wxapp-notification`
-- **Summary**: 获取未读通知的摘要信息。
+- **Summary**: 获取未读通知的摘要信息，按类型分类。
 - **Permissions**: `Authenticated User`
-
-### 查询参数 (Query)
-
-| 参数 | 类型 | 是否必须 | 描述 |
-| --- | --- | --- | --- |
-| `openid` | `string` | 是 | 要查询的用户的OpenID。 |
 
 ### 响应 (200 OK)
 
@@ -210,16 +178,12 @@
     "code": 200,
     "message": "success",
     "data": {
-        "total_unread": 0,
+        "total_unread": 8,
         "unread_by_type": {
-            "like": 0,
-            "comment": 0,
-            "follow": 0,
-            "system": 0
+            "like": 5,
+            "comment": 2,
+            "follow": 1
         }
-    },
-    "details": null,
-    "timestamp": "2025-06-21T17:08:08.414391",
-    "pagination": null
+    }
 }
 ``` 

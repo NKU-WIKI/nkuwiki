@@ -73,7 +73,8 @@ async def get_insight(
             pagination=pagination,
             message="成功"
         )
-
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"获取洞察列表时发生错误: {e}", exc_info=True)
         return Response.error(details={"message": "获取洞察列表时发生内部错误"})

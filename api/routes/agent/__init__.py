@@ -5,7 +5,12 @@
 主要使用rag模块提供知识检索增强生成功能
 搜索和聊天功能作为辅助接口保留
 """
-from . import rag  # Coze智能体RAG实现，主要接口
-from . import chat      # 聊天接口
-# 导出子模块，供外部使用
-__all__ = ['rag', 'chat']
+from fastapi import APIRouter
+from . import rag, chat
+
+router = APIRouter()
+
+router.include_router(rag.router)
+router.include_router(chat.router)
+
+__all__ = ['router']

@@ -11,7 +11,6 @@ import json
 import asyncio
 import time
 import aiohttp
-import requests
 from urllib.parse import urljoin
 
 # 确保项目根目录在sys.path中
@@ -25,58 +24,50 @@ logger = register_logger("test.api.agent.rag.detailed")
 
 # 服务器地址
 BASE_URL = "http://localhost:8000/api"
+# 用于认证的JWT令牌（需要手动填写一个有效的令牌）
+# 您可以通过调用 /api/wxapp/auth/login 接口并使用一个有效的code来获取
+AUTH_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJvcHRYODY0S1pJYldRejFHTnN6R0QyZlMtZDVnIiwiZXhwIjoxNzUyOTQ3MzcwfQ.xJmwEjRY2N2Qhp2olaj033KF5i9J6hVnVpCYjgMhYzw"
+
+async def get_auth_header():
+    """获取认证头"""
+    if not AUTH_TOKEN:
+        logger.warning("AUTH_TOKEN为空，测试将以未登录状态进行或失败。")
+        return {}
+    return {"Authorization": f"Bearer {AUTH_TOKEN}"}
 
 async def test_missing_parameters():
     """测试缺少必要参数的情况"""
     logger.info("测试缺少必要参数的情况")
+    headers = await get_auth_header()
     
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(headers=headers) as session:
         # 测试缺少query参数
-        payload = {
-            "openid": "test_user"
-        }
+        payload = {}
         async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
             response_data = await response.json()
             logger.info(f"缺少query参数 - 响应状态: {response.status}, 响应: {response_data}")
-        
-        # 测试缺少openid参数
-        payload = {
-            "query": "南开大学的校训是什么"
-        }
-        async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
-            response_data = await response.json()
-            logger.info(f"缺少openid参数 - 响应状态: {response.status}, 响应: {response_data}")
-        
+            assert response.status != 200
+
         # 测试参数为空字符串
         payload = {
-            "query": "",
-            "openid": "test_user"
+            "query": ""
         }
         async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
             response_data = await response.json()
             logger.info(f"query为空字符串 - 响应状态: {response.status}, 响应: {response_data}")
+            assert response.status != 200
 
 async def test_platform_parameter():
     """测试platform参数的各种情况"""
     logger.info("测试platform参数的各种情况")
+    headers = await get_auth_header()
     
     test_payload = {
-        "query": "南开大学的校训是什么",
-        "openid": "test_user"
+        "query": "南开大学的校训是什么"
     }
     
-    async with aiohttp.ClientSession() as session:
-        # 测试不同的platform组合
-        platforms = [
-            None,  # 默认所有平台
-            "wechat",
-            "website",
-            "market",
-            "wxapp",
-            "wechat,website",
-            "wechat,market,wxapp",
-            "invalid_platform"  # 无效平台
-        ]
+    async with aiohttp.ClientSession(headers=headers) as session:
+        platforms = [None, "wechat", "website", "market", "wxapp", "wechat,website", "invalid_platform"]
         
         for platform in platforms:
             payload = test_payload.copy()
@@ -84,96 +75,65 @@ async def test_platform_parameter():
                 payload["platform"] = platform
                 
             logger.info(f"测试platform参数: {platform}")
-            start_time = time.time()
-            
-            try:
-                async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
-                    response_data = await response.json()
-                    elapsed = time.time() - start_time
-                    
-                    if response.status == 200 and response_data.get("code") == 0:
-                        logger.info(f"测试成功 - 响应状态: {response.status}, 耗时: {elapsed:.2f}秒")
-                        logger.info(f"检索结果数: {response_data['data']['retrieved_count']}")
-                    else:
-                        logger.warning(f"测试有问题 - 响应状态: {response.status}, 错误信息: {response_data}")
-            except Exception as e:
-                logger.error(f"请求异常: {str(e)}")
-            
-            # 每次请求之间间隔2秒
-            await asyncio.sleep(2)
+            async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
+                response_data = await response.json()
+                if response.status == 200:
+                    logger.info(f"测试成功 - 响应状态: {response.status}")
+                else:
+                    logger.warning(f"测试有问题 - 响应状态: {response.status}, 错误信息: {response_data}")
+            await asyncio.sleep(1)
 
 async def test_max_results_parameter():
     """测试max_results参数的各种情况"""
     logger.info("测试max_results参数的各种情况")
     
     base_payload = {
-        "query": "南开大学的历史",
-        "openid": "test_user"
+        "query": "南开大学的历史"
     }
     
     max_results_values = [1, 5, 10, 20, 50]
     
-    async with aiohttp.ClientSession() as session:
+    headers = await get_auth_header()
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
         for max_results in max_results_values:
             payload = base_payload.copy()
             payload["max_results"] = max_results
             
             logger.info(f"测试max_results参数: {max_results}")
-            start_time = time.time()
-            
-            try:
-                async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
-                    response_data = await response.json()
-                    elapsed = time.time() - start_time
-                    
-                    if response.status == 200 and response_data.get("code") == 0:
-                        logger.info(f"测试成功 - 响应状态: {response.status}, 耗时: {elapsed:.2f}秒")
-                        logger.info(f"检索结果数: {response_data['data']['retrieved_count']}")
-                    else:
-                        logger.warning(f"测试有问题 - 响应状态: {response.status}, 错误信息: {response_data}")
-            except Exception as e:
-                logger.error(f"请求异常: {str(e)}")
-            
-            # 每次请求之间间隔2秒
-            await asyncio.sleep(2)
+            async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
+                response_data = await response.json()
+                if response.status == 200:
+                    logger.info(f"测试成功 - 响应状态: {response.status}")
+                else:
+                    logger.warning(f"测试有问题 - 响应状态: {response.status}, 错误信息: {response_data}")
+            await asyncio.sleep(1)
 
 async def test_format_parameter():
     """测试format参数的各种情况"""
     logger.info("测试format参数的各种情况")
     
     base_payload = {
-        "query": "南开大学的录取分数线",
-        "openid": "test_user"
+        "query": "南开大学的录取分数线"
     }
     
     formats = ["text", "markdown", "html", "invalid_format"]
     
-    async with aiohttp.ClientSession() as session:
+    headers = await get_auth_header()
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
         for format_type in formats:
             payload = base_payload.copy()
             payload["format"] = format_type
             
             logger.info(f"测试format参数: {format_type}")
-            start_time = time.time()
-            
-            try:
-                async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
-                    response_data = await response.json()
-                    elapsed = time.time() - start_time
-                    
-                    if response.status == 200 and response_data.get("code") == 0:
-                        logger.info(f"测试成功 - 响应状态: {response.status}, 耗时: {elapsed:.2f}秒")
-                        # 检查返回的格式是否符合预期
-                        if format_type == "markdown":
-                            has_markdown = "**" in response_data['data']['response'] or "#" in response_data['data']['response']
-                            logger.info(f"返回格式是否含有Markdown标记: {has_markdown}")
-                    else:
-                        logger.warning(f"测试有问题 - 响应状态: {response.status}, 错误信息: {response_data}")
-            except Exception as e:
-                logger.error(f"请求异常: {str(e)}")
-            
-            # 每次请求之间间隔2秒
-            await asyncio.sleep(2)
+            async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
+                response_data = await response.json()
+                if response.status == 200:
+                    logger.info(f"测试成功 - 响应状态: {response.status}")
+                else:
+                    logger.warning(f"测试有问题 - 响应状态: {response.status}, 错误信息: {response_data}")
+            await asyncio.sleep(1)
 
 async def test_stream_parameter():
     """测试流式响应的详细情况"""
@@ -181,13 +141,13 @@ async def test_stream_parameter():
     
     payload = {
         "query": "南开大学的招生政策",
-        "openid": "test_user",
         "stream": True
     }
     
-    async with aiohttp.ClientSession() as session:
+    headers = await get_auth_header()
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
         try:
-            start_time = time.time()
             async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload) as response:
                 if response.status == 200:
                     logger.info(f"流式测试 - 连接成功")
@@ -257,11 +217,12 @@ async def test_error_handling():
     long_query = "南开大学" * 1000  # 非常长的查询
     
     payload = {
-        "query": long_query,
-        "openid": "test_user"
+        "query": long_query
     }
     
-    async with aiohttp.ClientSession() as session:
+    headers = await get_auth_header()
+    
+    async with aiohttp.ClientSession(headers=headers) as session:
         logger.info("测试非常长的查询")
         try:
             async with session.post(urljoin(BASE_URL, "/agent/rag"), json=payload, timeout=30) as response:
@@ -277,8 +238,7 @@ async def test_error_handling():
         # 特殊字符测试
         special_chars_query = "南开大学@#$%^&*()_+<>?|"
         payload = {
-            "query": special_chars_query,
-            "openid": "test_user"
+            "query": special_chars_query
         }
         
         logger.info("测试包含特殊字符的查询")
@@ -294,33 +254,25 @@ async def test_error_handling():
             logger.error(f"特殊字符测试异常: {str(e)}")
 
 async def main():
-    """执行所有测试"""
-    logger.info("======= 开始详细测试RAG接口 =======")
+    """主执行函数"""
+    if not AUTH_TOKEN:
+        logger.error("请在脚本顶部填写有效的 AUTH_TOKEN 后再运行测试！")
+        return
+        
+    logger.info("="*30)
+    logger.info("开始RAG接口详细测试")
+    logger.info("="*30)
     
-    # 测试缺少必要参数
     await test_missing_parameters()
-    await asyncio.sleep(2)
-    
-    # 测试platform参数
     await test_platform_parameter()
-    await asyncio.sleep(2)
-    
-    # 测试max_results参数
     await test_max_results_parameter()
-    await asyncio.sleep(2)
-    
-    # 测试format参数
     await test_format_parameter()
-    await asyncio.sleep(2)
-    
-    # 测试流式响应
     await test_stream_parameter()
-    await asyncio.sleep(2)
-    
-    # 测试错误处理
     await test_error_handling()
     
-    logger.info("======= 详细测试RAG接口完成 =======")
+    logger.info("="*30)
+    logger.info("RAG接口详细测试结束")
+    logger.info("="*30)
 
 if __name__ == "__main__":
     asyncio.run(main()) 

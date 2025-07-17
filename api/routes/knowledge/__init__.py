@@ -1,6 +1,5 @@
 """
-知识库API模块
-处理知识库相关的交互，包括搜索等功能
+知识库API路由模块
 
 主要使用knowledge模块提供知识检索功能
 """
@@ -16,4 +15,4 @@ router.include_router(search_router)
 router.include_router(insight_router)
 
 # 导出子模块，供外部使用
-__all__ = ['search']
+__all__ = ['router']

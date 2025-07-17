@@ -7,7 +7,7 @@
 # 版本锁定依赖 (Version Locked Dependencies)
 # ========================================
 llama-index-core==0.12.22
-llama-index-vector-stores-qdrant==0.4.3
+llama-index-vector-stores-qdrant==0.6.0
 llama-index-readers-file
 pydantic==2.8.0
 numpy==1.26.4
@@ -37,6 +37,7 @@ python-docx
 # 关系型数据库
 aiomysql                # 异步MySQL驱动
 pymysql
+SQLAlchemy              # LlamaIndex-core's dependency, added to resolve installation issues.
 # 本地开发容器部署: docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 -v D:\Code\nkuwiki\etl\data\mysql:/var/lib/mysql mysql:latest
 
 # 搜索引擎 (用于通配符查询等)
@@ -63,7 +64,14 @@ pytest
 beautifulsoup4        # HTML解析
 playwright            # 浏览器自动化
 
+# ========================================
+# 认证与安全 (Authentication & Security)
+# ========================================
+python-jose[cryptography] # JWT令牌处理
+passlib[bcrypt]           # 密码哈希
+PyJWT                     # JWT的另一个实现，检查是否需要保留
 
+# ========================================
 # 企业微信 (仅Windows)
 # ntwork; platform_system=="Windows"  # pip源不可用，本地安装: pip install ./servercies/wework/ntwork_backup_bin/ntwork<your_version>.whl
 # wechatpy
@@ -128,4 +136,3 @@ scrapy==2.11.1
 
 watchfiles
 websockets
-PyJWT

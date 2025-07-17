@@ -53,13 +53,13 @@
 - **Endpoint**: `GET /knowledge/search`
 - **Tags**: `knowledge`
 - **Summary**: (不推荐) 提供跨多个数据源的关键词搜索功能
+- **认证**: `可选` - 提供有效的JWT Token时，会记录用户搜索历史并启用个性化功能。
 
 ### 请求参数
 
 | 参数名              | 类型     | 位置  | 是否必需 | 默认值                        | 描述                                                               |
 | ------------------- | -------- | ----- | -------- | ----------------------------- | ------------------------------------------------------------------ |
 | `query`             | `string` | Query | 是       | -                             | 搜索关键词。                                                       |
-| `openid`            | `string` | Query | 是       | -                             | 用户的OpenID，用于记录搜索历史和未来个性化。                         |
 | `platform`          | `string` | Query | 否       | `wechat,website,market,wxapp` | 搜索的平台，多个用逗号分隔。                                       |
 | `tag`               | `string` | Query | 否       | `null`                        | 内容标签，多个用逗号分隔。                                         |
 | `max_results`       | `integer`| Query | 否       | `10`                          | **每个**数据源（表）返回的最大结果数，用于初步召回。               |
@@ -79,23 +79,26 @@
       {
         "id": 123,
         "title": "关于南开大学的介绍",
-        "content": "南开大学（Nankai University），简称"南开"，位于天津市...",
+        "content": "南开大学（Nankai University），简称“南开”，位于天津市...",
         "author": "南开大学官网",
-        "publish_time": "2023-10-01 12:00:00",
         "platform": "website",
         "original_url": "http://www.nankai.edu.cn/123.html",
+        "tag": ["官方", "新闻"],
         "relevance": 0.85,
-        "_table": "website_nku",
-        "_type": "南开网站",
-        "_content_truncated": true
+        "is_truncated": true,
+        "create_time": "2023-10-01T12:00:00",
+        "update_time": "2023-10-01T12:00:00",
+        "is_official": true,
+        "view_count": 1024,
+        "like_count": 128
       }
     ],
     "pagination": {
-      "total": 1,
+      "total": 100,
       "page": 1,
       "page_size": 10,
-      "total_pages": 1,
-      "has_more": false
+      "total_pages": 10,
+      "has_more": true
     }
   }
   ```
