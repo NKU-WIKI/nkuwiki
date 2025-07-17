@@ -23,7 +23,7 @@ logger = register_logger('api.routes.wxapp.auth')
 router = APIRouter()
 
 # 从配置加载JWT和微信设置
-WECHAT_CONFIG = config.get("services.wxapp.auth", {})
+WECHAT_CONFIG = config.get("services.weapp.auth", {})
 APPID = WECHAT_CONFIG.get("appid")
 APPSECRET = WECHAT_CONFIG.get("appsecret")
 JWT_SECRET = WECHAT_CONFIG.get("jwt_secret")
@@ -36,7 +36,7 @@ if not all([APPID, APPSECRET, JWT_SECRET]):
     # 可以在这里引发一个启动错误
     # raise RuntimeError("微信小程序或JWT配置不完整")
 
-default_avatar = config.get("services.app.default.default_avatar", "")
+default_avatar = config.get("services.weapp.default.default_avatar", "")
 # oauth2_scheme现在由api.common.dependencies管理，此处的定义可以移除
 # oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/wxapp/login", auto_error=False)
 
@@ -46,7 +46,7 @@ default_avatar = config.get("services.app.default.default_avatar", "")
 async def _sync_user(openid: str, user_info_payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     根据OpenID同步用户信息，如果用户不存在则创建。
-    这是一个内部函数，由登录流程调用。
+    这个函数现在会返回完整的用户信息，但不包含 openid。
     """
     if user_info_payload is None:
         user_info_payload = {}
@@ -54,13 +54,14 @@ async def _sync_user(openid: str, user_info_payload: Optional[Dict[str, Any]] = 
     existing_user = await get_by_id("wxapp_user", openid, id_column='openid')
     
     if existing_user:
-        # 用户存在，更新最后登录时间并直接返回，避免再次查询
+        # 用户存在，更新最后登录时间
         last_login_time = time.strftime('%Y-%m-%d %H:%M:%S')
         await update_record(
             "wxapp_user",
             conditions={"openid": openid},
             data={"last_login_time": last_login_time}
         )
+        # 使用查询到的用户信息，并更新登录时间
         user_info = existing_user
         user_info["last_login_time"] = last_login_time
     else:
@@ -79,7 +80,13 @@ async def _sync_user(openid: str, user_info_payload: Optional[Dict[str, Any]] = 
         }
         new_user_data = {k: v for k, v in new_user_data.items() if v is not None}
         
-        user_id = await insert_record("wxapp_user", new_user_data)
+        try:
+            user_id = await insert_record("wxapp_user", new_user_data)
+        except Exception as e:
+            logger.error(f"创建新用户时数据库插入失败: {e}", exc_info=True)
+            logger.error(f"失败的数据: {new_user_data}")
+            raise HTTPException(status_code=500, detail="创建用户时数据库后端错误")
+            
         if not user_id:
             raise HTTPException(status_code=500, detail="创建新用户失败")
         
@@ -87,7 +94,7 @@ async def _sync_user(openid: str, user_info_payload: Optional[Dict[str, Any]] = 
         user_info = new_user_data
         user_info['id'] = user_id
         
-    # 不应将openid返回给前端
+    # 确保 openid 不会泄露给前端
     if 'openid' in user_info:
         del user_info['openid']
         
@@ -163,8 +170,8 @@ async def login_for_access_token(
         logger.error(f"无法为用户 {openid} 获取user_id，无法创建令牌。")
         return Response.error(details="无法生成用户令牌，请联系管理员。")
 
-    # JWT的sub应该是系统内的唯一标识符，即user_id
-    token_data = {"sub": user_id, "user_id": user_id}
+    # JWT的sub应该是系统内的唯一标识符，即user_id, 且为字符串
+    token_data = {"sub": str(user_id), "user_id": user_id}
     access_token = _create_access_token(data=token_data)
     
     # 4. 返回JWT和用户信息

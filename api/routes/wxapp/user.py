@@ -22,7 +22,7 @@ logger = register_logger('api.routes.wxapp.user')
 
 config = Config()
 router = APIRouter()
-default_avatar = config.get("services.app.default.default_avatar")
+default_avatar = config.get("services.weapp.default.default_avatar")
 
 @router.get("/profile", summary="获取用户公开信息")
 async def get_user_profile(

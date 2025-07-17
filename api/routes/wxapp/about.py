@@ -14,7 +14,7 @@ async def get_about_info():
     """
     获取"关于我们"页面的信息，通常是静态配置。
     """
-    about_info = config.get("services.app.aboutinfo")
+    about_info = config.get("services.weapp.aboutinfo")
     if about_info:
         return Response.success(data=about_info)
     else:

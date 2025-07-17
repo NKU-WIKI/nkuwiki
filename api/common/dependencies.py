@@ -21,7 +21,7 @@ logger = register_logger("api.common.dependencies")
 
 # 从配置加载JWT设置
 # We must use the same settings as in api/routes/wxapp/auth.py
-WECHAT_CONFIG = config.get("services.wxapp.auth", {})
+WECHAT_CONFIG = config.get("services.weapp.auth", {})
 JWT_SECRET = WECHAT_CONFIG.get("jwt_secret")
 JWT_ALGORITHM = WECHAT_CONFIG.get("jwt_algorithm", "HS256")
 

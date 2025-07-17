@@ -4,7 +4,7 @@
 """
 
 from fastapi import APIRouter
-from . import user, post, notification, feedback, about, action, banwords, comment, auth
+from . import user, post, notification, feedback, about, action, banwords, comment, auth, upload
 
 router = APIRouter()
 
@@ -14,6 +14,7 @@ router.include_router(auth.router, prefix="/auth", tags=["wxapp-auth"])
 # 为每个子模块的路由统一添加前缀
 router.include_router(user.router, prefix="/user", tags=["wxapp-user"])
 router.include_router(post.router, prefix="/post", tags=["wxapp-post"])
+router.include_router(upload.router, prefix="/upload", tags=["wxapp-upload"])
 router.include_router(notification.router, prefix="/notification", tags=["wxapp-notification"])
 router.include_router(feedback.router, prefix="/feedback", tags=["wxapp-feedback"])
 router.include_router(about.router, prefix="/about", tags=["wxapp-about"])

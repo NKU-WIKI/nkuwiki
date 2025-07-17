@@ -65,6 +65,7 @@ function show_help {
     echo -e "  ${YELLOW}stop-infra${NC}         - 停止共享的基础设施服务"
     echo -e "  ${YELLOW}status-infra${NC}       - 查看基础设施服务状态"
     echo -e "  ${YELLOW}logs-infra [service]${NC}- 查看指定基础设施服务日志 (可选)"
+    echo -e "  ${YELLOW}build [main|dev]${NC}     - (可选) 强制无缓存地重新构建应用镜像"
     echo ""
     echo -e "${GREEN}== 使用示例 ==${NC}"
     echo -e "  $0 start-infra         - 首先，启动所有共享服务"
@@ -146,6 +147,11 @@ function update_nginx {
 function start_service {
     echo -e "${GREEN}== 启动分支 '$BRANCH' ==${NC}"
 
+    local USE_NO_CACHE=false
+    if [ "$1" == "--no-cache" ]; then
+        USE_NO_CACHE=true
+    fi
+
     # 直接调用脚本内部定义的 unproxy 函数
     unproxy
 
@@ -154,9 +160,16 @@ function start_service {
     # 1. 创建 .env 文件
     create_dotenv_file
 
-    # 2. 构建并启动 Docker Compose 服务
-    echo -e "${BLUE}使用 Docker Compose 构建和启动服务...${NC}"
-    docker compose -p "$COMPOSE_PROJECT_NAME" up -d --build --remove-orphans api
+    # 2. 根据标志选择构建和启动策略
+    if [ "$USE_NO_CACHE" = true ]; then
+        echo -e "${YELLOW}检测到 --no-cache 标志，将执行强制无缓存构建...${NC}"
+        build_service # 调用独立的构建函数
+        echo -e "${BLUE}使用新构建的镜像启动服务...${NC}"
+        docker compose -p "$COMPOSE_PROJECT_NAME" up -d --remove-orphans api
+    else
+        echo -e "${BLUE}使用 Docker Compose 构建并启动服务 (使用缓存)...${NC}"
+        docker compose -p "$COMPOSE_PROJECT_NAME" up -d --build --remove-orphans api
+    fi
     
     # 3. 确保 Nginx 配置是最新的
     update_nginx
@@ -195,6 +208,15 @@ function get_logs {
     echo -e "${BLUE}== 查看分支 '$BRANCH' 日志 ==${NC}"
     cd "$SCRIPT_DIR"
     docker compose -p "$COMPOSE_PROJECT_NAME" logs -f --tail=100 api
+}
+
+function build_service {
+    echo -e "${YELLOW}== 强制无缓存构建分支 '$BRANCH' ==${NC}"
+    cd "$SCRIPT_DIR"
+    create_dotenv_file
+    echo -e "${BLUE}正在拉取最新的基础镜像并强制无缓存构建...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" build --pull --no-cache api
+    echo -e "${GREEN}镜像构建完成.${NC}"
 }
 
 
@@ -342,13 +364,40 @@ function main {
     shift
 
     case "$COMMAND" in
-        start) start_service ;;
-        stop) stop_service ;;
-        restart) restart_service ;;
-        status) get_status ;;
-        logs) get_logs ;;
-        install-service) install_service ;;
-        uninstall-service) uninstall_service ;;
+        start)
+            check_root
+            set_branch_variables "$BRANCH"
+            start_service "$3" # $3 将会是 --no-cache 或者为空
+            ;;
+        build)
+            check_root
+            set_branch_variables "$BRANCH"
+            build_service
+            ;;
+        stop)
+            check_root
+            set_branch_variables "$BRANCH"
+            stop_service ;;
+        restart)
+            check_root
+            set_branch_variables "$BRANCH"
+            restart_service ;;
+        status)
+            check_root
+            set_branch_variables "$BRANCH"
+            get_status ;;
+        logs)
+            check_root
+            set_branch_variables "$BRANCH"
+            get_logs ;;
+        install-service)
+            check_root
+            set_branch_variables "$BRANCH"
+            install_service ;;
+        uninstall-service)
+            check_root
+            set_branch_variables "$BRANCH"
+            uninstall_service ;;
         *)
             echo -e "${RED}错误: 未知命令 '$COMMAND'${NC}"
             show_help

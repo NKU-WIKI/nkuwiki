@@ -147,10 +147,10 @@ class TableManager:
     
     def apply_config_defaults(self, sql_content: str, table_name: str) -> str:
         """应用配置文件中的默认值到SQL建表语句"""
-        if table_name == 'wxapp_config':
-            admin_openid = self.config.get("wxapp.admin_openid", "default_admin_openid")
+        if table_name == 'weapp_config':
+            admin_openid = self.config.get("weapp.admin_openid", "default_admin_openid")
             sql_content = sql_content.replace("'{{ADMIN_OPENID}}'", f"'{admin_openid}'")
-            self.logger.debug(f"已将wxapp_config的默认管理员OPENID设置为: {admin_openid}")
+            self.logger.debug(f"已将weapp_config的默认管理员OPENID设置为: {admin_openid}")
         return sql_content
     
     async def recreate_tables(self, table_names: List[str] = None, force: bool = False, apply_defaults: bool = True) -> Dict[str, Any]:
@@ -189,16 +189,21 @@ class TableManager:
             await db_core.execute_custom_query("SET FOREIGN_KEY_CHECKS=0;", fetch=False)
             self.logger.debug("已禁用外键检查")
 
-            # 删除并重新创建每个表
-            for sql_file in tqdm(sql_files, desc="重建表", unit="个"):
+            # 统一删除所有表
+            for table_name in tqdm(tables, desc="删除旧表", unit="个"):
+                if not await self.drop_table(table_name):
+                    results["failed"].append(table_name)
+            
+            # 筛选出删除失败的表，后续不再创建
+            successful_deletes = set(tables) - set(results["failed"])
+
+            # 重新创建每个表
+            for sql_file in tqdm(sql_files, desc="创建新表", unit="个"):
                 table_name = self.get_table_name_from_file(sql_file)
+                if table_name not in successful_deletes:
+                    continue # 跳过删除失败的表
                 
                 try:
-                    # 删除表
-                    if not await self.drop_table(table_name):
-                        results["failed"].append(table_name)
-                        continue
-                    
                     # 读取SQL内容
                     sql_content = self.read_sql_file(sql_file)
                     if not sql_content:
@@ -217,7 +222,7 @@ class TableManager:
                         results["failed"].append(table_name)
                         
                 except Exception as e:
-                    self.logger.error(f"重建表{table_name}时发生异常: {str(e)}")
+                    self.logger.error(f"创建表{table_name}时发生异常: {str(e)}")
                     results["failed"].append(table_name)
         
         finally:
