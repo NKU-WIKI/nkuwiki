@@ -5,27 +5,31 @@
 import json
 import traceback
 import asyncio
-from fastapi import APIRouter
+from typing import Dict, Any
+from fastapi import APIRouter, Depends
 from api.models.common import Response, Request, validate_params
 from fastapi.responses import StreamingResponse
 from api.common.utils import format_response_content
 from core.utils.logger import register_logger
+from api.common.dependencies import get_current_active_user
 
 router = APIRouter()
 logger = register_logger('api.routes.agent.chat')
 
 @router.post("/chat")
 async def chat(
-    request: Request
+    request: Request,
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
 ):
     """智能体对话接口"""
     req_data = await request.json()
-    required_params = ["query", "openid"]
+    required_params = ["query"]
     error_response = validate_params(req_data, required_params)
     if(error_response):
         return error_response
     try:
         query = req_data.get("query")
+        openid = current_user['openid']  # 从JWT中获取openid
         bot_tag = req_data.get("bot_tag", "general") # 使用general代替default
         stream = req_data.get("stream", False)
         format = req_data.get("format", "markdown")

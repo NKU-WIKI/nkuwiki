@@ -1,34 +1,35 @@
-import time
-import json
-from typing import Dict, Any, Optional, List
+"""
+知识库搜索API接口
+提供混合搜索、高级搜索、历史记录等功能
+"""
 import asyncio
-from datetime import datetime
-import re
 import hashlib
-from pathlib import Path
+import json
+import re
+import time
+from datetime import datetime
+from typing import Dict, Any, Optional, List
 
-from elasticsearch import AsyncElasticsearch
-from fastapi import Query, APIRouter, Body, HTTPException
-from pydantic import BaseModel, Field
 import jieba.analyse
+from elasticsearch import AsyncElasticsearch
+from fastapi import Query, APIRouter, Body, HTTPException, Depends
+from pydantic import BaseModel, Field
 
-from api.models.common import Response, Request, validate_params, PaginationInfo
+from api.common.dependencies import get_current_active_user, get_current_active_user_optional
+from api.models.common import Response, Request, PaginationInfo
+from api.routes.wxapp._utils import batch_enrich_posts_with_user_info
 from config import Config
 from core.utils.logger import register_logger
-from etl.load import (
-    query_records, 
-    insert_record, 
-    update_record, 
-    execute_custom_query, 
-    count_records,
-    get_by_id
-)
 from etl import ES_INDEX_NAME
 from etl.rag.pipeline import RagPipeline
 from etl.rag.strategies import RetrievalStrategy, RerankStrategy
-from api.routes.wxapp._utils import batch_enrich_posts_with_user_info
 from etl.utils.const import official_author as OFFICIAL_AUTHORS_WHITELIST
+from etl.load import db_core
+from etl.load.db_pool_manager import get_db_connection
+from api.common.vector import get_retriever
+from pathlib import Path
 
+# 模块初始化
 router = APIRouter()
 logger = register_logger('api.routes.knowledge.search')
 
@@ -168,7 +169,7 @@ def calculate_relevance(query: str, title: str, content: str, author: str = "", 
 
 async def search_knowledge(
     query: str, 
-    openid: str,
+    current_user: Optional[Dict[str, Any]], # 使用current_user代替openid
     platform: Optional[str] = None,
     tag: Optional[str] = None,
     max_results: int = 30,  # 显著增加默认单表查询结果数量
@@ -321,9 +322,12 @@ async def search_knowledge(
         # 更新排序方式，使用各表配置的时间字段进行降序排序
         order_by_dict = {time_field: "DESC", "id": "DESC"}
         
-        search_task = query_records(
+        search_task = db_core.query_records(
             table_name=table,
-            conditions={"where_condition": where_condition, "params": sql_params},
+            conditions={
+                "where_condition": where_condition,
+                "params": sql_params
+            },
             order_by=order_by_dict,
             limit=max_results
         )
@@ -468,7 +472,7 @@ async def search_knowledge(
     # 如果有wxapp_post的帖子，批量查询用户信息并格式化字段
     if wxapp_post_items:
         # 使用通用函数批量补充用户信息，并传入openid
-        enriched_posts = await batch_enrich_posts_with_user_info(wxapp_post_items, openid)
+        enriched_posts = await batch_enrich_posts_with_user_info(wxapp_post_items, current_user['openid'] if current_user else None)
         
         for post in enriched_posts:
             # 格式化字段以符合API文档规范
@@ -512,73 +516,38 @@ async def search_knowledge(
     }
     
     # 记录搜索历史
-    asyncio.create_task(_record_search_history(query, openid))
+    if current_user:
+        asyncio.create_task(_record_search_history(query, current_user['id']))
     
     return {
         "data": sources,
         "pagination": pagination
     }
 
-@router.get("/search")
+@router.get("/search", summary="混合搜索")
 async def search_endpoint(
     query: str = Query(..., description="搜索关键词"),
-    openid: str = Query(..., description="用户openid"),
     platform: Optional[str] = Query("wechat,website,market,wxapp", description="平台标识(wechat,website,market,wxapp)，多个用逗号分隔"),
     tag: Optional[str] = Query(None, description="标签，多个用逗号分隔"),
     max_results: int = Query(10, description="单表最大结果数"),
     page: int = Query(1, description="分页页码"),
     page_size: int = Query(10, description="每页结果数"),
     sort_by: str = Query("relevance", description="排序方式：relevance-相关度，time-时间"),
-    max_content_length: int = Query(500, description="单条内容最大长度，超过将被截断")
+    max_content_length: int = Query(500, description="单条内容最大长度，超过将被截断"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional) # 依赖注入
 ):
-    """多表综合检索接口
+    """
+    提供跨平台、多来源的综合信息搜索功能。
     
-    参数说明：
-    - query: 搜索关键词，必填
-    - openid: 用户openid，必填
-    - platform: 平台标识，可选值：wechat/website/market/wxapp，多个用逗号分隔
-    - tag: 标签，多个用逗号分隔
-    - max_results: 单表最大结果数，默认10
-    - page: 分页页码，默认1
-    - page_size: 每页结果数，默认10
-    - sort_by: 排序方式，可选值：relevance(相关度)/time(时间)，默认relevance
-    - max_content_length: 单条内容最大长度，默认500，超过将被截断
-    
-    返回格式：
-    {
-        "code": 200,
-        "message": "success",
-        "data": [
-            {
-                "create_time": "2025-04-07T16:13:49",
-                "update_time": "2025-04-07T16:13:49",
-                "author": "作者",
-                "platform": "平台标识",
-                "original_url": "原文链接",
-                "tag": "标签",
-                "title": "标题",
-                "content": "内容",
-                "relevance": 0.85
-            }
-        ],
-        "pagination": {
-            "total": 100,
-            "page": 1,
-            "page_size": 10,
-            "total_pages": 10
-        }
-    }
+    - **核心功能**: 根据关键词在 `website`, `wechat`, `market`, `wxapp` 等多个平台中进行搜索。
+    - **排序**: 支持按 `relevance` (相关度) 或 `time` (发布时间) 排序。
+    - **认证**: 可选。提供有效的JWT Token时，会记录用户搜索历史并启用个性化功能。
     """
     try:
-        start_time = time.time()
-
-        if not query:
-            return Response.bad_request(details={"message": "查询关键词不能为空"})
-        
-        # 调用内部搜索方法
+        # 调用核心搜索逻辑
         search_result = await search_knowledge(
             query=query,
-            openid=openid,
+            current_user=current_user,
             platform=platform,
             tag=tag,
             max_results=max_results,
@@ -588,25 +557,35 @@ async def search_endpoint(
             max_content_length=max_content_length
         )
         
-        total_time = time.time() - start_time
-        logger.debug(f"综合检索完成: query={query}, 耗时={total_time:.2f}秒, 结果数={len(search_result['data'])}")
-        
+        # 记录搜索历史（如果用户已登录）
+        if current_user and query:
+            try:
+                await _record_search_history(query, current_user['id'])
+            except Exception as e:
+                logger.error(f"记录用户 {current_user['id']} 的搜索历史失败: {e}", exc_info=True)
+
+        pagination_info = PaginationInfo(
+            total=search_result["pagination"]["total"],
+            page=page,
+            page_size=page_size
+        )
+
         return Response.paged(
             data=search_result["data"],
-            pagination=search_result["pagination"],
-            details={"message": "搜索成功", "query": query, "response_time": total_time}
+            pagination=pagination_info
         )
-        
-    except Exception as e:
-        import traceback
-        error_detail = traceback.format_exc()
-        logger.error(f"综合检索失败: {str(e)}\n{error_detail}")
-        return Response.error(message=f"搜索失败: {str(e)}")
 
-@router.get("/advanced-search")
+    except Exception as e:
+        logger.error(f"[/knowledge/search] 搜索失败: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"服务器内部错误: {str(e)}"
+        )
+
+
+@router.get("/advanced-search", summary="高级RAG搜索")
 async def advanced_search_endpoint(
     query: str = Query(..., description="搜索关键词"),
-    openid: str = Query(..., description="用户openid，用于个性化推荐"),
     top_k_retrieve: int = Query(20, description="召回文档数量，建议值[10, 50]"),
     top_k_rerank: int = Query(10, description="重排文档数量，建议值[5, 20]"),
     retrieval_strategy: RetrievalStrategy = Query(
@@ -616,106 +595,47 @@ async def advanced_search_endpoint(
     rerank_strategy: RerankStrategy = Query(
         default=RerankStrategy.BGE_RERANKER,
         description="重排策略：no_rerank-不重排, bge_reranker-BGE模型, st_reranker-SentenceTransformer, personalized-个性化"
-    )
+    ),
+    current_user: Dict[str, Any] = Depends(get_current_active_user) # 严格依赖
 ):
     """
-    高级混合检索接口，调用RAG管道执行检索和重排序，不生成回答。
-    
-    返回经过重排序的文档列表，包含详细的元数据和相关度分数。
+    高级RAG搜索，使用可配置的检索和重排策略，提供更精准的结果。
+    此接口必须登录后才能使用。
     """
+    user_id = current_user['id']
+    start_time = time.time()
+    logger.info(f"高级搜索开始: query='{query}', user='{user_id}', retrieval='{retrieval_strategy}', rerank='{rerank_strategy}'")
+
+    # 异步记录搜索历史
+    asyncio.create_task(_record_search_history(query, user_id))
+
     try:
-        start_time = time.time()
-        
-        if not query:
-            return Response.bad_request(details={"message": "查询关键词不能为空"})
-        
-        logger.debug(
-            f"高级检索开始: query='{query}', openid='{openid}', "
-            f"retrieval_strategy='{retrieval_strategy.value}', rerank_strategy='{rerank_strategy.value}'"
-        )
-        
-        # 1. 初始化 RAG 管道
-        rag_pipeline = RagPipeline()
-        
-        # 2. 执行仅检索和重排序
-        # retrieve_only 内部会调用 run(..., skip_generation=True)
-        results = rag_pipeline.retrieve_only(
+        pipeline = RagPipeline()
+        rag_result = await pipeline.run(
             query=query,
+            retrieval_strategy=retrieval_strategy,
+            rerank_strategy=rerank_strategy,
             top_k_retrieve=top_k_retrieve,
             top_k_rerank=top_k_rerank,
-            user_id=openid,
-            retrieval_strategy=retrieval_strategy,
-            rerank_strategy=rerank_strategy
-        )
-        
-        # 3. 格式化返回结果
-        reranked_nodes = results.get("reranked_nodes", [])
-        contexts = []
-        for node_with_score in reranked_nodes:
-            node = node_with_score.node
-            metadata = node.metadata or {}
-            
-            # 截断内容
-            content = node.get_content()
-            is_truncated = False
-            max_content_length=500
-            if len(content) > max_content_length:
-                content = content[:max_content_length] + "..."
-                is_truncated = True
-
-            publish_time = metadata.get('publish_time', '')
-            context = {
-                "title": metadata.get('title', '无标题'),
-                "content": content,
-                "original_url": metadata.get('original_url', ''),
-                "author": metadata.get('author', ''),
-                "platform": metadata.get('platform', ''),
-                "tag": metadata.get('tag', '') or "",
-                "relevance": node_with_score.score,
-                "create_time": str(publish_time) if publish_time else "",
-                "update_time": str(publish_time) if publish_time else "",
-                "is_truncated": is_truncated,
-                "is_official": metadata.get('is_official', False),
-                "view_count": metadata.get('view_count', 0),
-                "like_count": metadata.get('like_count', 0),
-                "comment_count": metadata.get('comment_count', 0),
-                "pagerank_score": metadata.get('pagerank_score', 0.0)
-            }
-            contexts.append(context)
-            
-        total_time = time.time() - start_time
-        logger.debug(f"高级检索完成: query='{query}', 耗时={total_time:.2f}秒, 返回结果数={len(contexts)}")
-        
-        # 4. 记录搜索历史
-        asyncio.create_task(_record_search_history(query, openid))
-
-        return Response.success(
-            data=contexts,
-            details={
-                "message": "高级检索成功",
-                "query": query,
-                "retrieval_strategy": results.get("retrieval_strategy"),
-                "rerank_strategy": results.get("rerank_strategy"),
-                "documents_retrieved": len(results.get("retrieved_nodes", [])),
-                "documents_reranked": len(contexts),
-                "response_time": total_time
-            }
+            openid=user_id
         )
 
+        end_time = time.time()
+        logger.info(f"高级搜索完成: query='{query}', retrieved={len(rag_result.retrieved_nodes)}, reranked={len(rag_result.reranked_nodes)}, duration={end_time - start_time:.2f}s")
+
+        return Response.success(data=rag_result.to_dict())
     except Exception as e:
-        import traceback
-        error_detail = traceback.format_exc()
-        logger.error(f"高级检索失败: {str(e)}\n{error_detail}")
-        return Response.error(message=f"高级检索失败: {str(e)}", code=500)
+        logger.exception(f"高级搜索失败: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 async def _elasticsearch_search_internal(
     query: str,
+    current_user: Optional[Dict[str, Any]], # 使用current_user
     enhanced_query: str = None,
     platform: Optional[str] = None,
     size: int = 10,
     offset: int = 0,
-    max_content_length: int = 300,
-    openid: Optional[str] = None
+    max_content_length: int = 300
 ) -> Dict[str, Any]:
     """使用Elasticsearch进行内部复合查询"""
     
@@ -799,135 +719,59 @@ async def _elasticsearch_search_internal(
 @router.get("/es-search", summary="Elasticsearch 复合查询接口")
 async def elasticsearch_search_endpoint(
     query: str = Query(..., description="搜索关键词"),
-    openid: str = Query(..., description="用户openid"),
     platform: Optional[str] = Query(None, description="平台筛选，多个用逗号分隔"),
     page: int = Query(1, description="分页页码"),
     page_size: int = Query(10, description="每页结果数"),
-    max_content_length: int = Query(300, description="内容最大长度")
+    max_content_length: int = Query(300, description="内容最大长度"),
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional) # 依赖注入
 ):
     """
-    使用Elasticsearch进行检索，支持通配符和数据源筛选。
+    直接访问Elasticsearch的复合查询接口，用于调试或特定场景。
     """
+    offset = (page - 1) * page_size
+    
+    if current_user:
+        asyncio.create_task(_record_search_history(query, current_user['id']))
+
+    response_data = await _elasticsearch_search_internal(
+        query=query,
+        current_user=current_user,
+        platform=platform,
+        size=page_size,
+        offset=offset,
+        max_content_length=max_content_length
+    )
+    
+    return Response.success(data=response_data)
+
+async def _record_search_history(query: str, user_id: int):
+    """记录用户搜索历史到数据库
+    
+    Args:
+        query: 搜索关键词
+        user_id: 用户ID
+    """
+    if not user_id:
+        logger.warning("无法记录搜索历史，因为user_id为空")
+        return
+        
     try:
-        start_time = time.time()
-        
-        offset = (page - 1) * page_size
-        response = await _elasticsearch_search_internal(
-            query=query,
-            platform=platform,
-            size=page_size,
-            offset=offset,
-            max_content_length=max_content_length,
-            openid=openid
-        )
-
-        if 'error' in response:
-            logger.error(f"ES内部检索失败: {response['error']}")
-            return Response.error(message=response['error'], code=500)
-        
-        results = response['hits']['hits']
-        total_hits = response['hits']['total']['value']
-        
-        processed_results = []
-        for hit in results:
-            source = hit['_source']
-            score = hit['_score']
-            
-            title = source.get('title', '无标题')
-            platform = source.get('platform', '')
-            author = source.get('author', '')
-            original_url = source.get('original_url', '')
-            original_content_length = len(source.get('content', ''))
-            
-            logger.debug(f"  文档 ID={hit['_id']}, 分数={score:.4f}, 平台={platform}")
-            logger.debug(f"    标题: {title[:50]}{'...' if len(title) > 50 else ''}")
-            logger.debug(f"    作者: {author}, 内容长度: {original_content_length}字符")
-            
-            content = source.get('content', '')
-            is_truncated = False
-            if content and len(content) > max_content_length:
-                content = content[:max_content_length] + "..."
-                is_truncated = True
-                logger.debug(f"    内容已截断: {original_content_length} -> {max_content_length}字符")
-            
-            # 动态判断是否为官方来源
-            is_official = source.get('is_official', False)
-            if platform == 'website' or author in OFFICIAL_AUTHORS_WHITELIST:
-                is_official = True
-            
-            result_item = {
-                "title": title,
-                "content": content,
-                "original_url": original_url,
-                "author": author,
-                "platform": platform,
-                "tag": source.get('tag', '') if source.get('tag') else "",
-                "create_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
-                "update_time": str(source.get('publish_time', '')) if source.get('publish_time') else "",
-                "relevance": score,
-                "is_truncated": is_truncated,
-                "is_official": is_official
-            }
-            processed_results.append(result_item)
-        
-        pagination = PaginationInfo(
-            total=total_hits,
-            page=page,
-            page_size=page_size,
-            total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1
-        )
-        
-        platform_stats = {p: 0 for p in set(r['platform'] for r in processed_results)}
-        for result in processed_results:
-            platform_stats[result.get('platform', 'unknown')] += 1
-        
-        logger.debug(f"ES检索完成汇总:")
-        logger.debug(f"  查询: '{query}', 平台过滤: {platform}")
-        logger.debug(f"  检索耗时: {time.time() - start_time:.2f}秒")
-        logger.debug(f"  命中总数: {total_hits}, 返回数量: {len(processed_results)}")
-        logger.debug(f"  平台分布: {platform_stats}")
-        if processed_results:
-            scores = [r['relevance'] for r in processed_results]
-            logger.debug(f"  分数范围: {min(scores):.4f} ~ {max(scores):.4f}")
-        
-        if openid:
-            asyncio.create_task(_record_search_history(query, openid))
-        
-        return Response.paged(
-            data=processed_results,
-            pagination=pagination
-        )
-
+        # 使用 user_id 而不是 openid
+        history_data = {
+            "user_id": user_id,
+            "query": query,
+            "search_time": time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        await db_core.insert_record("wxapp_search_history", history_data)
+        logger.debug(f"用户 {user_id} 的搜索历史 '{query}' 已记录")
     except Exception as e:
-        import traceback
-        error_detail = traceback.format_exc()
-        logger.error(f"ES检索失败: {str(e)}\n{error_detail}")
-        return Response.error(message=f"ES检索失败: {str(e)}", code=500)
+        logger.error(f"记录用户 {user_id} 的搜索历史失败: {str(e)}")
 
-async def _record_search_history(query: str, openid: str):
-    """记录搜索历史"""
-    try:
-        # 检查是否已存在相同的搜索历史
-        history_query = "SELECT id FROM wxapp_search_history WHERE query = %s AND openid = %s"
-        existing_history = await execute_custom_query(history_query, [query, openid], fetch='one')
-
-        if existing_history:
-            # 更新时间戳
-            update_query = "UPDATE wxapp_search_history SET search_time = CURRENT_TIMESTAMP WHERE id = %s"
-            await execute_custom_query(update_query, [existing_history['id']], fetch=False)
-        else:
-            # 插入新记录
-            insert_query = "INSERT INTO wxapp_search_history (query, openid) VALUES (%s, %s)"
-            await execute_custom_query(insert_query, [query, openid], fetch=False)
-            
-    except Exception as e:
-        logger.error(f"记录搜索历史失败: {str(e)}")
-
-@router.get("/suggestion")
+@router.get("/suggestion", summary="获取搜索建议")
 async def get_search_suggest(
     query: str = Query(..., description="搜索关键词"),
-    openid: str = Query(..., description="用户openid"),
-    page_size: int = Query(5, description="返回结果数量")
+    page_size: int = Query(5, description="返回结果数量"),
+    current_user: Dict[str, Any] = Depends(get_current_active_user) # 严格依赖
 ):
     """搜索建议"""
     try:
@@ -939,21 +783,21 @@ async def get_search_suggest(
         suggest_query = """
             SELECT query, COUNT(*) as count 
             FROM wxapp_search_history 
-            WHERE query LIKE %s AND openid = %s
+            WHERE query LIKE %s AND user_id = %s
             GROUP BY query 
             ORDER BY count DESC 
             LIMIT %s
         """
         
         like_query = f"%{query}%"
-        results = await execute_custom_query(suggest_query, [like_query, openid, page_size], fetch='all')
+        results = await db_core.execute_custom_query(suggest_query, [like_query, current_user['id'], page_size], fetch='all')
         
         # 提取建议词
         suggestions = [row['query'] for row in results]
         
         # 异步记录搜索历史
-        if openid:
-            asyncio.create_task(_record_search_history(query, openid))
+        if current_user:
+            asyncio.create_task(_record_search_history(query, current_user['id']))
             
         return Response.success(data=suggestions)
     except Exception as e:
@@ -999,7 +843,7 @@ async def search(
             post_sql += " LIMIT %s OFFSET %s"
             
             search_tasks.append(
-                ("post", execute_custom_query(
+                ("post", db_core.execute_custom_query(
                     post_sql, 
                     [f"%{query}%", f"%{query}%", page_size, offset]
                 ))
@@ -1011,7 +855,7 @@ async def search(
             WHERE status = 1 AND (title LIKE %s OR content LIKE %s)
             """
             count_tasks.append(
-                ("post", execute_custom_query(
+                ("post", db_core.execute_custom_query(
                     post_count_sql,
                     [f"%{query}%", f"%{query}%"]
                 ))
@@ -1035,7 +879,7 @@ async def search(
             user_sql += " LIMIT %s OFFSET %s"
             
             search_tasks.append(
-                ("user", execute_custom_query(
+                ("user", db_core.execute_custom_query(
                     user_sql,
                     [f"%{query}%", f"%{query}%", page_size, offset]
                 ))
@@ -1047,7 +891,7 @@ async def search(
             WHERE status = 1 AND (nickname LIKE %s OR bio LIKE %s)
             """
             count_tasks.append(
-                ("user", execute_custom_query(
+                ("user", db_core.execute_custom_query(
                     user_count_sql,
                     [f"%{query}%", f"%{query}%"]
                 ))
@@ -1183,50 +1027,42 @@ async def search(
         logger.error(f"搜索失败: {str(e)}")
         return Response.error(details={"message": f"搜索失败: {str(e)}"})
 
-@router.get("/history")
+@router.get("/history", summary="获取当前用户搜索历史")
 async def get_search_history(
-    openid: str = Query(..., description="用户OpenID"),
-    page_size: int = Query(10, description="返回结果数量")
+    page_size: int = Query(10, description="返回结果数量"),
+    current_user: Dict[str, Any] = Depends(get_current_active_user) # 严格依赖
 ):
-    """获取用户搜索历史"""
-    try:
-        # 确保调用异步函数时使用了await
-        history_data = await query_records(
-            "wxapp_search_history",
-            conditions={"openid": openid},
-            order_by={"search_time": "DESC"},
-            limit=page_size
-        )
-        # 直接返回从数据库获取的数据
-        return Response.success(data=history_data["data"])
-    except Exception as e:
-        logger.error(f"获取搜索历史失败: {e}")
-        raise HTTPException(status_code=500, detail=f"获取搜索历史失败: {str(e)}")
+    user_id = current_user.get("id")
+    if not user_id:
+        return Response.error(message="无法获取用户信息")
+    
+    # 基于user_id查询
+    sql = "SELECT query FROM wxapp_search_history WHERE user_id = %s ORDER BY search_time DESC LIMIT %s"
+    results = await db_core.execute_custom_query(sql, [user_id, page_size])
+    
+    # 提取查询字符串列表
+    history_list = [row['query'] for row in results] if results else []
+    return Response.success(data=history_list)
 
-@router.post("/history/clear")
-async def clear_search_history(request: Request):
-    """清空用户搜索历史"""
-    try:
-        data = await request.json()
-        openid = data.get("openid")
+@router.post("/history/clear", summary="清空当前用户搜索历史")
+async def clear_search_history(
+    current_user: Dict[str, Any] = Depends(get_current_active_user) # 严格依赖
+):
+    user_id = current_user.get("id")
+    if not user_id:
+        return Response.error(message="无法获取用户信息")
         
-        if not openid:
-            return Response.bad_request(details={"message": "缺少openid"})
-            
-        sql = "DELETE FROM wxapp_search_history WHERE openid = %s"
-        await execute_custom_query(sql, (openid,), fetch=None) # 确保异步调用
-        
-        return Response.success(details={"message": "清空搜索历史成功"})
-        
-    except Exception as e:
-        logger.error(f"清空搜索历史失败: {e}")
-        return Response.error(details={"message": str(e)})
+    # 基于user_id删除
+    sql = "DELETE FROM wxapp_search_history WHERE user_id = %s"
+    await db_core.execute_custom_query(sql, [user_id], fetch=False)
+    
+    return Response.success(message="搜索历史已清空")
 
-@router.get("/hot")
+@router.get("/hot", summary="获取热门搜索")
 async def get_hot_searches(
     page_size: int = Query(10, description="返回结果数量")
 ):
-    """获取热门搜索词条"""
+    """获取热门搜索词条（公开接口）"""
     try:
         hot_sql = """
         SELECT query, COUNT(*) as search_count
@@ -1236,7 +1072,7 @@ async def get_hot_searches(
         LIMIT %s
         """
         # 确保异步调用
-        hot_searches = await execute_custom_query(hot_sql, [page_size], fetch='all')
+        hot_searches = await db_core.execute_custom_query(hot_sql, [page_size], fetch='all')
         return Response.success(data=hot_searches or [])
     except Exception as e:
         logger.error(f"获取热门搜索失败: {e}")

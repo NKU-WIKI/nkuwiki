@@ -1,188 +1,158 @@
-# 微信小程序：敏感词管理接口
+# 微信小程序：违禁词管理接口
 
-本文档详细说明了与微信小程序中敏感词库管理功能相关的所有API接口。
+本文档详细说明了用于管理违禁词库的API接口。接口分为两部分：可供所有人访问的公共读取接口，以及需要管理员权限才能使用的写入/修改接口。
 
-## 1. 获取整个敏感词库
+## 1. 公共接口 (Public API)
 
-- **Endpoint**: `GET /wxapp/banwords/library`
-- **Permissions**: `Admin`
+### 1.1 获取整个违禁词库
+
+- **Endpoint**: `GET /api/wxapp/banwords/library`
+- **Permissions**: `Public`
 - **Tags**: `wxapp-banwords`
-- **Summary**: 获取所有敏感词分类及其词汇。
+- **Summary**: 获取所有违禁词分类及其包含的词汇。
 
-### 响应 (200 OK)
+#### 成功响应 (200 OK)
 
 ```json
 {
     "code": 200,
-    "message": "获取敏感词库成功",
+    "message": "success",
     "data": {
         "library": {
-            "politics": {
-                "defaultRisk": 1,
-                "words": ["敏感词A", "敏感词B"],
-                "patterns": []
+            "政治类": {
+                "id": 1,
+                "default_risk": 5,
+                "words": ["词A", "词B"]
             },
-            "advertisement": {
-                "defaultRisk": 3,
-                "words": ["代开发票", "办证"],
-                "patterns": []
+            "广告类": {
+                "id": 2,
+                "default_risk": 3,
+                "words": ["词C", "词D", "词E"]
             }
         }
     },
     "details": null,
-    "timestamp": "2025-06-21T17:25:25.369004",
+    "timestamp": "2025-07-13T13:00:00.123456",
     "pagination": null
 }
 ```
 
----
+### 1.2 获取所有分类
 
-## 2. 获取敏感词分类列表
-
-- **Endpoint**: `GET /wxapp/banwords/categories`
-- **Permissions**: `Admin`
+- **Endpoint**: `GET /api/wxapp/banwords/categories`
+- **Permissions**: `Public`
 - **Tags**: `wxapp-banwords`
-- **Summary**: 只获取所有敏感词的分类名称。
+- **Summary**: 获取所有违禁词的分类列表。
 
-### 响应 (200 OK)
+#### 成功响应 (200 OK)
 
 ```json
 {
     "code": 200,
-    "message": "获取敏感词分类成功",
-    "data": {
-        "categories": [
-            "politics",
-            "advertisement",
-            "spam"
-        ]
-    },
+    "message": "success",
+    "data": [
+        {
+            "id": 1,
+            "name": "政治类"
+        },
+        {
+            "id": 2,
+            "name": "广告类"
+        }
+    ],
     "details": null,
-    "timestamp": "2025-06-21T17:28:54.432578",
+    "timestamp": "2025-07-13T13:01:00.567890",
     "pagination": null
 }
 ```
 
 ---
 
-## 3. 添加敏感词
+## 2. 管理员接口 (Admin API)
 
-- **Endpoint**: `POST /wxapp/banwords/library`
-- **Permissions**: `Admin`
+**所有管理员接口都需要在请求头中提供管理员用户的 `Bearer Token`。**
+
+### 2.1 创建新分类
+
+- **Endpoint**: `POST /api/wxapp/banwords/category`
+- **Permissions**: `Admin Required`
 - **Tags**: `wxapp-banwords`
-- **Summary**: 向指定分类添加一个或多个新的敏感词。
+- **Summary**: 创建一个新的违禁词分类。
 
-### 请求体 (Body)
+#### 请求体 (Body)
 
 | 参数 | 类型 | 是否必须 | 描述 |
-| :--- | :--- | :--- | :--- |
-| `category` | `string` | 是 | 敏感词所属的分类名称。 |
-| `words` | `List[string]` | 是 | 要添加的敏感词列表。 |
-| `risk` | `integer` | 否 | 风险等级，默认为3。 |
+| --- | --- | --- | --- |
+| `name` | `string` | 是 | 新的分类名称。必须是唯一的。 |
+| `default_risk` | `integer`| 否 | 该分类的默认风险等级，默认为3。 |
 
-**示例:**
-```json
-{
-    "category": "advertisement",
-    "words": ["优惠券"],
-    "risk": 3
-}
-```
-
-### 响应 (200 OK)
+#### 成功响应 (200 OK)
 
 ```json
 {
     "code": 200,
-    "message": "成功添加1个敏感词",
+    "message": "分类创建成功",
     "data": {
-        "added_count": 1
+        "id": 3
     },
     "details": null,
-    "timestamp": "2025-06-21T17:30:59.345601",
+    "timestamp": "2025-07-13T13:02:00.123456",
     "pagination": null
 }
 ```
 
----
+### 2.2 批量添加违禁词
 
-## 4. 删除敏感词
-
-- **Endpoint**: `POST /wxapp/banwords/delete-word`
-- **Permissions**: `Admin`
+- **Endpoint**: `POST /api/wxapp/banwords/words`
+- **Permissions**: `Admin Required`
 - **Tags**: `wxapp-banwords`
-- **Summary**: 从指定分类中删除一个敏感词。
+- **Summary**: 向一个分类中批量添加多个违禁词。重复的词将被忽略。
 
-### 请求体 (Body)
+#### 请求体 (Body)
 
 | 参数 | 类型 | 是否必须 | 描述 |
-| :--- | :--- | :--- | :--- |
-| `category` | `string` | 是 | 敏感词所属的分类名称。 |
-| `word` | `string` | 是 | 要删除的敏感词。 |
+| --- | --- | --- | --- |
+| `category_id` | `integer` | 是 | 要添加到的分类ID。 |
+| `words` | `array` | 是 | 包含多个违禁词字符串的列表。 |
 
-**示例:**
-```json
-{
-    "category": "advertisement",
-    "word": "优惠券"
-}
-```
-
-### 响应 (200 OK)
+#### 成功响应 (200 OK)
 
 ```json
 {
     "code": 200,
-    "message": "成功删除敏感词: 优惠券",
-    "data": {},
+    "message": "批量添加完成",
+    "data": {
+        "added_count": 5
+    },
     "details": null,
-    "timestamp": "2025-06-21T17:31:09.494495",
+    "timestamp": "2025-07-13T13:03:00.567890",
     "pagination": null
 }
 ```
 
----
+### 2.3 删除违禁词
 
-## 5. 更新整个分类的敏感词
-
-- **Endpoint**: `POST /wxapp/banwords/update-category/{category}`
-- **Permissions**: `Admin`
+- **Endpoint**: `DELETE /api/wxapp/banwords/word`
+- **Permissions**: `Admin Required`
 - **Tags**: `wxapp-banwords`
-- **Summary**: 使用新的词汇列表完全替换指定分类下的所有敏感词。
+- **Summary**: 从一个分类中删除一个指定的违禁词。
 
-### 路径参数 (Path)
-
-| 参数 | 类型 | 描述 |
-| :--- | :--- | :--- |
-| `category` | `string` | 要更新的分类名称。 |
-
-### 请求体 (Body)
+#### 请求体 (Body)
 
 | 参数 | 类型 | 是否必须 | 描述 |
-| :--- | :--- | :--- | :--- |
-| `words` | `List[string]` | 是 | 新的敏感词列表。 |
+| --- | --- | --- | --- |
+| `category_id` | `integer` | 是 | 违禁词所在的分类ID。 |
+| `word` | `string` | 是 | 要删除的违禁词。 |
 
-**示例:**
-```json
-{
-    "words": [
-        "测试词1",
-        "测试词2"
-    ]
-}
-```
-
-### 响应 (200 OK)
+#### 成功响应 (200 OK)
 
 ```json
 {
     "code": 200,
-    "message": "成功更新分类 advertisement 的敏感词",
-    "data": {
-        "word_count": 2
-    },
+    "message": "删除成功",
+    "data": null,
     "details": null,
-    "timestamp": "2025-06-21T17:31:20.061053",
+    "timestamp": "2025-07-13T13:04:00.123456",
     "pagination": null
 }
 ``` 

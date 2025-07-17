@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS `wxapp_post` (
     `id` bigint(20) NOT NULL AUTO_INCREMENT,
-    `openid` varchar(64) NOT NULL COMMENT '用户openid',
+    `user_id` bigint(20) DEFAULT NULL,
     `nickname` varchar(64) DEFAULT NULL COMMENT '用户昵称',
     `avatar` varchar(255) DEFAULT NULL COMMENT '用户头像',
     `phone` varchar(20) DEFAULT NULL COMMENT '手机号',
@@ -25,9 +25,9 @@ CREATE TABLE IF NOT EXISTS `wxapp_post` (
     `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     PRIMARY KEY (`id`),
-    KEY `idx_openid` (`openid`),
     KEY `idx_category_id` (`category_id`),
     KEY `idx_create_time` (`create_time`),
     KEY `idx_status` (`status`),
+    KEY `user_id` (`user_id`),
     FULLTEXT KEY `ft_content` (`content`, `title`) WITH PARSER ngram
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序帖子表'; 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='小程序帖子表';

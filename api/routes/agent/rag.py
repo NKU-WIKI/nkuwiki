@@ -8,8 +8,9 @@ import json
 import traceback
 import datetime
 from typing import List, Dict, Any, Optional, Union
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from api.models.common import Response, Request, validate_params
+from api.common.dependencies import get_current_active_user_optional
 from api.routes.knowledge.search import _elasticsearch_search_internal
 from core.agent.coze.coze_agent import CozeAgent
 from fastapi.responses import StreamingResponse
@@ -213,19 +214,22 @@ def get_stream_generator(result: Dict[str, Any]):
     return stream_generator
 
 @router.post("/rag")
-async def rag_endpoint(request: Request):
+async def rag_endpoint(
+    request: Request,
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional) # 认证设为可选
+):
     """coze rag 检索增强生成接口"""
     try:
         start_time = time.time()
         req_data = await request.json()
-        required_params = ["query", "openid"]
+        required_params = ["query"]
         error_response = validate_params(req_data, required_params)
         if(error_response):
             return error_response
 
         # 获取请求参数
         query = req_data.get("query")
-        openid = req_data.get("openid")
+        # openid = current_user['openid'] if current_user else "anonymous" # 使用可选的用户信息
         platform = req_data.get("platform") 
         max_results = req_data.get("max_results", 10)
         request_format = req_data.get("format", "markdown")
@@ -247,6 +251,7 @@ async def rag_endpoint(request: Request):
         logger.debug(f"开始使用Elasticsearch检索: query='{query}', enhanced_query='{enhanced_query}'")
         response = await _elasticsearch_search_internal(
             query=query,
+            current_user=current_user, # 传递可选的用户信息
             enhanced_query=enhanced_query,
             platform=platform,
             size=max_results
@@ -328,4 +333,4 @@ async def rag_endpoint(request: Request):
     
     except Exception as e:
         logger.exception(f"RAG处理失败: {e}")
-        return Response.error(message=f"RAG process failed: {e}", status_code=500)
+        return Response.error(message=f"RAG process failed: {e}")

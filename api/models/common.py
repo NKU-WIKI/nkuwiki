@@ -360,7 +360,6 @@ def validate_params(req_data: Dict, required_params: List[str]) -> Optional[JSON
         Optional[JSONResponse]: 错误响应，如果验证通过则返回 None
     """
     required_params = list(required_params)  # 创建副本，避免修改原参数
-    required_params.append("openid")  # 添加openid作为必需参数
     missing_params = [param for param in required_params if param not in req_data]
     if missing_params:
         return Response.bad_request(message=f"缺少必要参数: {', '.join(missing_params)}")

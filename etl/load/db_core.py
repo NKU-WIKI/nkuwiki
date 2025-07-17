@@ -53,8 +53,13 @@ async def insert_record(table_name: str, data: Dict[str, Any]) -> int:
     return await _execute_query(query, list(data.values()), fetch=None)
 
 
-async def batch_insert(table_name: str, records: List[Dict[str, Any]], batch_size: int = 500) -> int:
-    """高效批量插入记录"""
+async def batch_insert(
+    table_name: str, 
+    records: List[Dict[str, Any]], 
+    batch_size: int = 500,
+    ignore_duplicates: bool = False
+) -> int:
+    """高效批量插入记录，可选忽略重复键冲突。"""
     if not records:
         return 0
 
@@ -62,7 +67,9 @@ async def batch_insert(table_name: str, records: List[Dict[str, Any]], batch_siz
     cols = list(records[0].keys())
     cols_sql = ", ".join(f"`{k}`" for k in cols)
     placeholders = ", ".join(["%s"] * len(cols))
-    query = f"INSERT INTO {table_name} ({cols_sql}) VALUES ({placeholders})"
+    
+    insert_keyword = "INSERT IGNORE INTO" if ignore_duplicates else "INSERT INTO"
+    query = f"{insert_keyword} {table_name} ({cols_sql}) VALUES ({placeholders})"
     
     try:
         async with get_db_connection() as conn:

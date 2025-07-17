@@ -1,0 +1,18 @@
+{
+    "title": "这是一个测试帖子",
+    "content": "这是帖子的内容，用于测试发帖接口。",
+    "category_id": 1,
+    "tag": ["测试", "API"],
+    "image": [
+        "https://example.com/image1.jpg",
+        "https://example.com/image2.png"
+    ],
+    "location": {
+        "name": "南开大学八里台校区",
+        "address": "天津市南开区卫津路94号",
+        "latitude": 39.106,
+        "longitude": 117.182
+    },
+    "allow_comment": true,
+    "is_public": true
+} 

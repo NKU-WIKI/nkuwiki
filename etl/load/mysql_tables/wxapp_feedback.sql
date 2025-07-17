@@ -1,6 +1,7 @@
 CREATE TABLE IF NOT EXISTS `wxapp_feedback` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
     `openid` VARCHAR(100) NOT NULL COMMENT '用户openid',
+    `user_id` BIGINT DEFAULT NULL COMMENT '关联的用户ID (如果用户已登录)',
     `title` VARCHAR(255) DEFAULT '' COMMENT '反馈标题',
     `content` TEXT DEFAULT NULL COMMENT '反馈内容',
     `category` VARCHAR(20) DEFAULT NULL COMMENT '反馈类型: bug-问题反馈, suggestion-建议, other-其他',
@@ -14,6 +15,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_feedback` (
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
     KEY `idx_openid` (`openid`),
+    KEY `idx_user_id` (`user_id`),
     KEY `idx_category` (`category`),
     KEY `idx_status` (`status`),
     KEY `idx_create_time` (`create_time`),

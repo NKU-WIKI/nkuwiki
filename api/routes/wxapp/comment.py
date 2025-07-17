@@ -4,7 +4,7 @@
 微信小程序评论相关API接口
 处理评论创建、查询、更新、删除和点赞等功能
 """
-from fastapi import APIRouter, Query, Body, Depends
+from fastapi import APIRouter, Query, Body, Depends, BackgroundTasks
 from api.models.common import Response, Request, validate_params, PaginationInfo
 from etl.load import (
     query_records, 
@@ -18,54 +18,59 @@ import json
 import logging
 import asyncio
 from typing import Dict, Any, Optional, List
+from pydantic import BaseModel
 
 from ._utils import _update_count, create_notification
+from api.common.dependencies import get_current_active_user, get_current_active_user_optional
 
 # 配置日志
 logger = logging.getLogger("wxapp.comment")
 router = APIRouter()
 
 
-async def _enrich_comments(comments: List[Dict[str, Any]], current_openid: Optional[str] = None) -> List[Dict[str, Any]]:
+async def _enrich_comments(comments: List[Dict[str, Any]], current_user: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """高效地为评论列表批量补充作者信息和当前用户的点赞状态"""
     if not comments:
         return []
 
-    author_openids = {c.get("openid") for c in comments if c.get("openid")}
+    author_ids = {c.get("user_id") for c in comments if c.get("user_id")}
     comment_ids = [c.get("id") for c in comments if c.get("id")]
 
     # 批量获取用户信息
     users_info_map = {}
-    if author_openids:
-        placeholders = ', '.join(['%s'] * len(author_openids))
-        user_sql = f"SELECT openid, nickname, avatar, bio FROM wxapp_user WHERE openid IN ({placeholders})"
-        user_results = await execute_custom_query(user_sql, list(author_openids))
-        users_info_map = {user['openid']: user for user in user_results}
+    if author_ids:
+        placeholders = ', '.join(['%s'] * len(author_ids))
+        user_sql = f"SELECT id, nickname, avatar, bio FROM wxapp_user WHERE id IN ({placeholders})"
+        user_results = await execute_custom_query(user_sql, list(author_ids))
+        users_info_map = {user['id']: user for user in user_results}
 
     # 批量获取点赞状态
     liked_comment_ids = set()
-    if current_openid and comment_ids:
+    if current_user and comment_ids:
+        current_user_id = current_user['id']
         placeholders = ', '.join(['%s'] * len(comment_ids))
-        like_sql = f"SELECT target_id FROM wxapp_action WHERE action_type = 'like' AND target_type = 'comment' AND openid = %s AND target_id IN ({placeholders})"
-        like_params = [current_openid] + comment_ids
+        like_sql = f"SELECT target_id FROM wxapp_action WHERE action_type = 'like' AND target_type = 'comment' AND user_id = %s AND target_id IN ({placeholders})"
+        like_params = [current_user_id] + comment_ids
         like_results = await execute_custom_query(like_sql, like_params)
         liked_comment_ids = {res['target_id'] for res in like_results}
     
     # 注入信息到评论中
     for comment in comments:
-        author_openid = comment.get("openid")
-        user_info = users_info_map.get(author_openid, {})
+        author_id = comment.get("user_id")
+        user_info = users_info_map.get(author_id, {})
         comment.update(user_info)
         comment["is_liked"] = comment.get("id") in liked_comment_ids
+        if 'openid' in comment: # 保留，以防万一
+            del comment['openid']
 
     return comments
 
 # 递归获取子评论的函数
-async def get_child_comments(comment_id: int, openid: Optional[str] = None) -> List[Dict[str, Any]]:
+async def get_child_comments(comment_id: int, current_user: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
     """递归获取评论的所有子评论，使用批量查询优化性能"""
     replies_sql = """
     SELECT 
-        id, resource_id, resource_type, parent_id, openid, 
+        id, resource_id, resource_type, parent_id, user_id, 
         content, image, like_count, reply_count, status, is_deleted, 
         create_time, update_time
     FROM wxapp_comment 
@@ -82,14 +87,14 @@ async def get_child_comments(comment_id: int, openid: Optional[str] = None) -> L
         return []
     
     # 高效地为当前层级的回复补充信息
-    enriched_replies = await _enrich_comments(replies, openid)
+    enriched_replies = await _enrich_comments(replies, current_user)
     
     # 递归处理更深层级的子评论
     for i, reply in enumerate(enriched_replies):
         # "parent_comment_count" 实际上是该评论在同级回复中的位置索引
         reply["parent_comment_count"] = i
         
-        children = await get_child_comments(reply.get("id"), openid)
+        children = await get_child_comments(reply.get("id"), current_user)
         if children:
             reply["children"] = children
     
@@ -99,23 +104,24 @@ async def _send_comment_notification(
     resource_type: str, 
     resource: Dict, 
     parent_id: Optional[int], 
-    user_openid: str
+    current_user: Dict[str, Any]
 ):
     """发送评论相关的通知。"""
     try:
-        sender_info = await get_by_id("wxapp_user", user_openid, id_column='openid', fields=['nickname', 'avatar'])
+        user_id = current_user['id']
+        sender_info = current_user # 直接使用传入的用户对象
         sender_payload = {
-            "openid": user_openid, 
+            "user_id": user_id, 
             "avatar": sender_info.get("avatar", ""), 
             "nickname": sender_info.get("nickname", "")
         }
 
         # 回复通知
         if parent_id:
-            parent_comment = await get_by_id("wxapp_comment", parent_id, fields=['openid'])
-            if parent_comment and parent_comment.get("openid") != user_openid:
+            parent_comment = await get_by_id("wxapp_comment", parent_id, fields=['user_id'])
+            if parent_comment and parent_comment.get("user_id") != user_id:
                 await create_notification(
-                    openid=parent_comment["openid"],
+                    user_id=parent_comment["user_id"],
                     title="收到新回复",
                     content="用户回复了你的评论",
                     target_id=parent_id,
@@ -123,11 +129,11 @@ async def _send_comment_notification(
                     sender_payload=sender_payload
                 )
         # 资源评论通知
-        elif resource.get("openid") != user_openid:
+        elif resource.get("user_id") != user_id:
             safe_title = resource.get('title', '无标题')
             resource_name = '帖子' if resource_type == 'post' else '知识'
             await create_notification(
-                openid=resource["openid"],
+                user_id=resource["user_id"],
                 title="收到新评论",
                 content=f"用户评论了你的{resource_name}「{safe_title}」",
                 target_id=resource.get("id"),
@@ -141,11 +147,9 @@ async def _send_comment_notification(
 @router.get("/detail", summary="获取单条评论详情")
 async def get_comment_detail(
     comment_id: str,
-    openid: Optional[str] = Query(None)
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
 ):
     """获取评论详情"""
-    if not openid:
-        return Response.bad_request(details={"message": "缺少openid参数"})
     if not comment_id:
         return Response.bad_request(details={"message": "缺少comment_id参数"})
     
@@ -173,13 +177,14 @@ async def get_comment_detail(
         comment = dict(comment_result)
 
         # 使用单一查询获取点赞状态
+        user_id = current_user['id']
         like_query_coro = execute_custom_query(
             """
             SELECT 1 FROM wxapp_action 
-            WHERE openid = %s AND action_type = 'like' AND target_id = %s AND target_type = 'comment' 
+            WHERE user_id = %s AND action_type = 'like' AND target_id = %s AND target_type = 'comment' 
             LIMIT 1
             """, 
-            [openid, comment_id_int],
+            [user_id, comment_id_int],
             fetch='one'
         )
         
@@ -187,10 +192,10 @@ async def get_comment_detail(
         user_query_coro = execute_custom_query(
             """
             SELECT nickname, avatar, bio FROM wxapp_user 
-            WHERE openid = %s 
+            WHERE id = %s 
             LIMIT 1
             """, 
-            [comment.get("openid")],
+            [comment.get("user_id")],
             fetch='one'
         )
         
@@ -207,7 +212,11 @@ async def get_comment_detail(
             comment["bio"] = user_info.get("bio")
         
         # 递归获取所有子评论
-        children = await get_child_comments(comment_id_int, openid)
+        children = await get_child_comments(comment_id_int, current_user)
+
+        # 移除 openid 
+        if 'openid' in comment:
+            del comment['openid']
 
         result = {
             **comment,
@@ -223,18 +232,16 @@ async def get_comment_detail(
 
 @router.get("/status")
 async def get_comment_status(
-    openid: str = Query(..., description="用户OpenID"),
-    comment_ids: str = Query(..., description="评论ID列表，用逗号分隔"),
+    comment_id: str = Query(..., description="评论ID列表，用逗号分隔"),
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
 ):
     """获取评论状态"""
-    if not openid:
-        return Response.bad_request(details={"message": "缺少openid参数"})
-    if not comment_ids:
-        return Response.bad_request(details={"message": "缺少comment_ids参数"})
+    if not comment_id:
+        return Response.bad_request(details={"message": "缺少comment_id参数"})
     
     try:
         # 分割评论ID列表并转换为整数
-        raw_ids = comment_ids.split(',')
+        raw_ids = comment_id.split(',')
         if not raw_ids:
             return Response.bad_request(details={"message": "评论ID列表格式错误"})
         
@@ -251,37 +258,26 @@ async def get_comment_status(
                 continue
         
         if not ids:
-            return Response.bad_request(details={"message": "没有有效的评论ID"})
+            return Response.bad_request(details={"message": "未提供有效的评论ID"})
         
-        # 构建IN查询的占位符
+        # 使用单一SQL查询获取所有点赞状态
+        user_id = current_user['id']
         placeholders = ','.join(['%s'] * len(ids))
-        
-        # 获取评论存在状态和回复数量
-        comment_sql = f"""
-        SELECT id, 
-               (SELECT COUNT(*) FROM wxapp_comment WHERE parent_id = c.id AND status = 1) AS reply_count
-        FROM wxapp_comment c
-        WHERE id IN ({placeholders}) AND status = 1
-        """
-        
-        # 获取用户点赞状态
-        like_sql = f"""
-        SELECT target_id
+        sql = f"""
+        SELECT target_id, 1 as is_liked 
         FROM wxapp_action 
-        WHERE openid = %s AND action_type = 'like' AND target_type = 'comment' AND target_id IN ({placeholders})
+        WHERE user_id = %s AND action_type = 'like' AND target_type = 'comment' AND target_id IN ({placeholders})
         """
         
         # 执行查询
-        comments = await execute_custom_query(comment_sql, ids)
-        like_params = [openid] + ids
-        likes = await execute_custom_query(like_sql, like_params)
+        comments = await execute_custom_query(sql, [user_id] + ids)
         
         # 转换点赞结果为集合，方便快速查找
-        liked_ids = {record['target_id'] for record in likes} if likes else set()
+        liked_ids = {record['target_id'] for record in comments} if comments else set()
         
         # 为每个请求的评论ID构建状态信息
         result = {}
-        comment_dict = {comment['id']: comment for comment in comments} if comments else {}
+        comment_dict = {comment['target_id']: comment for comment in comments} if comments else {}
         
         for cid in ids:
             comment = comment_dict.get(cid)
@@ -309,264 +305,248 @@ async def get_replies(
     comment_id: str,
     page: int = 1,
     page_size: int = 5,
-    openid: Optional[str] = Query(None)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional)
 ):
-    """获取单条评论的回复列表"""
+    """获取单条评论的回复列表，分页展示"""
     try:
-        # 获取所有子评论
-        children = await get_child_comments(int(comment_id), openid)
+        comment_id_int = int(comment_id)
+    except (ValueError, TypeError):
+        return Response.bad_request(details={"message": "comment_id必须是整数"})
         
-        # 内存分页
-        total = len(children)
-        start = (page - 1) * page_size
-        end = start + page_size
-        paginated_children = children[start:end]
-        
-        # 构建分页信息
-        pagination = PaginationInfo(
-            total=total,
-            page=page,
-            page_size=page_size
-        )
-        
-        return Response.paged(data=paginated_children, pagination=pagination)
-    except Exception as e:
-        logger.error(f"获取回复列表失败 (comment_id={comment_id}): {e}")
-        return Response.error(details=f"获取回复失败: {e}")
+    offset = (page - 1) * page_size
+    
+    # 查询子评论
+    replies_sql = """
+    SELECT * FROM wxapp_comment 
+    WHERE parent_id = %s AND status = 1 AND is_deleted = 0
+    ORDER BY create_time ASC
+    LIMIT %s OFFSET %s
+    """
+    replies = await execute_custom_query(replies_sql, [comment_id_int, page_size, offset])
+    
+    # 丰富评论信息
+    enriched_replies = await _enrich_comments(replies, current_user)
+    
+    # 查询总数以进行分页
+    total_count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE parent_id = %s AND status = 1 AND is_deleted = 0"
+    total_result = await execute_custom_query(total_count_sql, [comment_id_int], fetch='one')
+    total = total_result.get('total', 0)
+    
+    pagination = PaginationInfo(total=total, page=page, page_size=page_size)
+    
+    return Response.paged(data=enriched_replies, pagination=pagination)
 
 
 @router.post("/delete", summary="删除评论")
 async def delete_comment(
-    body: Dict[str, Any] = Body(...)
+    body: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
 ):
-    """删除用户自己的评论。"""
+    """删除评论"""
+    comment_id = body.get("id")
+    if not comment_id:
+        return Response.bad_request(details={"message": "缺少id参数"})
+
     try:
-        comment_id = body.get('comment_id')
-        openid = body.get('openid')
-        if not comment_id or not openid:
-            return Response.bad_request(details={"message": "缺少comment_id或openid参数"})
-
-        comment = await get_by_id("wxapp_comment", comment_id)
+        # 验证评论是否存在且属于当前用户
+        comment = await get_by_id("wxapp_comment", comment_id, fields=['user_id', 'parent_id', 'resource_id', 'resource_type'])
         if not comment:
-            return Response.error(message="评论不存在")
+            return Response.not_found(resource="评论")
+        
+        if comment['user_id'] != current_user['id']:
+            return Response.forbidden(details={"message": "只能删除自己的评论"})
 
-        if comment.get('openid') != openid:
-            return Response.error(message="无权删除他人评论", code=403)
-
-        # 逻辑删除
+        # 执行删除 (逻辑删除)
         await update_record("wxapp_comment", {"id": comment_id}, {"is_deleted": 1})
         
-        # 如果是父评论，也需要处理子评论（暂不处理，前端隐藏即可）
+        # 更新相关计数
+        if comment.get("parent_id"):
+            # 是回复，更新父评论的回复数
+            await _update_count("wxapp_comment", comment["parent_id"], "reply_count", -1)
+        else:
+            # 是顶级评论，更新资源的评论数
+            await _update_count(f"wxapp_{comment['resource_type']}", comment["resource_id"], "comment_count", -1)
 
-        # 更新相关资源评论计数
-        resource_type = comment.get('resource_type')
-        resource_id = comment.get('resource_id')
-        if resource_type and resource_id:
-            resource = await get_by_id(f"wxapp_{resource_type}", resource_id)
-            if resource and resource.get("comment_count", 0) > 0:
-                 await update_record(
-                    f"wxapp_{resource_type}",
-                    {"id": resource_id},
-                    {"comment_count": resource.get("comment_count") - 1}
-                )
-
-        return Response.success(message="删除成功")
+        return Response.success(details={"message": "删除成功"})
     except Exception as e:
-        logger.error(f"删除评论失败: {e}", exc_info=True)
-        return Response.error(message="删除失败")
+        logger.error(f"删除评论失败: {e}")
+        return Response.error(details={"message": "删除评论失败"})
+
+
+class UpdateCommentRequest(BaseModel):
+    id: int
+    content: str
+
 
 @router.post("/update")
 async def update_comment(
-    request: Request,
+    request_data: UpdateCommentRequest,
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
 ):
-    """更新评论"""
-    try:
-        req_data = await request.json()
-        required_params = ["comment_id", "openid"]
-        error_response = validate_params(req_data, required_params)
-        if(error_response):
-            return error_response
+    """
+    更新评论
+    """
+    comment_id = request_data.id
+    content = request_data.content
 
-        openid = req_data.get("openid")
-        comment_id = req_data.get("comment_id")
-        content = req_data.get("content")
-        image = req_data.get("image")
+    # 检查评论是否存在以及用户是否有权编辑
+    comment = await get_by_id("wxapp_comment", comment_id, fields=['user_id'])
+    if not comment:
+        return Response.not_found(resource="评论")
 
+    user_id = current_user['id']
+    if comment.get("user_id") != user_id:
+        return Response.forbidden(details={"message": "无权编辑此评论"})
 
-        comment = await get_by_id(
-            table_name="wxapp_comment",
-            record_id=comment_id
-        )
+    # 更新评论内容
+    await update_record("wxapp_comment", {"id": comment_id}, {"content": content})
+    
+    return Response.success(details={"message": "更新成功"})
 
-        if not comment:
-            return Response.not_found(resource="评论")
-
-        if comment["openid"] != openid:
-            return Response.forbidden(details={"message": "只有评论作者才能更新评论"})
-
-        allowed_fields = ["content", "image"]
-        filtered_data = {k: v for k, v in req_data.items() if k in allowed_fields}
-
-        if not filtered_data:
-            return Response.bad_request(details={"message": "没有提供可更新的字段"})
-
-        if 'image' in filtered_data and isinstance(filtered_data['image'], list):
-            filtered_data['image'] = json.dumps(filtered_data['image'], ensure_ascii=False)
-
-        try:
-            await update_record(
-                table_name="wxapp_comment",
-                record_id=comment_id,
-                data=filtered_data
-            )
-
-        except Exception as e:
-            return Response.db_error(details={"message": f"评论更新失败: {str(e)}"})
-
-        updated_comment = await get_by_id(
-            table_name="wxapp_comment",
-            record_id=comment_id
-        )
-
-        return Response.success(data=updated_comment)
-    except Exception as e:
-        return Response.error(details={"message": f"更新评论失败: {str(e)}"})
 
 @router.get("/list", summary="获取评论列表")
 async def get_comments(
-    post_id: int = Query(..., description="帖子ID"),
+    resource_id: int = Query(..., description="资源ID (例如帖子ID)"),
+    resource_type: str = Query("post", description="资源类型"),
     page: int = 1,
     page_size: int = 10,
-    current_openid: Optional[str] = Query(None)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional)
 ):
-    """获取评论列表"""
+    """获取指定资源的评论列表，分页展示，并包含每个评论的点赞状态"""
     offset = (page - 1) * page_size
     
-    # 首先计算总评论数
-    count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE resource_id = %s AND resource_type = 'post' AND parent_id = 0 AND is_deleted = 0"
-    total_result = await execute_custom_query(count_sql, [post_id], fetch='one')
-    total_comments = total_result['total'] if total_result else 0
-    
-    if total_comments == 0:
-        return Response.paged(data=[], pagination=PaginationInfo(total=0, page=page, page_size=page_size))
-        
-    # 获取顶层评论
+    # 先获取顶层评论
     comments_sql = """
     SELECT * FROM wxapp_comment 
-    WHERE resource_id = %s AND resource_type = 'post' AND parent_id = 0 AND is_deleted = 0
+    WHERE resource_id = %s AND resource_type = %s AND parent_id IS NULL AND is_deleted = 0
     ORDER BY create_time DESC 
     LIMIT %s OFFSET %s
     """
-    comments = await execute_custom_query(comments_sql, [post_id, page_size, offset])
+    comments = await execute_custom_query(comments_sql, [resource_id, resource_type, page_size, offset])
     
-    # 丰富评论信息
-    enriched_comments = await _enrich_comments(comments, current_openid)
-    
-    # 获取每个顶层评论的子评论
+    # 丰富评论信息（作者、点赞状态）
+    enriched_comments = await _enrich_comments(comments, current_user)
+
+    # 递归获取子评论
     for comment in enriched_comments:
-        children = await get_child_comments(comment['id'], current_openid)
-        if children:
-            comment['children'] = children
-            
-    # 构建分页信息
-    pagination = PaginationInfo(total=total_comments, page=page, page_size=page_size)
+        comment["children"] = await get_child_comments(comment.get("id"), current_user)
+    
+    # 获取总数用于分页
+    total_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE resource_id = %s AND resource_type = %s AND parent_id IS NULL AND is_deleted = 0"
+    total_result = await execute_custom_query(total_sql, [resource_id, resource_type], fetch='one')
+    total = total_result.get('total', 0)
+    
+    pagination = PaginationInfo(total=total, page=page, page_size=page_size)
     
     return Response.paged(data=enriched_comments, pagination=pagination)
+
 
 @router.get("/user", summary="获取用户的评论列表")
 async def get_user_comments(
-    target_openid: str,
+    user_id: int = Query(..., description="目标用户的ID"),
     page: int = 1,
     page_size: int = 10,
-    current_openid: Optional[str] = Query(None)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional)
 ):
-    """获取某个用户发布的所有评论，按时间倒序排列"""
-    offset = (page - 1) * page_size
-    
-    # 计算总数
-    count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE openid = %s AND is_deleted = 0"
-    total_result = await execute_custom_query(count_sql, [target_openid], fetch='one')
-    total_comments = total_result['total'] if total_result else 0
-    
-    if total_comments == 0:
-        return Response.paged(data=[], pagination=PaginationInfo(total=0, page=page, page_size=page_size))
+    """获取指定用户发表的所有评论，并附带当前用户的点赞状态"""
+    try:
+        # 1. 计算分页
+        offset = (page - 1) * page_size
+
+        # 2. 构建查询
+        query_sql = """
+            SELECT 
+                c.id, c.resource_id, c.resource_type, c.parent_id, c.user_id, 
+                c.content, c.image, c.like_count, c.reply_count, c.status, 
+                c.is_deleted, c.create_time, c.update_time,
+                p.title AS resource_title, p.content AS resource_abstract
+            FROM 
+                wxapp_comment c
+            LEFT JOIN 
+                wxapp_post p ON c.resource_id = p.id AND c.resource_type = 'post'
+            WHERE 
+                c.user_id = %s AND c.status = 1 AND c.is_deleted = 0
+            ORDER BY 
+                c.create_time DESC
+            LIMIT %s OFFSET %s
+        """
+        count_sql = "SELECT COUNT(*) as total FROM wxapp_comment WHERE user_id = %s AND status = 1 AND is_deleted = 0"
+
+        # 3. 并行执行数据查询和总数查询
+        comments_task = execute_custom_query(query_sql, [user_id, page_size, offset])
+        total_task = execute_custom_query(count_sql, [user_id], fetch='one')
         
-    # 获取分页后的评论
-    comments_sql = """
-    SELECT * FROM wxapp_comment 
-    WHERE openid = %s AND is_deleted = 0 
-    ORDER BY create_time DESC 
-    LIMIT %s OFFSET %s
-    """
-    comments = await execute_custom_query(comments_sql, [target_openid, page_size, offset])
+        comments_data, total_result = await asyncio.gather(comments_task, total_task)
 
-    # 丰富评论信息
-    enriched_comments = await _enrich_comments(comments, current_openid)
+        # 4. 丰富评论信息（作者、点赞状态）
+        enriched_comments = await _enrich_comments(comments_data, current_user)
 
-    # 构建分页信息
-    pagination = PaginationInfo(total=total_comments, page=page, page_size=page_size)
+        # 5. 构建分页信息
+        total_records = total_result.get('total', 0)
+        pagination = PaginationInfo(total=total_records, page=page, page_size=page_size)
+        
+        return Response.paged(data=enriched_comments, pagination=pagination)
 
-    return Response.paged(data=enriched_comments, pagination=pagination)
+    except Exception as e:
+        logger.exception(f"获取用户评论列表失败 (target_user_id={user_id}): {e}")
+        return Response.error(message="服务器内部错误")
 
 
 @router.post("/create", summary="发布评论")
 async def create_comment(
-    body: Dict[str, Any] = Body(...)
+    background_tasks: BackgroundTasks,
+    body: Dict[str, Any] = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_active_user)
 ):
-    """发布新评论或回复"""
-    # 参数验证
-    required_params = ['openid', 'resource_id', 'resource_type', 'content']
-    if error_response := validate_params(body, required_params):
-        return error_response
+    """
+    发布评论或回复。
+    - 如果`parent_id`为空，则为对资源的直接评论。
+    - 如果`parent_id`不为空，则为对另一条评论的回复。
+    """
+    # 验证必要参数
+    required_params = ['resource_id', 'resource_type', 'content']
+    error_resp = validate_params(body, required_params)
+    if error_resp:
+        return error_resp
 
-    # 准备要插入的数据
+    # 提取参数
+    resource_id = body.get("resource_id")
+    resource_type = body.get("resource_type")
+    content = body.get("content")
+    parent_id = body.get("parent_id")
+    image = body.get("image", [])
+    
+    user_id = current_user['id']
+
+    # 验证资源是否存在
+    table_map = {"post": "wxapp_post", "knowledge": "wxapp_knowledge"}
+    table_name = table_map.get(resource_type)
+    if not table_name:
+        return Response.bad_request(details={"message": f"不支持的资源类型: {resource_type}"})
+        
+    resource = await get_by_id(table_name, resource_id)
+    if not resource:
+        return Response.not_found(resource=f"目标资源 {resource_type}")
+
+    # 准备插入数据
     comment_data = {
-        "openid": body["openid"],
-        "resource_id": body["resource_id"],
-        "resource_type": body["resource_type"],
-        "content": body["content"],
-        "parent_id": body.get("parent_id", 0)
+        "user_id": user_id,
+        "resource_id": resource_id,
+        "resource_type": resource_type,
+        "content": content,
+        "image": json.dumps(image, ensure_ascii=False) if image else None,
+        "parent_id": parent_id
     }
 
-    # 处理可选的 image 字段
-    if 'image' in body and isinstance(body['image'], list):
-        comment_data['image'] = json.dumps(body['image'], ensure_ascii=False)
+    # 插入评论并获取ID
+    comment_id = await insert_record("wxapp_comment", comment_data)
+    if not comment_id:
+        return Response.db_error(details={"message": "发布评论失败"})
+        
+    # 使用后台任务更新计数和发送通知
+    background_tasks.add_task(_update_count, table_name, "comment_count", resource_id, 1)
+    if parent_id:
+        background_tasks.add_task(_update_count, "wxapp_comment", "reply_count", parent_id, 1)
+    background_tasks.add_task(_send_comment_notification, resource_type, resource, parent_id, current_user)
 
-    try:
-        # 使用事务确保数据一致性
-        async with _get_db_connection() as conn:
-            async with conn.cursor() as cursor:
-                # 1. 插入评论
-                cols = ", ".join(f"`{k}`" for k in comment_data.keys())
-                placeholders = ", ".join(["%s"] * len(comment_data))
-                insert_sql = f"INSERT INTO wxapp_comment ({cols}) VALUES ({placeholders})"
-                await cursor.execute(insert_sql, list(comment_data.values()))
-                comment_id = cursor.lastrowid
-                
-                # 2. 更新帖子或父评论的回复数
-                if comment_data['parent_id'] != 0:
-                    # 更新父评论的回复数
-                    update_sql = "UPDATE wxapp_comment SET reply_count = reply_count + 1, update_time = NOW() WHERE id = %s"
-                    await cursor.execute(update_sql, [comment_data['parent_id']])
-                else:
-                    # 更新帖子的评论数
-                    update_sql = "UPDATE wxapp_post SET comment_count = comment_count + 1, update_time = NOW() WHERE id = %s"
-                    await cursor.execute(update_sql, [comment_data['resource_id']])
-                
-                await conn.commit()
-
-        # 3. 发送通知 (在事务外)
-        resource = await get_by_id(f"wxapp_{comment_data['resource_type']}", comment_data['resource_id'])
-        if resource:
-            await _send_comment_notification(
-                comment_data['resource_type'], 
-                resource, 
-                comment_data['parent_id'], 
-                comment_data['openid']
-            )
-
-        return Response.success(data={"comment_id": comment_id}, message="评论发布成功")
-
-    except Exception as e:
-        logger.error(f"发布评论失败: {e}", exc_info=True)
-        return Response.error(details=f"数据库操作失败: {e}") 
+    return Response.success(data={"id": comment_id}, details={"message": "发布成功"}) 
