@@ -33,6 +33,7 @@
         "follower_count": 1,
         "following_count": 0,
         "create_time": "2025-06-09T13:24:10",
+        "level": 0,
         "is_following": false 
     }
 }
@@ -68,7 +69,8 @@
         "follower_count": 1,
         "following_count": 0,
         "create_time": "2025-06-09T13:24:10",
-        "role": "user"
+        "role": "user",
+        "level": 0
     }
 }
 ```

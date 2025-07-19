@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_user` (
     `last_login_time` DATETIME DEFAULT NULL COMMENT '最后登录时间',
     `status` TINYINT DEFAULT 1 COMMENT '状态：1-正常, 0-禁用',
     `role` VARCHAR(32) DEFAULT NULL COMMENT '用户角色，如admin、user、editor',
+    `level` INT DEFAULT 0 COMMENT '用户等级',
     PRIMARY KEY (`id`),
     UNIQUE KEY `unq_openid` (`openid`),
     KEY `idx_unionid` (`unionid`),

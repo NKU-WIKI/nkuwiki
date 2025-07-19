@@ -177,20 +177,19 @@ async def get_post_detail(
     author_id = post.get('user_id')
     if author_id:
         user_data = await execute_custom_query(
-            "SELECT id, nickname, avatar, bio, post_count, follower_count, following_count FROM wxapp_user WHERE id = %s",
+            "SELECT id, nickname, avatar, bio, post_count, follower_count, following_count, level FROM wxapp_user WHERE id = %s",
             [author_id], 
             fetch='one'
         )
-        if user_data:
-            post.update(user_data)
+        post['author_info'] = user_data if user_data else {}
     else:
-        # 即使没有作者信息，也初始化一些空字段以保证前端结构一致
-        post.update({
-            'user_id': None,
+        post['author_info'] = {
+            'id': None,
             'nickname': '匿名用户',
             'avatar': '',
-            'bio': ''
-        })
+            'bio': '',
+            'level': 0
+        }
 
     # 如果提供了当前用户，查询互动状态
     if current_user:
@@ -216,9 +215,9 @@ async def get_post_detail(
         post['is_favorited'] = False
         post['is_following_author'] = False
 
-    # 移除openid
-    if 'openid' in post:
-        del post['openid']
+    # 移除顶层冗余的用户信息和敏感信息
+    for key in ['openid', 'nickname', 'avatar', 'bio', 'post_count', 'follower_count', 'following_count']:
+        post.pop(key, None)
 
     return Response.success(data=post)
 

@@ -62,10 +62,7 @@
     "message": "success",
     "data": {
         "id": 12,
-        "openid": "oLx8G7ADjzh23EzAJavndryh76rE",
-        "nickname": "南开小透明",
-        "avatar": "...",
-        "bio": "A new bio for testing.",
+        "user_id": 1,
         "category_id": 1,
         "title": "My First Post",
         "content": "This is the content of my first post.",
@@ -80,9 +77,16 @@
         "favorite_count": 0,
         "create_time": "2025-06-21T08:59:26",
         "update_time": "2025-06-21T08:59:33",
-        "post_count": 8,
-        "follower_count": 1,
-        "following_count": 0,
+        "author_info": {
+            "id": 1,
+            "nickname": "南开小透明",
+            "avatar": "...",
+            "bio": "A new bio for testing.",
+            "level": 0,
+            "post_count": 8,
+            "follower_count": 1,
+            "following_count": 0
+        },
         "is_liked": false,
         "is_favorited": false,
         "is_following_author": false
@@ -136,7 +140,8 @@
                 "id": 1,
                 "nickname": "南开小透明",
                 "avatar": "...",
-                "bio": "A developer"
+                "bio": "A developer",
+                "level": 0
             },
             "is_liked": false,
             "is_favorited": false,

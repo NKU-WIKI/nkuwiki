@@ -156,7 +156,7 @@ async def get_user_list(
         offset = (page - 1) * page_size
         
         # 只返回需要的字段
-        fields = ["id", "openid", "nickname", "avatar", "bio", "create_time", "update_time", "role"]
+        fields = ["id", "openid", "nickname", "avatar", "bio", "create_time", "update_time", "role", "level"]
         users_result = await query_records(
             table_name="wxapp_user",
             fields=fields,

@@ -11,6 +11,7 @@ class User(BaseTimeStamp):
     openid: str = Field(..., description="发送者openid")
     nickname: str = Field("", description="发送者昵称")
     avatar: str = Field("", description="发送者头像")
+    level: int = Field(0, description="用户等级")
 
 class Post(BaseTimeStamp):
     """帖子模型"""
@@ -117,6 +118,7 @@ class UserInfo(User):
     following_count: int = Field(0, description="关注的用户数量")
     last_login: Optional[str] = Field(None, description="最后登录时间")
     status: int = Field(1, description="状态：1-正常, 0-禁用")
+    level: int = Field(0, description="用户等级")
 
 class AboutInfo(BaseAPI):
     """关于页信息模型"""

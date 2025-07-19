@@ -23,7 +23,7 @@ async def batch_enrich_posts_with_user_info(posts: List[Dict[str, Any]], current
     # 1. 批量获取作者信息
     if author_ids:
         placeholders = ', '.join(['%s'] * len(author_ids))
-        user_query = f"SELECT id, nickname, avatar, bio FROM wxapp_user WHERE id IN ({placeholders})"
+        user_query = f"SELECT id, nickname, avatar, bio, level FROM wxapp_user WHERE id IN ({placeholders})"
         user_results = await execute_custom_query(user_query, author_ids, fetch='all')
         author_info_map = {user['id']: user for user in user_results}
 
