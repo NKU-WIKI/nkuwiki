@@ -34,13 +34,15 @@
     "code": 200,
     "message": "success",
     "data": {
-      "is_active": true
+      "is_active": true,
+      "count": 124
     },
     "details": null,
     "timestamp": "..."
   }
   ```
   - `is_active`: `true` 表示操作后行为是激活状态 (已点赞/已收藏/已关注)，`false` 表示是未激活状态。
+  - `count`: `integer` 类型，表示操作完成后，目标资源最新的计数值（例如，最新的点赞数或收藏数）。
 
 - **404 Not Found**: 如果 `target_id` 对应的资源不存在。
 - **400 Bad Request**: 如果缺少必要参数或参数值不合法 (如 `target_type` 不支持)。

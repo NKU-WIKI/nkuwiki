@@ -107,7 +107,7 @@ async def add_words_to_category(
     words_to_add = payload.get("words", [])
 
     if not isinstance(words_to_add, list):
-        return Response.invalid_params(details="参数 'words' 必须是一个列表")
+        return Response.bad_request(details="参数 'words' 必须是一个列表")
 
     records = [{"category_id": category_id, "word": word} for word in words_to_add]
     

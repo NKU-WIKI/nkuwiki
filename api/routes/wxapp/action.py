@@ -153,24 +153,43 @@ async def toggle_action(
             amount = 1
             is_active = True
         
-        # 4. 更新相关计数
+        # 4. 精确更新所有相关计数
+        latest_count = None
         if amount != 0:
             count_field = config["fields"][action_type]
-            # 更新目标对象的计数
-            await _update_count(config["table"], count_field, target_id, amount)
             
-            # 更新操作者自身的计数
+            # a. 更新目标资源本身的计数 (e.g., post.like_count)
+            # 这是主操作，我们需要它的返回值
+            latest_count = await _update_count(config["table"], count_field, target_id, amount)
+
+            # b. 更新资源作者的总计数值 (e.g., user.like_count)
+            # 仅当操作对象是 post 或 comment 时
+            update_tasks = []
+            if target_type in ["post", "comment"]:
+                author_id = resource.get("user_id")
+                if author_id:
+                    # 'like' 和 'favorite' 对应作者的 'like_count' 和 'favorite_count'
+                    author_count_field = action_type + "_count"
+                    update_tasks.append(
+                        _update_count("wxapp_user", author_count_field, author_id, amount)
+                    )
+
+            # c. 更新操作者自己的计数 (e.g., user.following_count for 'follow')
             if action_type == "follow":
-                await _update_count("wxapp_user", "following_count", user_id, amount)
-            elif action_type == "favorite":
-                await _update_count("wxapp_user", "favorite_count", user_id, amount)
+                update_tasks.append(
+                    _update_count("wxapp_user", "following_count", user_id, amount)
+                )
+
+            # 并发执行所有次要的更新任务
+            if update_tasks:
+                await asyncio.gather(*update_tasks)
 
         # 5. 异步发送通知
         asyncio.create_task(
             _handle_notification(is_active, current_user, resource, target_id, target_type, action_type)
         )
 
-        return Response.success(data={"is_active": is_active})
+        return Response.success(data={"is_active": is_active, "count": latest_count if latest_count is not None else 0})
 
     except Exception as e:
         logger.error(f"Toggle action failed: {e}", exc_info=True)

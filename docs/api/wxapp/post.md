@@ -118,6 +118,8 @@
 
 ### 响应 (200 OK)
 
+响应 `data` 数组中的每个帖子对象都包含了丰富的统计信息。如果用户已登录（提供了JWT），还会包含当前用户的互动状态字段 (`is_liked`, `is_favorited`, `is_following_author`)。
+
 ```json
 {
     "code": 200,
@@ -128,14 +130,17 @@
             "user_id": 1,
             "title": "My First Post",
             "content": "This is the content of my first post.",
-            "image": null,
-            "tag": null,
+            "image": [],
+            "tag": ["tag1"],
             "location": null,
             "view_count": 1,
             "like_count": 0,
             "comment_count": 0,
             "favorite_count": 0,
             "create_time": "2025-06-21T08:59:26",
+            "update_time": "2025-06-21T08:59:26",
+            "allow_comment": true,
+            "is_public": true,
             "author_info": {
                 "id": 1,
                 "nickname": "南开小透明",
@@ -197,11 +202,14 @@
 
 | 参数 | 类型 | 是否必须 | 描述 |
 | --- | --- | --- | --- |
-| `id` | `integer` | 是 | 要更新的帖子ID。 |
+| `id` | `integer` | 是* | 要更新的帖子ID。 |
+| `post_id` | `integer` | 是* | 要更新的帖子ID（与`id`二选一）。 |
 | `title` | `string` | 否 | 新的帖子标题。 |
 | `content` | `string` | 否 | 新的帖子正文内容。 |
 | `category_id` | `integer`| 否 | 新的分类ID。 |
 | ... | | | (其他可更新字段同创建接口) |
+
+*注：`id` 和 `post_id` 参数二选一即可，用于指定要更新的帖子ID。
 
 ### 响应 (200 OK)
 
@@ -235,7 +243,10 @@
 
 | 参数 | 类型 | 是否必须 | 描述 |
 | --- | --- | --- | --- |
-| `id` | `integer` | 是 | 要删除的帖子ID。 |
+| `id` | `integer` | 是* | 要删除的帖子ID。 |
+| `post_id` | `integer` | 是* | 要删除的帖子ID（与`id`二选一）。 |
+
+*注：`id` 和 `post_id` 参数二选一即可，用于指定要删除的帖子ID。
 
 ### 响应 (200 OK)
 

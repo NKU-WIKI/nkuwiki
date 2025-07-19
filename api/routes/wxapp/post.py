@@ -88,7 +88,7 @@ async def create_post(
         
         # 如果标题或内容为空，返回错误
         if not title or not content:
-            return Response.invalid_params(details={"message": "标题或内容不能为空"})
+            return Response.bad_request(details={"message": "标题或内容不能为空"})
         
         try:
             # 尝试将category_id转换为整数，如果失败则使用默认值1
@@ -243,27 +243,20 @@ async def get_posts(
     order_by = {"create_time": "DESC"}
     if sort_by == "popular":
         order_by = {"view_count": "DESC", "like_count": "DESC"}
-
-    # TODO: favorite 和 following 的逻辑需要更复杂的JOIN查询，暂时简化
     
     # 获取帖子总数
     total_result = await count_records("wxapp_post", conditions=conditions)
     
-    # 获取分页后的帖子数据
+    # 获取分页后的帖子数据，确保返回所有需要的字段
     posts_result = await query_records(
         "wxapp_post",
         conditions=conditions,
-        fields=[
-            "id", "user_id", "title", "content", "image", "tag", "location",
-            "view_count", "like_count", "comment_count", "favorite_count",
-            "create_time"
-        ],
         order_by=order_by,
         limit=page_size,
         offset=(page - 1) * page_size
     )
 
-    enriched_posts = await batch_enrich_posts_with_user_info(posts_result['data'], user_id)
+    enriched_posts = await batch_enrich_posts_with_user_info(posts_result.get('data', []), user_id)
     
     pagination = PaginationInfo(
         total=total_result,
@@ -283,17 +276,13 @@ async def update_post(
         req_data = post_data
         user_id = current_user['id']
         
-        if "id" not in req_data:
-            return Response.invalid_params(details={"message": "缺少帖子ID"})
-        
-        if not req_data.get("id"):
-            return Response.invalid_params(details={"message": "post_id是必需的"})
-        
-        # 获取帖子现有信息
-        post_id = req_data.get("id")
-        if not post_id:
+        if "id" not in req_data and "post_id" not in req_data:
             return Response.bad_request(details={"message": "缺少帖子ID"})
-
+        
+        post_id = req_data.get("id") or req_data.get("post_id")
+        if not post_id:
+            return Response.bad_request(details={"message": "post_id是必需的"})
+        
         # 检查帖子是否存在以及用户是否有权编辑
         post = await get_by_id("wxapp_post", post_id, fields=['user_id'])
         if not post:
@@ -364,11 +353,11 @@ async def delete_post(
         user_id = current_user['id']
         
         # 验证请求参数
-        if 'id' not in req_data:
-            return Response.invalid_params(details={"message": "缺少帖子ID"})
+        if 'id' not in req_data and 'post_id' not in req_data:
+            return Response.bad_request(details={"message": "缺少帖子ID"})
             
         # 验证操作权限
-        post_id = req_data.get("id")
+        post_id = req_data.get("id") or req_data.get("post_id")
         if not post_id:
             return Response.bad_request(details={"message": "缺少帖子ID"})
 

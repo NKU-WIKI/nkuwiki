@@ -69,38 +69,54 @@ async def batch_enrich_posts_with_user_info(posts: List[Dict[str, Any]], current
 
     return posts
 
-async def _update_count(table: str, field: str, record_id: Any, delta: int = 1):
+async def _update_count(table: str, field: str, record_id: Any, delta: int = 1) -> Optional[int]:
     """
-    安全地更新数据库中的计数字段。
+    安全地更新数据库中的计数字段，并返回更新后的值。
     
     Args:
         table (str): 表名。
         field (str): 要更新的计数字段名。
         record_id (Any): 记录的ID。
         delta (int): 变化的数量，可以是正数或负数。
+
+    Returns:
+        Optional[int]: 更新后的计数值，如果操作失败则返回None。
     """
     if not all([table, field, record_id]):
         logger.warning(f"更新计数的参数不完整: table={table}, field={field}, record_id={record_id}")
-        return
+        return None
 
     operator = '+' if delta > 0 else '-'
     abs_delta = abs(delta)
 
-    # 使用参数化查询来防止SQL注入
-    query = f"UPDATE `{table}` SET `{field}` = `{field}` {operator} %s WHERE `id` = %s"
+    # 构造更新和查询语句
+    update_query = f"UPDATE `{table}` SET `{field}` = `{field}` {operator} %s WHERE `id` = %s"
+    select_query = f"SELECT `{field}` FROM `{table}` WHERE `id` = %s"
     
-    # 对于减少操作，可以添加一个检查以防止字段变为负数
+    params = [abs_delta, record_id]
+    
+    # 对于减少操作，添加一个检查以防止字段变为负数
     if delta < 0:
-        query += f" AND `{field}` >= %s"
-        params = [abs_delta, record_id, abs_delta]
-    else:
-        params = [abs_delta, record_id]
+        update_query += f" AND `{field}` >= %s"
+        params.append(abs_delta)
 
     try:
-        await execute_custom_query(query, params)
-        logger.debug(f"成功更新计数: {table}.{field} for record {record_id} by {delta}")
+        # 在同一个事务中执行更新和查询
+        from etl.load.db_pool_manager import get_db_connection
+        async with get_db_connection() as conn:
+            async with conn.cursor() as cursor:
+                await cursor.execute(update_query, params)
+                await cursor.execute(select_query, [record_id])
+                result = await cursor.fetchone()
+                
+                if result:
+                    new_count = result[0]
+                    logger.debug(f"成功更新计数: {table}.{field} for record {record_id} to {new_count}")
+                    return new_count
+                return None
     except Exception as e:
         logger.exception(f"更新计数失败 (table={table}, record_id={record_id}): {e}")
+        return None
 
 
 async def create_notification(openid: str, title: str, content: str, target_id: Any, target_type: str, sender_payload: Dict, notification_type: str = "comment"):
