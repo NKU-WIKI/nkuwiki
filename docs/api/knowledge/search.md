@@ -173,21 +173,6 @@
 | `openid`    | `string`  | Query | 是       | -      | 用户的OpenID。   |
 | `page_size` | `integer` | Query | 否       | `5`    | 返回建议的数量。 |
 
-#### 响应
-
-- **200 OK**:
-  ```json
-  {
-      "code": 200,
-      "message": "success",
-      "data": [
-          "南开大学",
-          "南开大学校史",
-          "南开大学周恩来政府管理学院"
-      ]
-  }
-  ```
-
 ### 4.2 获取搜索历史
 
 - **Endpoint**: `GET /knowledge/history`
@@ -218,7 +203,7 @@
   }
   ```
 
-### 4.3 清空搜索历史
+### 4.4 清空搜索历史
 
 - **Endpoint**: `POST /knowledge/history/clear`
 - **Tags**: `knowledge`, `user`
@@ -247,9 +232,38 @@
 
 ---
 
-## 5. 其他搜索相关接口
+## 5. 热门搜索与网页快照
 
-### 5.1 小程序内搜索
+### 5.1 获取热门搜索
+
+- **Endpoint**: `GET /knowledge/hot`
+- **Tags**: `knowledge`
+- **Summary**: 获取热门搜索词条列表
+
+#### 请求参数
+
+| 参数名      | 类型      | 位置  | 是否必需 | 默认值 | 描述           |
+| ----------- | --------- | ----- | -------- | ------ | -------------- |
+| `days`      | `integer` | Query | 否       | `7`    | 统计最近几天的热门搜索。 |
+| `page_size` | `integer` | Query | 否       | `10`   | 返回热门搜索词条的数量。 |
+
+#### 响应
+
+- **200 OK**:
+  ```json
+  {
+      "code": 200,
+      "message": "success",
+      "data": [
+          {
+              "search_query": "校历",
+              "search_count": 150
+          }
+      ]
+  }
+  ```
+
+### 5.2 小程序内搜索
 
 - **Endpoint**: `GET /knowledge/search-wxapp`
 - **Tags**: `knowledge`, `wxapp`
@@ -289,34 +303,6 @@
   }
   ```
 
-### 5.2 获取热门搜索
-
-- **Endpoint**: `GET /knowledge/hot`
-- **Tags**: `knowledge`
-- **Summary**: 获取热门搜索词条列表
-
-#### 请求参数
-
-| 参数名      | 类型      | 位置  | 是否必需 | 默认值 | 描述           |
-| ----------- | --------- | ----- | -------- | ------ | -------------- |
-| `page_size` | `integer` | Query | 否       | `10`   | 返回词条的数量。 |
-
-#### 响应
-
-- **200 OK**:
-  ```json
-  {
-      "code": 200,
-      "message": "success",
-      "data": [
-          {
-              "query": "校历",
-              "search_count": 150
-          }
-      ]
-  }
-  ```
-
 ### 5.3 获取网页快照
 
 - **Endpoint**: `GET /knowledge/snapshot`
@@ -349,4 +335,4 @@
       "message": "error",
       "details": "快照不存在"
   }
-  ``` 
+  ```

@@ -6,7 +6,6 @@ from fastapi import Query, APIRouter, Body, Depends
 from api.models.common import Response, Request, validate_params, PaginationInfo
 from etl.load import (
     query_records,
-    get_by_id,
     insert_record,
     update_record,
     count_records,
@@ -34,10 +33,12 @@ async def get_user_profile(
     如果提供了当前登录用户的JWT，还会返回关注状态。
     """
     try:
-        user_data = await get_by_id("wxapp_user", user_id)
-
-        if not user_data:
+        user_result = await execute_custom_query(
+            "SELECT * FROM wxapp_user WHERE id = %s", (user_id,)
+        )
+        if not user_result:
             return Response.not_found(resource="用户")
+        user_data = user_result[0]
 
         # 为了安全，移除敏感信息
         sensitive_keys = ['phone', 'wechatId', 'qqId', 'openid', 'unionid']

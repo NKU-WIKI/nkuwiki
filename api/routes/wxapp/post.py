@@ -11,12 +11,11 @@ import re
 
 from api.models.common import Response, Request, validate_params, PaginationInfo
 from etl.load import (
-    query_records, 
-    insert_record, 
-    update_record, 
-    execute_custom_query, 
-    count_records,
-    get_by_id
+    query_records,
+    insert_record,
+    update_record,
+    execute_custom_query,
+    count_records
 )
 from config import Config
 from core.utils.logger import register_logger
@@ -284,9 +283,12 @@ async def update_post(
             return Response.bad_request(details={"message": "post_id是必需的"})
         
         # 检查帖子是否存在以及用户是否有权编辑
-        post = await get_by_id("wxapp_post", post_id, fields=['user_id'])
-        if not post:
+        post_result = await execute_custom_query(
+            "SELECT user_id FROM wxapp_post WHERE id = %s", (post_id,)
+        )
+        if not post_result:
             return Response.not_found(resource="帖子")
+        post = post_result[0]
 
         if post.get("user_id") != user_id:
             return Response.forbidden(details={"message": "无权编辑此帖子"})
@@ -362,9 +364,12 @@ async def delete_post(
             return Response.bad_request(details={"message": "缺少帖子ID"})
 
         # 检查帖子是否存在以及用户是否有权删除
-        post = await get_by_id("wxapp_post", post_id, fields=['user_id'])
-        if not post:
+        post_result = await execute_custom_query(
+            "SELECT user_id FROM wxapp_post WHERE id = %s", (post_id,)
+        )
+        if not post_result:
             return Response.not_found(resource="帖子")
+        post = post_result[0]
 
         if post.get("user_id") != user_id and current_user.get("role") != 'admin':
             return Response.forbidden(details={"message": "无权删除此帖子"})

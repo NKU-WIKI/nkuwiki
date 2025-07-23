@@ -185,11 +185,7 @@ async def get_all_tables() -> List[str]:
     return [list(row.values())[0] for row in results] if results else []
 
 
-async def get_by_id(table_name: str, record_id: Union[int, str], id_column: str = 'id', fields: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
-    """通过指定的列获取单条记录"""
-    field_str = ", ".join(fields) if fields else "*"
-    query = f"SELECT {field_str} FROM `{table_name}` WHERE `{id_column}` = %s"
-    return await _execute_query(query, [record_id], fetch='one')
+
 
 
 async def count_records(table_name: str, conditions: Optional[Dict[str, Any]] = None) -> int:
@@ -229,4 +225,4 @@ async def execute_sql_list_in_transaction(sql_list: List[Tuple[str, Optional[Uni
     except Exception as e:
         logger.error(f"事务执行失败: {e}", exc_info=True)
         # 已经在连接池层面处理了回滚
-        return False 
+        return False

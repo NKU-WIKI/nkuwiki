@@ -244,7 +244,7 @@
 
 ## 7. 获取用户的评论列表
 
-- **Endpoint**: `GET /wxapp/comment/user`
+- **Endpoint**: `GET /api/wxapp/comment/user`
 - **Tags**: `wxapp-comment`
 - **Summary**: 获取指定用户的评论列表
 - **Permissions**: `Optional Auth`
@@ -265,7 +265,7 @@
 
 ## 8. 批量获取评论状态
 
-- **Endpoint**: `GET /wxapp/comment/status`
+- **Endpoint**: `GET /api/wxapp/comment/status`
 - **Tags**: `wxapp-comment`
 - **Summary**: 批量获取评论的点赞状态
 - **Permissions**: `Authenticated User` (需要JWT)

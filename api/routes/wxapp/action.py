@@ -12,7 +12,7 @@ from api.common.dependencies import get_current_active_user
 from api.models.common import Response
 from ._utils import _update_count, create_notification
 from core.utils.logger import register_logger
-from etl.load import get_by_id, execute_custom_query, insert_record
+from etl.load import execute_custom_query, insert_record
 from etl.load.db_pool_manager import get_db_connection as _get_db_connection
 
 # 模块初始化
@@ -116,9 +116,12 @@ async def toggle_action(
             return Response.bad_request(details={"message": f"不支持的操作: {target_type} {action_type}"})
 
         # 2. 检查目标资源是否存在
-        resource = await get_by_id(config["table"], target_id, id_column=config["id_column"])
-        if not resource:
+        resource_result = await execute_custom_query(
+            f"SELECT * FROM {config['table']} WHERE {config['id_column']} = %s", (target_id,)
+        )
+        if not resource_result:
             return Response.not_found(resource=f"目标资源 {target_type} (id: {target_id})")
+        resource = resource_result[0]
 
         # 3. 核心数据库操作
         user_id = current_user['id']
@@ -153,36 +156,18 @@ async def toggle_action(
             amount = 1
             is_active = True
         
-        # 4. 精确更新所有相关计数
-        latest_count = None
-        if amount != 0:
-            count_field = config["fields"][action_type]
-            
-            # a. 更新目标资源本身的计数 (e.g., post.like_count)
-            # 这是主操作，我们需要它的返回值
-            latest_count = await _update_count(config["table"], count_field, target_id, amount)
+        # 4. 使用 _update_count 更新计数
+        count_field = config["fields"][action_type]
+        latest_count = await _update_count(config["table"], target_id, count_field, amount)
 
-            # b. 更新资源作者的总计数值 (e.g., user.like_count)
-            # 仅当操作对象是 post 或 comment 时
-            update_tasks = []
-            if target_type in ["post", "comment"]:
-                author_id = resource.get("user_id")
-                if author_id:
-                    # 'like' 和 'favorite' 对应作者的 'like_count' 和 'favorite_count'
-                    author_count_field = action_type + "_count"
-                    update_tasks.append(
-                        _update_count("wxapp_user", author_count_field, author_id, amount)
-                    )
+        if target_type in ["post", "comment"]:
+            author_id = resource.get("user_id")
+            if author_id:
+                author_count_field = action_type + "_count"
+                await _update_count("wxapp_user", author_id, author_count_field, amount)
 
-            # c. 更新操作者自己的计数 (e.g., user.following_count for 'follow')
-            if action_type == "follow":
-                update_tasks.append(
-                    _update_count("wxapp_user", "following_count", user_id, amount)
-                )
-
-            # 并发执行所有次要的更新任务
-            if update_tasks:
-                await asyncio.gather(*update_tasks)
+        if action_type == "follow":
+            await _update_count("wxapp_user", user_id, "following_count", amount)
 
         # 5. 异步发送通知
         asyncio.create_task(
@@ -192,8 +177,9 @@ async def toggle_action(
         return Response.success(data={"is_active": is_active, "count": latest_count if latest_count is not None else 0})
 
     except Exception as e:
-        logger.error(f"Toggle action failed: {e}", exc_info=True)
-        return Response.error(details={"message": str(e)})
+        error_message = f"切换操作失败: {str(e) if str(e) != '0' else '未知错误'}"
+        logger.error(f"Toggle action failed: {error_message}", exc_info=True)
+        return Response.error(details={"message": error_message})
 
 
 

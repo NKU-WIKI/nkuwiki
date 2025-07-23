@@ -13,7 +13,7 @@ from jose import jwt, JWTError
 from api.models.common import Response
 from config import Config
 from core.utils.logger import register_logger
-from etl.load import get_by_id, insert_record, update_record
+from etl.load import insert_record, update_record, execute_custom_query
 
 # ------------------------------
 # 配置和初始化
@@ -51,7 +51,10 @@ async def _sync_user(openid: str, user_info_payload: Optional[Dict[str, Any]] = 
     if user_info_payload is None:
         user_info_payload = {}
         
-    existing_user = await get_by_id("wxapp_user", openid, id_column='openid')
+    existing_result = await execute_custom_query(
+        "SELECT * FROM wxapp_user WHERE openid = %s", (openid,)
+    )
+    existing_user = existing_result[0] if existing_result else None
     
     if existing_user:
         # 用户存在，更新最后登录时间
@@ -179,4 +182,4 @@ async def login_for_access_token(
         "token": access_token,
         "token_type": "bearer",
         "user_info": user
-    }) 
+    })

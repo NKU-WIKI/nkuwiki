@@ -156,74 +156,75 @@ class TableManager:
     async def recreate_tables(self, table_names: List[str] = None, force: bool = False, apply_defaults: bool = True) -> Dict[str, Any]:
         """重新创建表"""
         results = {"success": [], "failed": []}
-        
+
+        # 确定要处理的表定义
         if table_names:
-            # 验证指定的表
-            sql_files = []
-            for table_name in table_names:
-                sql_file = self.sql_dir / f"{table_name}.sql"
+            defined_sql_files = []
+            for name in table_names:
+                sql_file = self.sql_dir / f"{name}.sql"
                 if sql_file.exists():
-                    sql_files.append(sql_file)
+                    defined_sql_files.append(sql_file)
                 else:
-                    self.logger.warning(f"表{table_name}的SQL文件不存在")
-                    results["failed"].append(table_name)
+                    self.logger.warning(f"表 {name} 的SQL文件不存在，已跳过。")
+                    results["failed"].append(name) # 记录为失败，因为它无法被创建
         else:
-            # 获取所有SQL文件
-            sql_files = list(self.sql_dir.glob("*.sql"))
-        
-        if not sql_files:
-            self.logger.warning("未找到可用的SQL文件")
+            defined_sql_files = list(self.sql_dir.glob("*.sql"))
+
+        if not defined_sql_files:
+            self.logger.warning("未找到可用的SQL文件进行操作。")
             return results
-        
-        tables = [self.get_table_name_from_file(f) for f in sql_files]
-        self.logger.info(f"将重新创建以下{len(tables)}个表: {', '.join(tables)}")
-        
+
+        defined_tables = {self.get_table_name_from_file(f) for f in defined_sql_files}
+        self.logger.info(f"计划对以下 {len(defined_tables)} 个表进行重建操作: {', '.join(sorted(list(defined_tables)))}")
+
         if not force:
-            confirm = input("此操作将删除并重新创建上述表，所有数据将丢失！确定继续吗？(y/n): ")
-            if confirm.lower() != 'y':
-                self.logger.info("操作已取消")
-                return results
-        
+            self.logger.warning("此操作是破坏性的，将删除并重新创建表，所有现有数据都将丢失！")
+            self.logger.warning("要执行此操作，请提供 --force 参数。")
+            self.logger.info("操作已取消以防止意外数据丢失。")
+            return results
+
         try:
-            # 重建前禁用外键检查
             await db_core.execute_custom_query("SET FOREIGN_KEY_CHECKS=0;", fetch=False)
             self.logger.debug("已禁用外键检查")
 
-            # 统一删除所有表
-            for table_name in tqdm(tables, desc="删除旧表", unit="个"):
-                if not await self.drop_table(table_name):
-                    results["failed"].append(table_name)
-            
-            # 筛选出删除失败的表，后续不再创建
-            successful_deletes = set(tables) - set(results["failed"])
+            # 1. 删除已存在的表
+            existing_tables = set(await self.list_all_tables())
+            tables_to_drop = list(defined_tables.intersection(existing_tables))
 
-            # 重新创建每个表
-            for sql_file in tqdm(sql_files, desc="创建新表", unit="个"):
-                table_name = self.get_table_name_from_file(sql_file)
-                if table_name not in successful_deletes:
-                    continue # 跳过删除失败的表
-                
+            if tables_to_drop:
+                self.logger.info(f"准备删除 {len(tables_to_drop)} 个已存在的表: {', '.join(sorted(tables_to_drop))}")
+                drop_sql = f"DROP TABLE IF EXISTS {', '.join(f'`{t}`' for t in tables_to_drop)}"
                 try:
-                    # 读取SQL内容
+                    await db_core.execute_custom_query(drop_sql, fetch=False)
+                    self.logger.info("批量删除操作执行成功。")
+                except Exception as e:
+                    self.logger.error(f"批量删除表时发生错误: {e}。将尝试逐个删除。")
+                    for table_name in tqdm(tables_to_drop, desc="回退：逐个删除旧表", unit="个"):
+                        await self.drop_table(table_name) # drop_table 内部有日志记录
+            else:
+                self.logger.info("没有需要删除的已存在表。")
+
+            # 2. 创建所有定义的表
+            self.logger.info(f"准备创建 {len(defined_sql_files)} 个表...")
+            for sql_file in tqdm(defined_sql_files, desc="创建新表", unit="个"):
+                table_name = self.get_table_name_from_file(sql_file)
+                try:
                     sql_content = self.read_sql_file(sql_file)
                     if not sql_content:
                         results["failed"].append(table_name)
                         continue
-                    
-                    # 应用配置默认值
+
                     if apply_defaults:
                         sql_content = self.apply_config_defaults(sql_content, table_name)
-                    
-                    # 创建表
+
                     if await self.create_table(table_name, sql_content):
                         results["success"].append(table_name)
-                        self.logger.info(f"表{table_name}重新创建成功")
                     else:
                         results["failed"].append(table_name)
-                        
                 except Exception as e:
-                    self.logger.error(f"创建表{table_name}时发生异常: {str(e)}")
+                    self.logger.error(f"创建表 {table_name} 时发生异常: {e}")
                     results["failed"].append(table_name)
+
         
         finally:
             # 无论如何，最后都要重新启用外键检查
@@ -367,4 +368,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(main())

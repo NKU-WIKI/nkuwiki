@@ -47,4 +47,4 @@
 - **404 Not Found**: 如果 `target_id` 对应的资源不存在。
 - **400 Bad Request**: 如果缺少必要参数或参数值不合法 (如 `target_type` 不支持)。
 
-*注意：为节省篇幅，`/wxapp/post/like`、`/wxapp/post/favorite`、`/wxapp/action/comment/like` 等具体的点赞/收藏接口已废弃，请统一使用通用的 `/wxapp/action/toggle` 接口。* 
+*注意：为节省篇幅，`/wxapp/post/like`、`/wxapp/post/favorite`、`/wxapp/action/comment/like` 等具体的点赞/收藏接口已废弃，请统一使用通用的 `/wxapp/action/toggle` 接口。*

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS `wxapp_user` (
     `post_count` INT DEFAULT 0 COMMENT '发布的帖子数',
     `follower_count` INT DEFAULT 0 COMMENT '关注者数量',
     `following_count` INT DEFAULT 0 COMMENT '关注的用户数量',
+     `comment_count` INT DEFAULT 0 COMMENT '评论数',
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `last_login_time` DATETIME DEFAULT NULL COMMENT '最后登录时间',
@@ -33,4 +34,4 @@ CREATE TABLE IF NOT EXISTS `wxapp_user` (
     KEY `idx_create_time` (`create_time`),
     KEY `idx_status` (`status`),
     KEY `idx_nickname` (`nickname`(20))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序用户数据表'; 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序用户数据表';

@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Dict, Any, Optional, List
 
-from etl.load import insert_record, get_by_id, execute_custom_query
+from etl.load import insert_record, execute_custom_query
 
 logger = logging.getLogger("wxapp.utils")
 
@@ -69,15 +69,17 @@ async def batch_enrich_posts_with_user_info(posts: List[Dict[str, Any]], current
 
     return posts
 
-async def _update_count(table: str, field: str, record_id: Any, delta: int = 1) -> Optional[int]:
+async def _update_count(table: str, record_id: Any, field: str, delta: int = 1, *, cursor: Optional[Any] = None) -> Optional[int]:
     """
     安全地更新数据库中的计数字段，并返回更新后的值。
-    
+    如果提供了 cursor，则在该事务内执行，否则创建新事务。
+
     Args:
         table (str): 表名。
-        field (str): 要更新的计数字段名。
         record_id (Any): 记录的ID。
+        field (str): 要更新的计数字段名。
         delta (int): 变化的数量，可以是正数或负数。
+        cursor (Optional[Any]): 可选的数据库游标，用于在现有事务中执行。
 
     Returns:
         Optional[int]: 更新后的计数值，如果操作失败则返回None。
@@ -86,36 +88,44 @@ async def _update_count(table: str, field: str, record_id: Any, delta: int = 1) 
         logger.warning(f"更新计数的参数不完整: table={table}, field={field}, record_id={record_id}")
         return None
 
-    operator = '+' if delta > 0 else '-'
-    abs_delta = abs(delta)
-
-    # 构造更新和查询语句
-    update_query = f"UPDATE `{table}` SET `{field}` = `{field}` {operator} %s WHERE `id` = %s"
-    select_query = f"SELECT `{field}` FROM `{table}` WHERE `id` = %s"
-    
-    params = [abs_delta, record_id]
-    
-    # 对于减少操作，添加一个检查以防止字段变为负数
-    if delta < 0:
-        update_query += f" AND `{field}` >= %s"
-        params.append(abs_delta)
+    # 使用 GREATEST(0, ...) 来防止计数值变为负数
+    update_query = f'UPDATE {table} SET {field} = GREATEST(0, IFNULL({field}, 0) + %s) WHERE id = %s'
+    params = [delta, record_id]
+    select_query = f'SELECT {field} FROM {table} WHERE id = %s'
 
     try:
-        # 在同一个事务中执行更新和查询
-        from etl.load.db_pool_manager import get_db_connection
-        async with get_db_connection() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(update_query, params)
-                await cursor.execute(select_query, [record_id])
-                result = await cursor.fetchone()
-                
-                if result:
-                    new_count = result[0]
-                    logger.debug(f"成功更新计数: {table}.{field} for record {record_id} to {new_count}")
-                    return new_count
-                return None
+        result = None
+        if cursor:
+            # 使用传入的游标，不管理事务
+            await cursor.execute(update_query, params)
+            await cursor.execute(select_query, [record_id])
+            result = await cursor.fetchone()
+        else:
+            # 创建新的连接和事务
+            from etl.load.db_pool_manager import get_db_connection
+            async with get_db_connection() as conn:
+                async with conn.cursor() as cur:
+                    await conn.begin()
+                    try:
+                        await cur.execute(update_query, params)
+                        await cur.execute(select_query, [record_id])
+                        result = await cur.fetchone()
+                        await conn.commit()
+                    except Exception as inner_exc:
+                        await conn.rollback()
+                        logger.error(f"在事务中更新计数失败: {inner_exc}")
+                        raise
+
+        if result:
+            new_count = result[field]
+            logger.debug(f"成功更新计数: {table}.{field} for record {record_id} to {new_count}")
+            return new_count
+        else:
+            logger.warning(f"更新计数后未能查询到记录: {table}, id={record_id}")
+            return None
+
     except Exception as e:
-        logger.exception(f"更新计数失败 (table={table}, record_id={record_id}): {e}")
+        logger.exception(f"更新计数时发生数据库错误 (table={table}, record_id={record_id}): {e}")
         return None
 
 
@@ -136,4 +146,4 @@ async def create_notification(openid: str, title: str, content: str, target_id: 
         await insert_record("wxapp_notification", notification_data)
         logger.debug(f"通知创建成功: openid={openid}, target_id={target_id}, target_type={target_type}")
     except Exception as e:
-        logger.exception(f"数据库插入通知失败: {e}") 
+        logger.exception(f"数据库插入通知失败: {e}")

@@ -471,8 +471,8 @@ async def search_knowledge(
     
     # 如果有wxapp_post的帖子，批量查询用户信息并格式化字段
     if wxapp_post_items:
-        # 使用通用函数批量补充用户信息，并传入openid
-        enriched_posts = await batch_enrich_posts_with_user_info(wxapp_post_items, current_user['openid'] if current_user else None)
+        # 使用通用函数批量补充用户信息，并传入user_id
+        enriched_posts = await batch_enrich_posts_with_user_info(wxapp_post_items, current_user['id'] if current_user else None)
         
         for post in enriched_posts:
             # 格式化字段以符合API文档规范
@@ -617,7 +617,7 @@ async def advanced_search_endpoint(
             rerank_strategy=rerank_strategy,
             top_k_retrieve=top_k_retrieve,
             top_k_rerank=top_k_rerank,
-            openid=user_id
+            user_id=user_id
         )
 
         end_time = time.time()
@@ -640,8 +640,7 @@ async def _elasticsearch_search_internal(
     """使用Elasticsearch进行内部复合查询"""
     
     es_client = AsyncElasticsearch(
-        [f"http://{Config().get('etl.data.elasticsearch.host')}:{Config().get('etl.data.elasticsearch.port')}"]
-    )
+        [f"http://{Config().get('etl.data.elasticsearch.host')}:{Config().get('etl.data.elasticsearch.port')}"])
 
     try:
         search_query = {
@@ -702,7 +701,26 @@ async def _elasticsearch_search_internal(
         logger.debug(f"Executing ES query: {json.dumps(search_query, indent=2, ensure_ascii=False)}")
         response = await es_client.search(index=ES_INDEX_NAME, body=search_query)
         
-        return response
+        # 将 Elasticsearch 响应对象转换为可序列化的 Python 字典
+        # 解决 ObjectApiResponse 不可 JSON 序列化的问题
+        if hasattr(response, 'body'):
+            # 对于 Elasticsearch 9.x 版本，响应是 ObjectApiResponse 对象
+            response_dict = response.body
+            if isinstance(response_dict, dict):
+                return response_dict
+            else:
+                # 如果 body 不是字典，尝试转换为字典
+                return json.loads(json.dumps(response_dict))
+        elif hasattr(response, 'to_dict'):
+            # 对于某些版本的 Elasticsearch 客户端，可能有 to_dict 方法
+            return response.to_dict()
+        else:
+            # 尝试直接转换为字典
+            try:
+                return dict(response)
+            except (TypeError, ValueError):
+                # 如果无法直接转换，尝试通过 JSON 序列化再反序列化
+                return json.loads(json.dumps(response, default=lambda o: str(o)))
     except Exception as e:
         logger.exception(f"Elasticsearch 内部查询失败: {e}")
         # 返回一个空的、符合ES格式的响应
@@ -716,33 +734,114 @@ async def _elasticsearch_search_internal(
     finally:
         await es_client.close()
 
-@router.get("/es-search", summary="Elasticsearch 复合查询接口")
-async def elasticsearch_search_endpoint(
-    query: str = Query(..., description="搜索关键词"),
-    platform: Optional[str] = Query(None, description="平台筛选，多个用逗号分隔"),
-    page: int = Query(1, description="分页页码"),
-    page_size: int = Query(10, description="每页结果数"),
+@router.get("/es-search", summary="Elasticsearch 复合查询接口") 
+async def elasticsearch_search_endpoint( 
+    query: str = Query(..., description="搜索关键词"), 
+    platform: Optional[str] = Query(None, description="平台筛选，多个用逗号分隔"), 
+    page: int = Query(1, description="分页页码"), 
+    page_size: int = Query(10, description="每页结果数"), 
     max_content_length: int = Query(300, description="内容最大长度"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional) # 依赖注入
-):
-    """
-    直接访问Elasticsearch的复合查询接口，用于调试或特定场景。
-    """
-    offset = (page - 1) * page_size
-    
-    if current_user:
-        asyncio.create_task(_record_search_history(query, current_user['id']))
-
-    response_data = await _elasticsearch_search_internal(
-        query=query,
-        current_user=current_user,
-        platform=platform,
-        size=page_size,
-        offset=offset,
-        max_content_length=max_content_length
-    )
-    
-    return Response.success(data=response_data)
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional)
+): 
+    """ 
+    使用Elasticsearch进行检索，支持通配符和数据源筛选。 
+    """ 
+    try: 
+        start_time = time.time() 
+        
+        offset = (page - 1) * page_size 
+        response = await _elasticsearch_search_internal( 
+            query=query, 
+            current_user=current_user,  # 使用JWT中的用户信息
+            platform=platform, 
+            size=page_size, 
+            offset=offset, 
+            max_content_length=max_content_length 
+        ) 
+ 
+        if 'error' in response: 
+            logger.error(f"ES内部检索失败: {response['error']}") 
+            return Response.error(message=response['error'], code=500) 
+        
+        results = response['hits']['hits'] 
+        total_hits = response['hits']['total']['value'] 
+        
+        processed_results = [] 
+        for hit in results: 
+            source = hit['_source'] 
+            score = hit['_score'] 
+            
+            title = source.get('title', '无标题') 
+            platform = source.get('platform', '') 
+            author = source.get('author', '') 
+            original_url = source.get('original_url', '') 
+            original_content_length = len(source.get('content', '')) 
+            
+            logger.debug(f"  文档 ID={hit['_id']}, 分数={score:.4f}, 平台={platform}") 
+            logger.debug(f"    标题: {title[:50]}{'...' if len(title) > 50 else ''}") 
+            logger.debug(f"    作者: {author}, 内容长度: {original_content_length}字符") 
+            
+            content = source.get('content', '') 
+            is_truncated = False 
+            if content and len(content) > max_content_length: 
+                content = content[:max_content_length] + "..." 
+                is_truncated = True 
+                logger.debug(f"    内容已截断: {original_content_length} -> {max_content_length}字符") 
+            
+            # 动态判断是否为官方来源 
+            is_official = source.get('is_official', False) 
+            if platform == 'website' or author in OFFICIAL_AUTHORS_WHITELIST: 
+                is_official = True 
+            
+            result_item = { 
+                "title": title, 
+                "content": content, 
+                "original_url": original_url, 
+                "author": author, 
+                "platform": platform, 
+                "tag": source.get('tag', '') if source.get('tag') else "", 
+                "create_time": str(source.get('publish_time', '')) if source.get('publish_time') else "", 
+                "update_time": str(source.get('publish_time', '')) if source.get('publish_time') else "", 
+                "relevance": score, 
+                "is_truncated": is_truncated, 
+                "is_official": is_official 
+            } 
+            processed_results.append(result_item) 
+        
+        pagination = PaginationInfo( 
+            total=total_hits, 
+            page=page, 
+            page_size=page_size, 
+            total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1 
+        ) 
+        
+        platform_stats = {p: 0 for p in set(r['platform'] for r in processed_results)} 
+        for result in processed_results: 
+            platform_stats[result.get('platform', 'unknown')] += 1 
+        
+        logger.debug(f"ES检索完成汇总:") 
+        logger.debug(f"  查询: '{query}', 平台过滤: {platform}") 
+        logger.debug(f"  检索耗时: {time.time() - start_time:.2f}秒") 
+        logger.debug(f"  命中总数: {total_hits}, 返回数量: {len(processed_results)}") 
+        logger.debug(f"  平台分布: {platform_stats}") 
+        if processed_results: 
+            scores = [r['relevance'] for r in processed_results] 
+            logger.debug(f"  分数范围: {min(scores):.4f} ~ {max(scores):.4f}") 
+        
+        # 如果用户已登录，记录搜索历史
+        if current_user:
+            asyncio.create_task(_record_search_history(query, current_user['id']))
+        
+        return Response.paged( 
+            data=processed_results, 
+            pagination=pagination 
+        ) 
+ 
+    except Exception as e: 
+        import traceback 
+        error_detail = traceback.format_exc() 
+        logger.error(f"ES检索失败: {str(e)}\n{error_detail}") 
+        return Response.error(message=f"ES检索失败: {str(e)}", code=500)
 
 async def _record_search_history(query: str, user_id: int):
     """记录用户搜索历史到数据库
@@ -756,7 +855,7 @@ async def _record_search_history(query: str, user_id: int):
         return
         
     try:
-        # 使用 user_id 而不是 openid
+        # 使用 user_id 记录搜索历史
         history_data = {
             "user_id": user_id,
             "query": query,
@@ -771,12 +870,16 @@ async def _record_search_history(query: str, user_id: int):
 async def get_search_suggest(
     query: str = Query(..., description="搜索关键词"),
     page_size: int = Query(5, description="返回结果数量"),
-    current_user: Dict[str, Any] = Depends(get_current_active_user) # 严格依赖
+    current_user: Optional[Dict[str, Any]] = Depends(get_current_active_user_optional)
 ):
     """搜索建议"""
     try:
         logger.debug(f"获取搜索建议: query={query}")
         if not query.strip():
+            return Response.success(data=[])
+        
+        # 如果用户未登录，返回空结果
+        if not current_user:
             return Response.success(data=[])
             
         # 从 search_history 表中获取搜索建议
@@ -796,8 +899,7 @@ async def get_search_suggest(
         suggestions = [row['query'] for row in results]
         
         # 异步记录搜索历史
-        if current_user:
-            asyncio.create_task(_record_search_history(query, current_user['id']))
+        asyncio.create_task(_record_search_history(query, current_user['id']))
             
         return Response.success(data=suggestions)
     except Exception as e:
@@ -1060,22 +1162,25 @@ async def clear_search_history(
 
 @router.get("/hot", summary="获取热门搜索")
 async def get_hot_searches(
-    page_size: int = Query(10, description="返回结果数量")
+    page_size: int = Query(10, description="返回结果数量"),
+    days: int = Query(7, description="查询最近N天的数据")
 ):
     """获取热门搜索词条（公开接口）"""
     try:
         hot_sql = """
-        SELECT query, COUNT(*) as search_count
+        SELECT query as search_query, COUNT(*) as search_count
         FROM wxapp_search_history
+        WHERE search_time >= CURDATE() - INTERVAL %s DAY
         GROUP BY query
         ORDER BY search_count DESC
         LIMIT %s
         """
         # 确保异步调用
-        hot_searches = await db_core.execute_custom_query(hot_sql, [page_size], fetch='all')
+        hot_searches = await db_core.execute_custom_query(hot_sql, [days, page_size], fetch='all')
         return Response.success(data=hot_searches or [])
     except Exception as e:
         logger.error(f"获取热门搜索失败: {e}")
+        return Response.error(message="获取热门搜索失败")
         return Response.error(details={"message": f"获取热门搜索失败: {str(e)}"})
 
 @router.get("/snapshot")

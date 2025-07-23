@@ -504,7 +504,7 @@ class RagPipeline:
                     lambda: self.llm.chat_with_new_conversation(
                         query=prompt,
                         stream=False,
-                        openid=f"rag_user_{int(time.time())}"
+                        user_id=f"rag_user_{int(time.time())}"
                     )
                 )
             
@@ -537,7 +537,7 @@ class RagPipeline:
             from etl.load import db_core
             history_sql = """
             SELECT query FROM wxapp_search_history
-            WHERE openid = %s
+            WHERE user_id = %s
             ORDER BY search_time DESC
             LIMIT %s
             """

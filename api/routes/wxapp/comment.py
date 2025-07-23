@@ -10,13 +10,13 @@ from etl.load import (
     query_records, 
     insert_record, 
     update_record, 
-    execute_custom_query,
-    get_by_id
+    execute_custom_query
 )
 from etl.load.db_pool_manager import get_db_connection as _get_db_connection
 import json
 import logging
 import asyncio
+import aiomysql
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel
 
@@ -75,7 +75,7 @@ async def get_child_comments(comment_id: int, current_user: Optional[Dict[str, A
         create_time, update_time
     FROM wxapp_comment 
     WHERE parent_id = %s AND status = 1 AND is_deleted = 0
-    ORDER BY create_time ASC
+    ORDER BY create_time DESC
     """
     try:
         replies = await execute_custom_query(replies_sql, [comment_id])
@@ -108,6 +108,11 @@ async def _send_comment_notification(
 ):
     """发送评论相关的通知。"""
     try:
+        # 检查 resource 是否为空
+        if not resource:
+            logger.warning("resource 为空，跳过发送评论通知")
+            return
+            
         user_id = current_user['id']
         sender_info = current_user # 直接使用传入的用户对象
         sender_payload = {
@@ -118,7 +123,10 @@ async def _send_comment_notification(
 
         # 回复通知
         if parent_id:
-            parent_comment = await get_by_id("wxapp_comment", parent_id, fields=['user_id'])
+            parent_result = await execute_custom_query(
+                "SELECT user_id FROM wxapp_comment WHERE id = %s", (parent_id,)
+            )
+            parent_comment = parent_result[0] if parent_result else None
             if parent_comment and parent_comment.get("user_id") != user_id:
                 await create_notification(
                     user_id=parent_comment["user_id"],
@@ -349,23 +357,39 @@ async def delete_comment(
 
     try:
         # 验证评论是否存在且属于当前用户
-        comment = await get_by_id("wxapp_comment", comment_id, fields=['user_id', 'parent_id', 'resource_id', 'resource_type'])
+        comment_result = await execute_custom_query(
+            "SELECT user_id, parent_id, resource_id, resource_type FROM wxapp_comment WHERE id = %s", (comment_id,)
+        )
+        if not comment_result:
+            return Response.not_found(resource="评论")
+        comment = comment_result[0]
         if not comment:
             return Response.not_found(resource="评论")
         
         if comment['user_id'] != current_user['id']:
             return Response.forbidden(details={"message": "只能删除自己的评论"})
 
-        # 执行删除 (逻辑删除)
-        await update_record("wxapp_comment", {"id": comment_id}, {"is_deleted": 1})
-        
-        # 更新相关计数
-        if comment.get("parent_id"):
-            # 是回复，更新父评论的回复数
-            await _update_count("wxapp_comment", comment["parent_id"], "reply_count", -1)
-        else:
-            # 是顶级评论，更新资源的评论数
-            await _update_count(f"wxapp_{comment['resource_type']}", comment["resource_id"], "comment_count", -1)
+        async with _get_db_connection() as conn:
+            async with conn.cursor() as cursor:
+                await conn.begin()
+                try:
+                    # 执行删除 (逻辑删除)
+                    await update_record("wxapp_comment", {"id": comment_id}, {"is_deleted": 1}, cursor=cursor)
+                    
+                    # 更新相关计数
+                    if comment.get("parent_id"):
+                        # 是回复，更新父评论的回复数
+                        await _update_count("wxapp_comment", comment["parent_id"], "reply_count", -1, cursor=cursor)
+                    else:
+                        # 是顶级评论，更新资源的评论数
+                        resource_table_name = f"wxapp_{comment['resource_type']}"
+                        await _update_count(resource_table_name, comment["resource_id"], "comment_count", -1, cursor=cursor)
+                    
+                    await conn.commit()
+                except Exception as e:
+                    await conn.rollback()
+                    logger.error(f"删除评论事务失败: {e}")
+                    raise e
 
         return Response.success(details={"message": "删除成功"})
     except Exception as e:
@@ -390,7 +414,12 @@ async def update_comment(
     content = request_data.content
 
     # 检查评论是否存在以及用户是否有权编辑
-    comment = await get_by_id("wxapp_comment", comment_id, fields=['user_id'])
+    comment_result = await execute_custom_query(
+        "SELECT user_id FROM wxapp_comment WHERE id = %s", (comment_id,)
+    )
+    if not comment_result:
+        return Response.not_found(resource="评论")
+    comment = comment_result[0]
     if not comment:
         return Response.not_found(resource="评论")
 
@@ -398,8 +427,23 @@ async def update_comment(
     if comment.get("user_id") != user_id:
         return Response.forbidden(details={"message": "无权编辑此评论"})
 
-    # 更新评论内容
-    await update_record("wxapp_comment", {"id": comment_id}, {"content": content})
+    # 使用事务更新评论内容
+    async with _get_db_connection() as conn:
+        async with conn.cursor() as cursor:
+            await conn.begin()
+            try:
+                # 更新评论内容和更新时间
+                from datetime import datetime
+                update_data = {
+                    "content": content,
+                    "update_time": datetime.now()
+                }
+                await update_record("wxapp_comment", {"id": comment_id}, update_data, cursor=cursor)
+                await conn.commit()
+            except Exception as e:
+                await conn.rollback()
+                logger.error(f"更新评论事务失败: {e}")
+                raise e
     
     return Response.success(details={"message": "更新成功"})
 
@@ -494,7 +538,6 @@ async def get_user_comments(
 
 @router.post("/create", summary="发布评论")
 async def create_comment(
-    background_tasks: BackgroundTasks,
     body: Dict[str, Any] = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_active_user)
 ):
@@ -518,35 +561,51 @@ async def create_comment(
     
     user_id = current_user['id']
 
-    # 验证资源是否存在
-    table_map = {"post": "wxapp_post", "knowledge": "wxapp_knowledge"}
-    table_name = table_map.get(resource_type)
-    if not table_name:
-        return Response.bad_request(details={"message": f"不支持的资源类型: {resource_type}"})
-        
-    resource = await get_by_id(table_name, resource_id)
-    if not resource:
-        return Response.not_found(resource=f"目标资源 {resource_type}")
+    async with _get_db_connection() as conn:
+        async with conn.cursor(aiomysql.DictCursor) as cursor:
+            await conn.begin()
+            try:
+                # 在事务中验证资源是否存在
+                table_map = {"post": "wxapp_post", "knowledge": "wxapp_knowledge"}
+                table_name = table_map.get(resource_type)
+                if not table_name:
+                    await conn.rollback()
+                    return Response.bad_request(details={"message": f"不支持的资源类型: {resource_type}"})
+                
+                await cursor.execute(f"SELECT * FROM {table_name} WHERE id = %s FOR UPDATE", (resource_id,))
+                resource = await cursor.fetchone()
+                if not resource:
+                    await conn.rollback()
+                    return Response.not_found(resource=f"目标资源 {resource_type}")
 
-    # 准备插入数据
-    comment_data = {
-        "user_id": user_id,
-        "resource_id": resource_id,
-        "resource_type": resource_type,
-        "content": content,
-        "image": json.dumps(image, ensure_ascii=False) if image else None,
-        "parent_id": parent_id
-    }
+                # 准备插入数据
+                comment_data = {
+                    "user_id": user_id,
+                    "resource_id": resource_id,
+                    "resource_type": resource_type,
+                    "content": content,
+                    "image": json.dumps(image, ensure_ascii=False) if image else None,
+                    "parent_id": parent_id
+                }
 
-    # 插入评论并获取ID
-    comment_id = await insert_record("wxapp_comment", comment_data)
-    if not comment_id:
-        return Response.db_error(details={"message": "发布评论失败"})
-        
-    # 使用后台任务更新计数和发送通知
-    background_tasks.add_task(_update_count, table_name, "comment_count", resource_id, 1)
-    if parent_id:
-        background_tasks.add_task(_update_count, "wxapp_comment", "reply_count", parent_id, 1)
-    background_tasks.add_task(_send_comment_notification, resource_type, resource, parent_id, current_user)
+                # 插入评论并获取ID
+                comment_id = await insert_record("wxapp_comment", comment_data, cursor=cursor)
+                if not comment_id:
+                    raise Exception("插入评论记录失败，未能获取 lastrowid")
 
-    return Response.success(data={"id": comment_id}, details={"message": "发布成功"}) 
+                # 更新相关计数
+                await _update_count(table_name, resource_id, "comment_count", 1, cursor=cursor)
+                if parent_id:
+                    await _update_count("wxapp_comment", parent_id, "reply_count", 1, cursor=cursor)
+                await _update_count("wxapp_user", user_id, "comment_count", 1, cursor=cursor)
+                
+                await conn.commit()
+            except Exception as e:
+                await conn.rollback()
+                logger.error(f"创建评论事务失败: {e}", exc_info=True)
+                return Response.db_error(details={"message": "发布评论失败"})
+
+    # 使用事务中获取的 resource 对象发送通知
+    asyncio.create_task(_send_comment_notification(resource_type, resource, parent_id, current_user))
+
+    return Response.success(data={"id": comment_id}, details={"message": "发布成功"})

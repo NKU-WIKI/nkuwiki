@@ -54,12 +54,15 @@ async def get_current_active_user(token: str = Depends(oauth2_scheme)) -> Dict[s
         raise credentials_exception
 
     # 从数据库获取用户
-    user = await db_core.get_by_id("wxapp_user", user_id)
-    if user is None:
+    user_result = await db_core.execute_custom_query(
+        "SELECT * FROM wxapp_user WHERE id = %s", (user_id,)
+    )
+    if not user_result:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="用户不存在"
         )
+    user = user_result[0]
     
     return user
 
@@ -82,7 +85,10 @@ async def get_current_active_user_optional(token: Optional[str] = Depends(oauth2
         return None # token无效
 
     # 从数据库获取用户
-    user = await db_core.get_by_id("wxapp_user", user_id)
+    user_result = await db_core.execute_custom_query(
+        "SELECT * FROM wxapp_user WHERE id = %s", (user_id,)
+    )
+    user = user_result[0] if user_result else None
     # 即使用户在数据库中不存在，也只返回None，而不抛出异常
     
     return user
@@ -100,4 +106,4 @@ async def get_current_admin_user(current_user: Dict[str, Any] = Depends(get_curr
             status_code=status.HTTP_403_FORBIDDEN,
             detail="操作未被授权，需要管理员权限",
         )
-    return current_user 
+    return current_user

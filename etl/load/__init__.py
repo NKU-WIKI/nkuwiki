@@ -23,8 +23,7 @@ from etl.load.db_core import (
     query_records,
     count_records,
     batch_insert,
-    get_all_tables,
-    get_by_id
+    get_all_tables
 )
 
 # 导入统一表管理器
@@ -80,7 +79,7 @@ __all__ = [
     # 异步数据库操作 (主要接口)
     'execute_custom_query', 'insert_record', 'update_record',
     'query_records', 'count_records', 'batch_insert', 
-    'get_all_tables', 'get_by_id',
+    'get_all_tables',
     
     # 表管理
     'TableManager', 'get_table_manager',

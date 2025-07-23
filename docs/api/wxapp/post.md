@@ -4,7 +4,7 @@
 
 ## 1. 创建新帖子
 
-- **Endpoint**: `POST /wxapp/post/create`
+- **Endpoint**: `POST /api/wxapp/post/create`
 - **Permissions**: `Authenticated User` (需要JWT)
 - **Tags**: `wxapp-post`
 - **Summary**: 创建新帖子
@@ -41,7 +41,7 @@
 
 ## 2. 获取帖子详情
 
-- **Endpoint**: `GET /wxapp/post/detail`
+- **Endpoint**: `GET /api/wxapp/post/detail`
 - **Permissions**: `Optional Auth` (公开可访问，提供JWT可获取互动状态)
 - **Tags**: `wxapp-post`
 - **Summary**: 获取帖子详情
@@ -61,33 +61,30 @@
     "code": 200,
     "message": "success",
     "data": {
-        "id": 12,
+        "id": 1,
         "user_id": 1,
         "category_id": 1,
-        "title": "My First Post",
-        "content": "This is the content of my first post.",
-        "image": "[\"url1\"]",
-        "tag": "[\"tag1\"]",
-        "location": "{\"name\": \"Nankai University\"}",
+        "title": "测试帖子",
+        "content": "这是一个测试帖子内容。",
+        "image": null,
+        "tag": null,
+        "location": null,
         "allow_comment": true,
         "is_public": true,
-        "view_count": 2,
-        "like_count": 0,
-        "comment_count": 0,
-        "favorite_count": 0,
-        "create_time": "2025-06-21T08:59:26",
-        "update_time": "2025-06-21T08:59:33",
+        "view_count": 100,
+        "like_count": 10,
+        "comment_count": 5,
+        "favorite_count": 3,
+        "create_time": "2025-07-23T21:57:02",
+        "update_time": "2025-07-23T21:57:02",
         "author_info": {
             "id": 1,
             "nickname": "南开小透明",
-            "avatar": "...",
-            "bio": "A new bio for testing.",
-            "level": 0,
-            "post_count": 8,
-            "follower_count": 1,
-            "following_count": 0
+            "avatar": "https://example.com/avatar.jpg",
+            "bio": "一个有趣的简介",
+            "level": 1
         },
-        "is_liked": false,
+        "is_liked": true,
         "is_favorited": false,
         "is_following_author": false
     }
@@ -100,7 +97,7 @@
 
 获取帖子列表，支持按分类、热度、收藏、关注等多种方式筛选和排序。
 
-- **Endpoint**: `GET /wxapp/post/list`
+- **Endpoint**: `GET /api/wxapp/post/list`
 - **Permissions**: `Optional Auth`
 - **Tags**: `wxapp-post`
 - **Summary**: 获取帖子列表
@@ -126,39 +123,39 @@
     "message": "success",
     "data": [
         {
-            "id": 12,
+            "id": 25,
             "user_id": 1,
-            "title": "My First Post",
-            "content": "This is the content of my first post.",
-            "image": [],
-            "tag": ["tag1"],
+            "title": "又一个测试帖子",
+            "content": "这是帖子的内容...",
+            "image": null,
+            "tag": null,
             "location": null,
-            "view_count": 1,
-            "like_count": 0,
-            "comment_count": 0,
-            "favorite_count": 0,
-            "create_time": "2025-06-21T08:59:26",
-            "update_time": "2025-06-21T08:59:26",
+            "view_count": 50,
+            "like_count": 5,
+            "comment_count": 2,
+            "favorite_count": 1,
+            "create_time": "2025-07-23T22:00:00",
+            "update_time": "2025-07-23T22:00:00",
             "allow_comment": true,
             "is_public": true,
             "author_info": {
                 "id": 1,
                 "nickname": "南开小透明",
-                "avatar": "...",
-                "bio": "A developer",
-                "level": 0
+                "avatar": "https://example.com/avatar.jpg",
+                "bio": "一个有趣的简介",
+                "level": 1
             },
             "is_liked": false,
-            "is_favorited": false,
+            "is_favorited": true,
             "is_following_author": false
         }
     ],
     "pagination": {
-        "total": 8,
+        "total": 25,
         "page": 1,
         "page_size": 10,
-        "total_pages": 1,
-        "has_more": false
+        "total_pages": 3,
+        "has_more": true
     }
 }
 ```
@@ -169,7 +166,7 @@
 
 根据关键词等条件搜索帖子。
 
-- **Endpoint**: `GET /wxapp/post/search`
+- **Endpoint**: `GET /api/wxapp/post/search`
 - **Permissions**: `Optional Auth`
 - **Tags**: `wxapp-post`
 - **Summary**: 搜索帖子
@@ -193,7 +190,7 @@
 
 ## 5. 更新帖子
 
-- **Endpoint**: `POST /wxapp/post/update`
+- **Endpoint**: `POST /api/wxapp/post/update`
 - **Permissions**: `Post Author` (需要JWT)
 - **Tags**: `wxapp-post`
 - **Summary**: 更新帖子
@@ -234,7 +231,7 @@
 
 ## 6. 删除帖子
 
-- **Endpoint**: `POST /wxapp/post/delete`
+- **Endpoint**: `POST /api/wxapp/post/delete`
 - **Permissions**: `Post Author` (需要JWT)
 - **Tags**: `wxapp-post`
 - **Summary**: 删除帖子
