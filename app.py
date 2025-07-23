@@ -77,8 +77,7 @@ DEBUG = False
 # 创建FastAPI应用
 print("正在创建FastAPI应用...")
 app = FastAPI(
-    title="NKUWiki API",
-    version=config.get("version", "1.0.0"),
+    title="NKU-Wiki API", description="南开大学知识维基项目", version=config.get("version", "1.0.0"),
     debug=DEBUG,
     openapi_url="/api/openapi.json" if DEBUG else None,  # 仅在调试模式开启OpenAPI
     docs_url="/api/docs" if DEBUG else None,             # 仅在调试模式开启Swagger
@@ -90,6 +89,12 @@ print("✅ FastAPI应用创建成功")
 
 # 添加API路由器
 app.include_router(router)
+
+# 挂载静态文件目录，用于访问上传的图片
+# 从配置中读取上传目录路径
+upload_dir = config.get("etl.data.uploads.path", "/app/data/uploads")
+app.mount("/static", StaticFiles(directory=upload_dir), name="static")
+
 
 # =============================================================================
 # 中间件配置

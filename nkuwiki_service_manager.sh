@@ -154,14 +154,18 @@ function start_service {
     # 1. 创建 .env 文件
     create_dotenv_file
 
-    # 2. 构建并启动 Docker Compose 服务
+    # 2. 先停止并移除旧的容器实例，避免冲突
+    echo -e "${YELLOW}正在停止并移除旧容器 (如果有)...${NC}"
+    docker compose -p "$COMPOSE_PROJECT_NAME" down --remove-orphans
+    
+    # 3. 构建并启动 Docker Compose 服务
     echo -e "${BLUE}使用 Docker Compose 构建和启动服务...${NC}"
     docker compose -p "$COMPOSE_PROJECT_NAME" up -d --build --remove-orphans api
     
-    # 3. 确保 Nginx 配置是最新的
+    # 4. 确保 Nginx 配置是最新的
     update_nginx
     
-    # 4. 自动安装/更新 systemd 服务
+    # 5. 自动安装/更新 systemd 服务
     echo -e "${BLUE}正在安装/更新 systemd 服务...${NC}"
     install_service
     

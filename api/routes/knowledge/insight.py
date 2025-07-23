@@ -33,18 +33,51 @@ async def get_insight(
         if category:
             conditions['category'] = category
 
-        target_date = date_str
-        if target_date is None:
-            target_date = date.today().isoformat()
+        # 如果 date_str 不是 'all', 则需要先确定要查询的具体日期
+        if not date_str or date_str.lower() != 'all':
+            # 查找目标日期：
+            # 1. 如果提供了 date_str, 则查找 <= date_str 的最新日期
+            # 2. 如果未提供 date_str, 则查找最新的日期
+            date_find_conditions: Dict[str, Any] = {}
+            where_parts = []
+            params_list = []
 
-        if target_date.lower() != 'all':
-            try:
-                datetime.strptime(target_date, "%Y-%m-%d")
-                # 使用 DATE() 函数进行比较，忽略时间部分
-                conditions['where_condition'] = "DATE(insight_date) = %s"
-                conditions['params'] = [target_date]
-            except ValueError:
-                raise HTTPException(status_code=400, detail="日期格式无效，请使用 YYYY-MM-DD 格式，或传入 'all'。")
+            if category:
+                date_find_conditions['category'] = category
+            
+            if date_str:
+                try:
+                    datetime.strptime(date_str, "%Y-%m-%d")
+                    where_parts.append("DATE(insight_date) <= %s")
+                    params_list.append(date_str)
+                except ValueError:
+                    raise HTTPException(status_code=400, detail="日期格式无效，请使用 YYYY-MM-DD 格式，或传入 'all'。")
+
+            if where_parts:
+                date_find_conditions['where_condition'] = " AND ".join(where_parts)
+                date_find_conditions['params'] = params_list
+
+            # 查询满足条件的最大日期
+            date_result = await db_core.query_records(
+                table_name="insights",
+                fields=["MAX(DATE(insight_date)) as max_date"],
+                conditions=date_find_conditions,
+                limit=1
+            )
+            
+            target_date = None
+            if date_result.get('data') and date_result['data'][0].get('max_date'):
+                target_date = date_result['data'][0]['max_date']
+
+            # 如果没有找到任何符合条件的日期，直接返回空结果
+            if not target_date:
+                pagination = PaginationInfo(total=0, page=page, page_size=page_size)
+                return Response.paged(data=[], pagination=pagination, message="成功")
+
+            # 使用找到的日期作为最终查询条件
+            conditions['where_condition'] = "DATE(insight_date) = %s"
+            conditions['params'] = [target_date]
+        # 如果 date_str 是 'all', 则不添加任何日期条件，查询所有记录
 
         logger.debug(f"查询洞察的条件: {conditions}")
 

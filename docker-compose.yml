@@ -9,6 +9,7 @@ services:
             - .:/app
             - /data/raw:/app/data/raw
             - /data/models:/app/data/models
+            - /data/uploads:/data/uploads
         networks:
             - nkuwiki_net
         environment:

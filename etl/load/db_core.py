@@ -109,7 +109,11 @@ async def query_records(
     offset: int = 0
 ) -> Dict[str, Any]:
     """通用查询函数，支持更复杂的排序和条件"""
-    field_str = ", ".join(f"`{f}`" for f in fields) if fields else "*"
+    if fields:
+        # 如果字段包含(或*，则假定它是一个函数或特殊表达式，不加反引号
+        field_str = ", ".join(f if '(' in f or '*' in f else f'`{f}`' for f in fields)
+    else:
+        field_str = "*"
     query = f"SELECT {field_str} FROM `{table_name}`"
     count_query = f"SELECT COUNT(*) as total FROM `{table_name}`"
     
@@ -222,4 +226,4 @@ async def execute_sql_list_in_transaction(sql_list: List[Tuple[str, Optional[Uni
     except Exception as e:
         logger.error(f"事务执行失败: {e}", exc_info=True)
         # 已经在连接池层面处理了回滚
-        return False 
+        return False
