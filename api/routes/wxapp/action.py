@@ -42,14 +42,15 @@ ACTION_CONFIG = {
 
 
 async def _handle_notification(
-    is_active: bool,
     current_user: Dict[str, Any],
     resource: Dict[str, Any],
     target_id: str,
     target_type: str,
-    action_type: str
+    action_type: str,
+    is_active: bool
 ):
     """处理发送通知的逻辑"""
+    # 只有在点赞/关注等激活操作时才发送通知
     if not is_active:
         return
 
@@ -133,33 +134,51 @@ async def toggle_action(
             fetch='one'
         )
 
-        amount = 0
         is_active = False
+        latest_count = resource.get(config["fields"][action_type], 0)
 
-        if existing_action:
-            # 取消操作
-            await execute_custom_query(
-                "DELETE FROM wxapp_action WHERE id = %s",
-                [existing_action['id']],
-                fetch=False
-            )
-            amount = -1
-            is_active = False
-        else:
-            # 执行操作
-            await insert_record("wxapp_action", {
-                "user_id": user_id,
-                "action_type": action_type,
-                "target_id": target_id,
-                "target_type": target_type
-            })
-            amount = 1
-            is_active = True
-        
-        # 4. 使用 _update_count 更新计数
-        count_field = config["fields"][action_type]
-        latest_count = await _update_count(config["table"], target_id, count_field, amount)
+        async with _get_db_connection() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await conn.begin()
+                try:
+                    count_field = config["fields"][action_type]
 
+                    if existing_action:
+                        # 如果记录存在，则删除
+                        await cursor.execute(
+                            "DELETE FROM wxapp_action WHERE id = %s",
+                            (existing_action['id'],)
+                        )
+                        await cursor.execute(
+                            f"UPDATE {config['table']} SET {count_field} = GREATEST(0, {count_field} - 1) WHERE id = %s",
+                            (target_id,)
+                        )
+                        is_active = False
+                    else:
+                        # 创建新操作
+                        await cursor.execute(
+                            "INSERT INTO wxapp_action (user_id, action_type, target_id, target_type) VALUES (%s, %s, %s, %s)",
+                            (user_id, action_type, target_id, target_type)
+                        )
+                        await cursor.execute(
+                            f"UPDATE {config['table']} SET {count_field} = {count_field} + 1 WHERE id = %s",
+                            (target_id,)
+                        )
+                        is_active = True
+
+                    # 重新查询最新的计数值
+                    await cursor.execute(f"SELECT {count_field} FROM {config['table']} WHERE id = %s", (target_id,))
+                    result = await cursor.fetchone()
+                    latest_count = result[count_field]
+
+                    await conn.commit()
+
+                except Exception as e:
+                    await conn.rollback()
+                    raise e
+
+        # 更新相关用户的总计数
+        amount = 1 if is_active else -1
         if target_type in ["post", "comment"]:
             author_id = resource.get("user_id")
             if author_id:
@@ -167,11 +186,14 @@ async def toggle_action(
                 await _update_count("wxapp_user", author_id, author_count_field, amount)
 
         if action_type == "follow":
+            # 更新被关注者的粉丝数
+            await _update_count("wxapp_user", target_id, "follower_count", amount)
+            # 更新操作发起者的关注数
             await _update_count("wxapp_user", user_id, "following_count", amount)
 
         # 5. 异步发送通知
         asyncio.create_task(
-            _handle_notification(is_active, current_user, resource, target_id, target_type, action_type)
+            _handle_notification(current_user, resource, target_id, target_type, action_type, is_active)
         )
 
         return Response.success(data={"is_active": is_active, "count": latest_count if latest_count is not None else 0})
