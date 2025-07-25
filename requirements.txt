@@ -12,7 +12,7 @@ llama-index-readers-file
 pydantic==2.8.0
 numpy==1.26.4
 nltk==3.9b1
-# pytorch==2.3.0+cpu 注释掉，在dockerfile中单独安装
+pytorch==2.3.0+cpu
 # ========================================
 # 数据处理 (Data Processing)
 # ========================================
