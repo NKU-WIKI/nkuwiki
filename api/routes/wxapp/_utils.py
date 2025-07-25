@@ -58,10 +58,15 @@ async def batch_enrich_posts_with_user_info(posts: List[Dict[str, Any]], current
         author_id = post.get('user_id')
         post['author_info'] = author_info_map.get(author_id, {})
         
-        post_actions = actions_map.get(post['id'], set())
-        post['is_liked'] = 'like' in post_actions
-        post['is_favorited'] = 'favorite' in post_actions
-        post['is_following_author'] = author_id in following_map
+        if current_user_id:
+            post_actions = actions_map.get(post['id'], set())
+            post['is_liked'] = 'like' in post_actions
+            post['is_favorited'] = 'favorite' in post_actions
+            post['is_following_author'] = author_id in following_map
+        else:
+            post['is_liked'] = False
+            post['is_favorited'] = False
+            post['is_following_author'] = False
         
         # 清理掉顶层的冗余用户信息
         for key in ['nickname', 'avatar', 'bio']:
@@ -103,8 +108,9 @@ async def _update_count(table: str, record_id: Any, field: str, delta: int = 1, 
         else:
             # 创建新的连接和事务
             from etl.load.db_pool_manager import get_db_connection
+            import aiomysql
             async with get_db_connection() as conn:
-                async with conn.cursor() as cur:
+                async with conn.cursor(aiomysql.DictCursor) as cur:
                     await conn.begin()
                     try:
                         await cur.execute(update_query, params)
@@ -117,7 +123,12 @@ async def _update_count(table: str, record_id: Any, field: str, delta: int = 1, 
                         raise
 
         if result:
-            new_count = result[field]
+            # 处理不同类型的cursor返回结果
+            if isinstance(result, dict):
+                new_count = result[field]
+            else:
+                # 如果是元组，需要通过索引访问（这种情况下需要知道字段在SELECT中的位置）
+                new_count = result[0]  # 因为我们只SELECT了一个字段
             logger.debug(f"成功更新计数: {table}.{field} for record {record_id} to {new_count}")
             return new_count
         else:
