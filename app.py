@@ -158,7 +158,6 @@ async def log_requests(request: Request, call_next):
             log_msg += f" [{request_id}] 来自 {client_host}"
             api_logger.info(log_msg)
             
-<<<<<<< HEAD
             # 临时禁用请求体日志记录，避免干扰请求处理
             # if request.method in ["POST", "PUT"] and "application/json" in request.headers.get("content-type", ""):
             #     try:
@@ -176,24 +175,6 @@ async def log_requests(request: Request, call_next):
             #     except Exception as e:
             #         api_logger.warning(f"无法记录请求体: [{request_id}] {str(e)}")
             pass  # 临时禁用请求体日志
-=======
-            # 记录请求体内容 (仅POST/PUT请求)
-            if request.method in ["POST", "PUT"] and "application/json" in request.headers.get("content-type", ""):
-                try:
-                    # 保存当前请求体位置
-                    body_position = await request.body()
-                    # 重置请求体位置，以便后续处理仍然可以读取
-                    await request.body()
-                    
-                    if len(body_position) > 0:
-                        # 只记录前500个字符，防止超长日志
-                        body_str = body_position.decode('utf-8')
-                        if len(body_str) > 500:
-                            body_str = body_str[:500] + "... [截断]"
-                        api_logger.debug(f"请求体: [{request_id}] {body_str}")
-                except Exception as e:
-                    api_logger.warning(f"无法记录请求体: [{request_id}] {str(e)}")
->>>>>>> c4cc47b08c72ba2cd2781a142e8e78f689d64a02
         else:
             # 使用普通logger记录其他请求
             logger.info(f"Request: {request.method} {path} [{request_id}]")
