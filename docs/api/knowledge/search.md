@@ -336,3 +336,129 @@
       "details": "快照不存在"
   }
   ```
+### 5.4 获取热门和最新帖子
+
+- **Endpoint**: `GET /knowledge/hot_and_new`
+- **Tags**: `knowledge`
+- **Summary**: 获取热门和最新帖子推荐
+
+#### 功能说明
+
+此接口从多个平台（wxapp_post、wechat_nku、website_nku、market_nku）获取推荐内容，提供三种类型的数据：
+
+- **最热帖子**：基于点赞、评论、收藏、浏览量等指标计算热度分数的热门内容
+- **最新帖子**：最近7天内发布的最新内容
+- **综合推荐**：结合热度和时间因素的综合推荐算法排序
+
+#### 请求参数
+
+| 参数名       | 类型    | 位置  | 是否必需 | 默认值 | 描述                                     |
+| ------------ | ------- | ----- | -------- | ------ | ---------------------------------------- |
+| `limit`      | `integer` | Query | 否       | `20`   | 每类帖子的数量限制。                     |
+| `hot_weight` | `float`   | Query | 否       | `0.7`  | 热度权重，用于综合推荐算法，取值范围0-1。 |
+| `new_weight` | `float`   | Query | 否       | `0.3`  | 新度权重，用于综合推荐算法，取值范围0-1。 |
+
+#### 响应
+
+- **200 OK**:
+  ```json
+  {
+    "code": 200,
+    "message": "success",
+    "data": {
+      "hot_posts": [
+        {
+          "id": 123,
+          "title": "南开大学2024年春季学期课程安排",
+          "content": "根据学校安排，2024年春季学期将于...",
+          "author": "教务处",
+          "platform": "website_nku",
+          "original_url": "http://www.nankai.edu.cn/news/123",
+          "tag": ["官方", "课程"],
+          "hot_score": 0.92,
+          "create_time": "2024-01-15T10:00:00",
+          "update_time": "2024-01-15T10:00:00",
+          "view_count": 2048,
+          "like_count": 256,
+          "comment_count": 128,
+          "favorite_count": 64
+        }
+      ],
+      "new_posts": [
+        {
+          "id": 456,
+          "title": "最新：图书馆开放时间调整通知",
+          "content": "为更好地服务师生，图书馆开放时间调整为...",
+          "author": "图书馆",
+          "platform": "wechat_nku",
+          "original_url": "https://mp.weixin.qq.com/s/abc123",
+          "tag": ["通知", "图书馆"],
+          "create_time": "2024-01-20T15:30:00",
+          "update_time": "2024-01-20T15:30:00",
+          "view_count": 512,
+          "like_count": 32,
+          "comment_count": 8,
+          "favorite_count": 16
+        }
+      ],
+      "recommended_posts": [
+        {
+          "id": 789,
+          "title": "南开大学校园文化节精彩回顾",
+          "content": "本次校园文化节汇聚了各学院的精彩表演...",
+          "author": "学生会",
+          "platform": "wxapp_post",
+          "original_url": null,
+          "tag": ["文化", "活动"],
+          "composite_score": 0.85,
+          "hot_score": 0.78,
+          "time_score": 0.95,
+          "create_time": "2024-01-18T20:00:00",
+          "update_time": "2024-01-18T20:00:00",
+          "view_count": 1024,
+          "like_count": 128,
+          "comment_count": 64,
+          "favorite_count": 32
+        }
+      ],
+      "statistics": {
+        "total_hot_posts": 50,
+        "total_new_posts": 35,
+        "total_recommended_posts": 100,
+        "data_sources": ["wxapp_post", "wechat_nku", "website_nku", "market_nku"],
+        "time_range": "2024-01-14 to 2024-01-21",
+        "hot_weight": 0.7,
+        "new_weight": 0.3
+      }
+    }
+  }
+  ```
+
+- **500 Internal Server Error**:
+  ```json
+  {
+    "code": 500,
+    "message": "error",
+    "details": "获取热门和最新帖子失败"
+  }
+  ```
+
+#### 算法说明
+
+**热度分数计算**：
+- 基于点赞数、评论数、收藏数、浏览量等指标
+- 考虑内容发布时间的衰减因子
+- 不同平台数据进行归一化处理
+
+**综合推荐算法**：
+- `composite_score = hot_weight × hot_score + new_weight × time_score`
+- `hot_score`：内容的热度分数（0-1）
+- `time_score`：基于发布时间的新鲜度分数（0-1）
+- 权重可通过参数调整，满足不同场景需求
+
+#### 使用建议
+
+- **首页推荐**：使用默认参数获取均衡的热门和最新内容
+- **热门优先**：设置较高的 `hot_weight`（如0.8-0.9）
+- **最新优先**：设置较高的 `new_weight`（如0.8-0.9）
+- **性能考虑**：建议 `limit` 参数不要设置过大（建议≤50）
