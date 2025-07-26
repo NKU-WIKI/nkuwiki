@@ -141,7 +141,7 @@ async def _send_comment_notification(
             safe_title = resource.get('title', '无标题')
             resource_name = '帖子' if resource_type == 'post' else '知识'
             await create_notification(
-                openid=resource["user_id"],
+                user_id=resource["user_id"],
                 title="收到新评论",
                 content=f"用户评论了你的{resource_name}「{safe_title}」",
                 target_id=resource.get("id"),
