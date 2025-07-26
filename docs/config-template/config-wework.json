@@ -1,0 +1,44 @@
+{
+  "services": {
+    "channel_type": "wework",
+    "agent_type": "coze",
+    "wework": {
+      "smart": true,
+      "auto_accept_friend": true,
+      "clear_memory_commands": ["#清除记忆"],
+      "character_desc": "你是NKU Wiki助手, 南开大学的知识共享平台智能助手"
+    }
+  },
+  "core": {
+    "agent": {
+      "coze": {
+        "base_url": "https://api.coze.cn",
+        "api_key": "",
+        "bot_id": ["your_bot_id_here"]
+      }
+    }
+  },
+  "etl": {
+    "data": {
+      "base_path": "./etl/data",
+      "qdrant": {
+        "url": "http://localhost:6333",
+        "collection": "main_index"
+      },
+      "mysql": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "user": "root",
+        "password": "",
+        "name": "mysql"
+      }
+    },
+    "retrieval": {
+      "retrieval_type": 3,
+      "f_topk": 128
+    },
+    "embedding": {
+      "name": "BAAI/bge-large-zh-v1.5"
+    }
+  }
+} 

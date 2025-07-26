@@ -1,0 +1,3 @@
+[submodule "services/app"]
+	path = services/app
+	url = https://github.com/NKU-WIKI/wxapp

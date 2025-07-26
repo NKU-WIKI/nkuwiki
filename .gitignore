@@ -1,0 +1,80 @@
+# 开发环境
+.env
+.env.local
+.env.*.local
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.bat
+*.bat
+# 构建和打包
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+temp/
+
+# IDE和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+.windsurfrules
+.cursorrules
+
+# 日志和数据
+*.log
+*.log.*
+logs/
+log/
+data/
+backups/
+
+# 数据库
+*.sqlite
+*.db
+*.dump
+
+# 配置文件
+config.json
+config-new.json
+plugins.json
+
+# 敏感词库（包含敏感内容，不提交到版本库）
+banwords.json
+banwords.json.bak
+services/app/utils/banwords.js
+services/app/utils/banwords.js.bak
+
+# 测试和覆盖率
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 压缩和镜像文件
+*.zip
+*.tar.gz
+*.7z
+*.dmg
+*.iso
+
+# 临时文件
+*.tmp 
+temp*/
+./*.png
+static/
+ etl/crawler/webpage_spider/log.txtconfig-new.json

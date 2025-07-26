@@ -1,0 +1,78 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# NKUWiki 项目概述
+
+## 项目简介
+
+nkuwiki是南开大学校园知识共享平台，采用**开源·共治·普惠**理念构建南开知识共同体。
+
+### 核心特色
+- 🤖 RAG检索增强生成系统
+- 🧠 多智能体系统（Coze、OpenAI、Claude等）
+- 🔍 异构数据源整合（微信、网站、小红书等）
+- 📱 微信小程序 + Web多端支持
+
+## 项目架构
+
+```
+nkuwiki/
+├── api/               # FastAPI后端服务
+├── core/              # 核心模块（智能体、工具等）
+├── etl/               # ETL数据处理管道
+├── services/          # 多渠道服务（微信小程序、网站等）
+├── infra/             # 基础设施（部署、监控等）
+├── docs/              # 项目文档
+├── config.py          # 全局配置管理
+└── app.py             # 应用主入口
+```
+
+## 技术栈概览
+
+### 后端核心
+- **Python 3.10+** + **FastAPI** - 主要后端框架
+- **LlamaIndex** - RAG框架
+- **MySQL** + **Qdrant** + **Redis** + **Elasticsearch** - 数据存储
+- **BGE嵌入模型** - 语义向量化
+配置在config.json
+
+### 前端
+- **微信小程序** - 主要用户界面
+- **JavaScript** - 前端开发语言
+
+### 数据处理
+- **Scrapy** + **Playwright** - 爬虫框架
+- **Jieba** - 中文分词
+- **NetworkX** - 图算法（PageRank）
+
+## 关键设计原则
+
+1. **模块化**: 每个模块职责单一，便于维护
+2. **异步优先**: IO密集型操作使用异步处理
+3. **配置驱动**: 通过config.json统一管理配置
+4. **日志规范**: 使用register_logger统一日志管理
+5. **类型安全**: 使用Python类型提示
+6. 开发新接口后及时更新api文档docs/api/
+
+## 环境要求
+
+- Python 3.10+
+- MySQL 8.0+
+- Redis 6.0+
+- Qdrant 1.3+
+- Elasticsearch 8.0+
+
+## 快速启动
+
+```bash
+# 复制配置文件
+cp config-template/config-terminal.json config.json
+
+# 启动API服务
+python app.py --api --port 8000
+
+# 启动终端问答
+python app.py
+```

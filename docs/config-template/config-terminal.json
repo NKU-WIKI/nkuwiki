@@ -1,0 +1,43 @@
+{
+  "services": {
+    "channel_type": "terminal",
+    "agent_type": "coze",
+    "terminal": {
+      "stream_output": true,
+      "show_welcome": true,
+      "welcome_message": "欢迎使用 NKU Wiki 智能助手!"
+    }
+  },
+  "core": {
+    "agent": {
+      "coze": {
+        "base_url": "https://api.coze.cn",
+        "api_key": "",
+        "bot_id": ["your_bot_id_here"]
+      }
+    }
+  },
+  "etl": {
+    "data": {
+      "base_path": "./etl/data",
+      "qdrant": {
+        "url": "http://localhost:6333",
+        "collection": "main_index"
+      },
+      "mysql": {
+        "host": "127.0.0.1",
+        "port": 3306,
+        "user": "root",
+        "password": "",
+        "name": "mysql"
+      }
+    },
+    "retrieval": {
+      "retrieval_type": 3,
+      "f_topk": 128
+    },
+    "embedding": {
+      "name": "BAAI/bge-large-zh-v1.5"
+    }
+  }
+} 

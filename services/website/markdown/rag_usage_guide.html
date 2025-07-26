@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>RAG接口使用指南 | 南开WIKI</title>
+    <meta name="description" content="RAG (Retrieval-Augmented Generation，检索增强生成) 是一种结合了检索和生成能力的AI技术。它通过以下步骤工作：" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="rag">RAG接口使用指南</h1>
+<h2 id="rag_1">什么是RAG</h2>
+<p>RAG (Retrieval-Augmented Generation，检索增强生成) 是一种结合了检索和生成能力的AI技术。它通过以下步骤工作：</p>
+<ol>
+<li>接收用户查询</li>
+<li>从知识库中检索相关信息</li>
+<li>将检索到的信息与用户查询一起输入到生成模型中</li>
+<li>生成一个基于检索内容的回答</li>
+</ol>
+<p>南开Wiki的RAG接口让你能够利用校园知识库回答用户问题，提供更准确、更相关的信息。</p>
+<h2 id="rag_2">为什么使用RAG</h2>
+<p>与纯粹的生成模型相比，RAG有以下优势：</p>
+<ul>
+<li><strong>减少幻觉</strong>：基于真实检索的内容生成回答，减少捏造信息</li>
+<li><strong>提供最新信息</strong>：能够访问最新的知识库内容</li>
+<li><strong>引用信息来源</strong>：回答中可以提供信息的来源，增加可信度</li>
+<li><strong>支持领域特定知识</strong>：能针对特定领域（如南开大学相关信息）提供专业回答</li>
+</ul>
+<h2 id="_1">快速开始</h2>
+<h3 id="_2">基本调用</h3>
+<div class="codehilite"><pre><span></span><code><span class="kn">import</span><span class="w"> </span><span class="nn">requests</span>
+
+<span class="n">url</span> <span class="o">=</span> <span class="s2">&quot;https://nkuwiki.com/agent/rag&quot;</span>  <span class="c1"># 生产环境</span>
+<span class="c1"># url = &quot;http://localhost:8000/agent/rag&quot;  # 开发环境</span>
+
+<span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;南开大学历史&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tables&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;wxapp_posts&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;max_results&quot;</span><span class="p">:</span> <span class="mi">3</span><span class="p">,</span>
+    <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;markdown&quot;</span>
+<span class="p">}</span>
+
+<span class="n">headers</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;Content-Type&quot;</span><span class="p">:</span> <span class="s2">&quot;application/json&quot;</span>
+<span class="p">}</span>
+
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="n">payload</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;response&quot;</span><span class="p">])</span>  <span class="c1"># 输出生成的回答</span>
+</code></pre></div>
+
+<h3 id="_3">在微信小程序中使用</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1">// 在微信小程序中调用RAG接口</span>
+<span class="nx">wx</span><span class="p">.</span><span class="nx">request</span><span class="p">({</span>
+<span class="w">  </span><span class="nx">url</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;https://nkuwiki.com/agent/rag&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">method</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;POST&#39;</span><span class="p">,</span>
+<span class="w">  </span><span class="nx">data</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">query</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;南开大学有哪些著名校友？&#39;</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">tables</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s1">&#39;wxapp_posts&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;wechat_nku&#39;</span><span class="p">],</span>
+<span class="w">    </span><span class="nx">max_results</span><span class="o">:</span><span class="w"> </span><span class="mf">5</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">format</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;markdown&#39;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">header</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="s1">&#39;content-type&#39;</span><span class="o">:</span><span class="w"> </span><span class="s1">&#39;application/json&#39;</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">success</span><span class="p">(</span><span class="nx">res</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">console</span><span class="p">.</span><span class="nx">log</span><span class="p">(</span><span class="nx">res</span><span class="p">.</span><span class="nx">data</span><span class="p">.</span><span class="nx">response</span><span class="p">)</span>
+<span class="w">    </span><span class="c1">// 处理回答...</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">})</span>
+</code></pre></div>
+
+<h2 id="_4">进阶用法</h2>
+<h3 id="_5">多表查询</h3>
+<p>你可以同时查询多个知识来源：</p>
+<div class="codehilite"><pre><span></span><code><span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;南开大学招生信息&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tables&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;wxapp_posts&quot;</span><span class="p">,</span> <span class="s2">&quot;wechat_nku&quot;</span><span class="p">,</span> <span class="s2">&quot;website_nku&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;max_results&quot;</span><span class="p">:</span> <span class="mi">5</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_6">不同输出格式</h3>
+<p>RAG接口支持三种输出格式：</p>
+<ul>
+<li><code>markdown</code>：适合需要富文本展示的场景</li>
+<li><code>text</code>：纯文本格式，适合简单场景</li>
+<li><code>html</code>：适合网页展示</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><span class="c1"># HTML格式输出</span>
+<span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;南开大学专业设置&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;format&quot;</span><span class="p">:</span> <span class="s2">&quot;html&quot;</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="rag-rag2">使用增强版RAG (rag2)</h3>
+<p>增强版RAG接口支持查询改写，能够提高检索质量：</p>
+<div class="codehilite"><pre><span></span><code><span class="n">url</span> <span class="o">=</span> <span class="s2">&quot;https://nkuwiki.com/agent/rag2&quot;</span>
+
+<span class="n">payload</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">&quot;query&quot;</span><span class="p">:</span> <span class="s2">&quot;怎样申请奖学金&quot;</span><span class="p">,</span>
+    <span class="s2">&quot;tables&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;wxapp_posts&quot;</span><span class="p">],</span>
+    <span class="s2">&quot;query_bot_id&quot;</span><span class="p">:</span> <span class="s2">&quot;rewriter&quot;</span><span class="p">,</span>  <span class="c1"># 查询改写机器人</span>
+    <span class="s2">&quot;flash_bot_id&quot;</span><span class="p">:</span> <span class="s2">&quot;flash&quot;</span>      <span class="c1"># 回答生成机器人</span>
+<span class="p">}</span>
+
+<span class="n">response</span> <span class="o">=</span> <span class="n">requests</span><span class="o">.</span><span class="n">post</span><span class="p">(</span><span class="n">url</span><span class="p">,</span> <span class="n">json</span><span class="o">=</span><span class="n">payload</span><span class="p">,</span> <span class="n">headers</span><span class="o">=</span><span class="n">headers</span><span class="p">)</span>
+<span class="n">result</span> <span class="o">=</span> <span class="n">response</span><span class="o">.</span><span class="n">json</span><span class="p">()</span>
+
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;原始查询: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;original_query&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;改写查询: </span><span class="si">{</span><span class="n">result</span><span class="p">[</span><span class="s1">&#39;rewritten_query&#39;</span><span class="p">]</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<span class="nb">print</span><span class="p">(</span><span class="n">result</span><span class="p">[</span><span class="s2">&quot;response&quot;</span><span class="p">])</span>
+</code></pre></div>
+
+<h2 id="_7">最佳实践</h2>
+<ol>
+<li>
+<p><strong>清晰的查询</strong>：提供明确、具体的查询问题，以获得更精确的回答</p>
+</li>
+<li>
+<p><strong>选择合适的表</strong>：根据需求选择合适的知识源</p>
+</li>
+<li>校园生活问题：<code>wxapp_posts</code>, <code>wxapp_comments</code></li>
+<li>
+<p>官方信息：<code>website_nku</code>, <code>wechat_nku</code></p>
+</li>
+<li>
+<p><strong>控制结果数量</strong>：通过<code>max_results</code>参数控制检索结果数量，平衡速度和全面性</p>
+</li>
+<li>
+<p><strong>错误处理</strong>：实现完善的错误处理机制，应对可能的API异常</p>
+</li>
+<li>
+<p><strong>用户体验</strong>：使用流式响应(<code>stream=true</code>)可以提供更好的用户体验，特别是对于长回答</p>
+</li>
+</ol>
+<h2 id="_8">故障排除</h2>
+<p>常见问题及解决方案：</p>
+<ol>
+<li><strong>404错误</strong>：检查API路径是否正确，确认服务器是否运行</li>
+<li><strong>400错误</strong>：检查请求参数格式，尤其是表名是否在允许的列表中</li>
+<li><strong>响应超时</strong>：可能是查询太复杂或服务器负载过高，尝试简化查询或稍后重试</li>
+<li><strong>回答不相关</strong>：尝试调整查询表达方式或使用<code>rag2</code>接口进行查询改写</li>
+</ol>
+<h2 id="_9">测试与开发</h2>
+<p>为方便开发和测试，可以使用我们提供的简化测试环境：</p>
+<div class="codehilite"><pre><span></span><code>http://localhost:8888/rag
+</code></pre></div>
+
+<p>该环境提供与正式API相同的接口格式，但使用模拟数据，适合前端开发和接口集成测试。</p>
+<h2 id="_10">更多资源</h2>
+<ul>
+<li><a href="./rag_api.md">API详细文档</a></li>
+<li><a href="https://github.com/nkuwiki/examples">示例代码库</a></li>
+<li><a href="./faq.md">常见问题解答</a> </li>
+</ul>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

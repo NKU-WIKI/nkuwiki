@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>nkuwiki 问答服务使用指南 | 南开WIKI</title>
+    <meta name="description" content="nkuwiki 问答服务是南开百科知识平台的智能问答系统，支持通过多种渠道访问，包括命令行终端、微信公众号等。本指南介绍如何配置和使用问答服务。" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="nkuwiki">nkuwiki 问答服务使用指南</h1>
+<h2 id="_1">简介</h2>
+<p>nkuwiki 问答服务是南开百科知识平台的智能问答系统，支持通过多种渠道访问，包括命令行终端、微信公众号等。本指南介绍如何配置和使用问答服务。</p>
+<h2 id="_2">启动问答服务</h2>
+<p>问答服务可通过以下命令启动：</p>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>app.py<span class="w"> </span>--qa
+</code></pre></div>
+
+<p>参数说明：</p>
+<ul>
+<li><code>--qa</code>: 启动问答服务</li>
+</ul>
+<h2 id="_3">渠道配置</h2>
+<p>问答服务支持多种交互渠道，可在配置文件中指定使用的渠道：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;services&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;channel_type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;terminal&quot;</span><span class="w">  </span><span class="c1">// 可选值: terminal, wechatmp, website</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_4">支持的渠道</h3>
+<ol>
+<li><strong>终端渠道 (terminal)</strong></li>
+</ol>
+<p>适用于开发测试和本地使用，通过命令行直接与智能体交互。</p>
+<ol>
+<li><strong>微信公众号渠道 (wechatmp)</strong></li>
+</ol>
+<p>通过微信公众号提供服务，需要配置相关的微信公众号参数：</p>
+<p><code>json
+   {
+     "services": {
+       "wechatmp": {
+         "appid": "your_appid",
+         "appsecret": "your_appsecret",
+         "token": "your_token"
+       }
+     }
+   }</code></p>
+<ol>
+<li><strong>网站渠道 (website)</strong></li>
+</ol>
+<p>通过网站提供服务，需要配置相关的网站参数。</p>
+<h2 id="_5">渠道实现</h2>
+<p>问答服务使用工厂模式创建渠道实例：</p>
+<div class="codehilite"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">services.channel_factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_channel</span>
+
+<span class="n">channel_type</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;services.channel_type&quot;</span><span class="p">,</span> <span class="s2">&quot;terminal&quot;</span><span class="p">)</span>
+<span class="n">channel</span> <span class="o">=</span> <span class="n">create_channel</span><span class="p">(</span><span class="n">channel_type</span><span class="p">)</span>
+<span class="k">if</span> <span class="n">channel</span><span class="p">:</span>
+    <span class="n">channel</span><span class="o">.</span><span class="n">startup</span><span class="p">()</span>
+</code></pre></div>
+
+<p>所有渠道都实现了统一的接口，包括：</p>
+<ul>
+<li><code>startup()</code>: 启动渠道服务</li>
+<li><code>shutdown()</code>: 关闭渠道服务</li>
+<li><code>send_message()</code>: 发送消息</li>
+<li><code>receive_message()</code>: 接收消息</li>
+</ul>
+<h2 id="_6">智能体配置</h2>
+<p>问答服务使用智能体处理用户查询，可以在配置文件中指定智能体类型和参数：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;core&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;agent&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;type&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;coze&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// 智能体类型，可选值: coze, openai, hiagent</span>
+<span class="w">      </span><span class="nt">&quot;parameters&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="c1">// 智能体特定参数</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h2 id="_7">会话管理</h2>
+<p>问答服务使用会话管理器处理用户会话：</p>
+<ol>
+<li>会话初始化</li>
+<li>会话持久化</li>
+<li>会话上下文管理</li>
+<li>会话超时处理</li>
+</ol>
+<h2 id="_8">使用示例</h2>
+<h3 id="_9">终端渠道</h3>
+<p>启动问答服务后，可在终端中直接与系统交互：</p>
+<div class="codehilite"><pre><span></span><code>User: 南开大学的校训是什么？
+nkuwiki: 南开大学的校训是&quot;允公允能，日新月异&quot;。
+
+User: 这句校训的含义是什么？
+nkuwiki: &quot;允公允能，日新月异&quot;出自《礼记·大学》，意为既要有公德心，也要有能力；要日日更新，不断进步。
+</code></pre></div>
+
+<h3 id="_10">微信公众号渠道</h3>
+<p>用户关注配置好的微信公众号后，可直接在公众号中发送消息与系统交互。支持：</p>
+<ol>
+<li>文本消息交互</li>
+<li>语音消息识别与回复</li>
+<li>图片处理</li>
+<li>菜单导航</li>
+</ol>
+<h2 id="_11">高级功能</h2>
+<h3 id="_12">插件系统</h3>
+<p>问答服务支持插件扩展，可通过配置插件增强系统功能：</p>
+<div class="codehilite"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">&quot;core&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">&quot;plugins&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">&quot;enabled&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">&quot;translate&quot;</span><span class="p">,</span><span class="w"> </span><span class="s2">&quot;voice&quot;</span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+
+<h3 id="_13">多模态交互</h3>
+<p>除文本交互外，系统还支持：</p>
+<ol>
+<li>语音识别与合成</li>
+<li>图片理解与生成</li>
+<li>文档解析</li>
+</ol>
+<h2 id="_14">故障排查</h2>
+<p>如遇到问题，请：</p>
+<ol>
+<li>检查配置文件是否正确</li>
+<li>查看日志文件获取详细错误信息</li>
+<li>确认网络连接状态</li>
+<li>验证智能体服务状态</li>
+</ol>
+<h2 id="_15">问答服务指南</h2>
+<p>详细的问答服务使用指南。</p>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>

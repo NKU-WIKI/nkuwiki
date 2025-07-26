@@ -1,0 +1,37 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose.yml
+
+# Backup files
+*.sql
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# Virtual environments
+.venv
+venv
+env
+
+# IDE and OS specific
+.vscode/
+.idea/
+.DS_Store
+.cursor-cache/
+
+# Data, logs, and temporary files
+data/
+logs/
+temp/
+
+# Node.js dependencies
+node_modules 

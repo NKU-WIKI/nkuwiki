@@ -1,0 +1,138 @@
+# ========================================
+# 基础环境 (Base Environment)
+# ========================================
+# python==3.10.12
+
+# ========================================
+# 版本锁定依赖 (Version Locked Dependencies)
+# ========================================
+llama-index-core==0.12.22
+llama-index-vector-stores-qdrant==0.6.0
+llama-index-readers-file
+pydantic==2.8.0
+numpy==1.26.4
+nltk==3.9b1
+pytorch==2.3.0+cpu
+# ========================================
+# 数据处理 (Data Processing)
+# ========================================
+# 数据操作与分析
+pandas
+openpyxl
+scikit-learn
+networkx
+
+# 文本处理
+tiktoken
+jieba
+bm25s
+rank_bm25
+jsonlines
+pypdf
+python-docx
+
+# ========================================
+# 数据存储 (Data Storage)
+# ========================================
+# 关系型数据库
+aiomysql                # 异步MySQL驱动
+pymysql
+SQLAlchemy              # LlamaIndex-core's dependency, added to resolve installation issues.
+# 本地开发容器部署: docker run -d --name mysql -p 3306:3306 -e MYSQL_ROOT_PASSWORD=123456 -v D:\Code\nkuwiki\etl\data\mysql:/var/lib/mysql mysql:latest
+
+# 搜索引擎 (用于通配符查询等)
+elasticsearch==9.0.2
+
+# 向量数据库
+qdrant-client          # 1.3.2+
+# 本地开发容器部署: docker run -d --name qdrant -p 6333:6333 -p 6334:6334 -v d:\code\nkuwiki\etl\data\qdrant:/qdrant/storage qdrant/qdrant:latest 
+
+# ========================================
+# Web与接口 (Web & API)
+# ========================================
+# Web框架
+fastapi               # API框架
+uvicorn               # ASGI服务器
+requests              # HTTP请求库
+httpx                 # 异步HTTP客户端
+aiohttp               # 异步HTTP客户端
+aiofiles              # 异步文件操作
+fastapi-responseschema  # API标准响应格式
+pytest
+
+# 网页处理
+beautifulsoup4        # HTML解析
+playwright            # 浏览器自动化
+
+# ========================================
+# 认证与安全 (Authentication & Security)
+# ========================================
+python-jose[cryptography] # JWT令牌处理
+passlib[bcrypt]           # 密码哈希
+PyJWT                     # JWT的另一个实现，检查是否需要保留
+
+# ========================================
+# 企业微信 (仅Windows)
+# ntwork; platform_system=="Windows"  # pip源不可用，本地安装: pip install ./servercies/wework/ntwork_backup_bin/ntwork<your_version>.whl
+# wechatpy
+# ========================================
+# AI服务集成 (AI Service Integration)
+# ========================================
+# openai                # OpenAI API
+# anthropic             # Claude API
+# google-generativeai   # Google Gemini
+cozepy                # Coze平台
+# zhipuai               # 智谱AI
+# dashscope             # 阿里云通义千问
+# websocket-client      # 讯飞星火依赖
+# dingtalk_stream       # 钉钉
+# broadscope_bailian    # 阿里云百炼
+
+# ========================================
+# 多模态处理 (Multimodal Processing)
+# ========================================
+# 语音处理
+pydub                 # 音频处理
+SpeechRecognition     # 语音识别
+# gTTS                  # Google文本转语音
+# pyttsx3               # 本地文本转语音
+# baidu_aip             # 百度语音
+# azure-cognitiveservices-speech  # Azure语音
+# edge-tts              # Edge TTS
+# elevenlabs            # ElevenLabs TTS
+# langid                # 语言检测
+# pysilk-mod            # SILK编码支持 (Windows)
+# pilk                  # 语音文件处理库 (Windows)
+# comtypes              # COM组件支持 (Windows语音接口)
+
+# 图像与媒体
+PyQRCode              # 二维码生成
+pypng                 # PNG图像处理
+# ========================================
+# 工具与扩展 (Utilities & Extensions)
+# ========================================
+# 系统工具
+loguru                # 日志记录
+python-dotenv         # 环境变量管理
+singleton_decorator   # 单例模式装饰器
+rich                  # 终端美化
+
+# 时间与日期
+arrow                 # 日期时间处理
+croniter              # 定时任务表达式
+ephem                 # 天文计算（农历）
+LunarCalendar         # 农历日期处理
+
+python-multipart
+
+redis>=4.5.1
+psutil>=5.9.0
+
+# ========================================
+# 网页爬虫 (Spider for website)
+# ========================================
+scrapy==2.11.1
+# mysql-connector-python==8.0.32
+
+watchfiles
+websockets

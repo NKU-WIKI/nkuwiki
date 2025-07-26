@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="generator" content="Markdown" />
+    <meta name="theme" content="VuePress Theme Hope" />
+    <title>nkuwiki 服务架构 | 南开WIKI</title>
+    <meta name="description" content="nkuwiki平台采用模块化设计，主要包含两大服务：" />
+    <style>
+      :root {
+        --vp-c-bg: #fff;
+        --vp-c-text: #2c3e50;
+        --vp-c-border: #eaecef;
+        --vp-c-code-bg: #f6f8fa;
+        --vp-c-brand: #3eaf7c;
+        --vp-c-brand-light: #4abf8a;
+      }
+
+      [data-theme="dark"] {
+        --vp-c-bg: #1b1b1f;
+        --vp-c-text: #f0f0f0;
+        --vp-c-border: #3e3e3e;
+        --vp-c-code-bg: #282c34;
+        --vp-c-brand: #3aa675;
+        --vp-c-brand-light: #349469;
+      }
+
+      html, body {
+        background: var(--vp-c-bg);
+        color: var(--vp-c-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+      }
+
+      .markdown-container {
+        max-width: 960px;
+        margin: 0 auto;
+        padding: 2rem 2.5rem;
+      }
+
+      .markdown-content {
+        background-color: var(--vp-c-bg);
+        border-radius: 8px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .markdown-content h1 {
+        font-size: 2.2rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+        margin-top: 0;
+      }
+
+      .markdown-content h2 {
+        font-size: 1.65rem;
+        border-bottom: 1px solid var(--vp-c-border);
+        padding-bottom: 0.3rem;
+      }
+
+      .markdown-content h3 {
+        font-size: 1.35rem;
+      }
+
+      .markdown-content h4 {
+        font-size: 1.15rem;
+      }
+
+      .markdown-content p {
+        margin: 1rem 0;
+      }
+
+      .markdown-content blockquote {
+        border-left: 4px solid var(--vp-c-brand);
+        padding: 0.5rem 1rem;
+        color: #6a737d;
+        background-color: rgba(66, 185, 131, 0.1);
+        margin: 1rem 0;
+      }
+
+      .markdown-content pre {
+        background-color: var(--vp-c-code-bg);
+        border-radius: 6px;
+        padding: 1rem;
+        overflow: auto;
+      }
+
+      .markdown-content code {
+        font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+        padding: 0.2rem 0.4rem;
+        background-color: var(--vp-c-code-bg);
+        border-radius: 3px;
+      }
+
+      .markdown-content pre code {
+        padding: 0;
+        background-color: transparent;
+      }
+
+      .markdown-content table {
+        border-collapse: collapse;
+        width: 100%;
+        margin: 1rem 0;
+      }
+
+      .markdown-content table th, .markdown-content table td {
+        border: 1px solid var(--vp-c-border);
+        padding: 0.6rem 1rem;
+        text-align: left;
+      }
+
+      .markdown-content table th {
+        background-color: rgba(0, 0, 0, 0.05);
+      }
+
+      .markdown-content img {
+        max-width: 100%;
+      }
+
+      .markdown-content a {
+        color: var(--vp-c-brand);
+        text-decoration: none;
+      }
+
+      .markdown-content a:hover {
+        text-decoration: underline;
+        color: var(--vp-c-brand-light);
+      }
+
+      .markdown-content ul, .markdown-content ol {
+        padding-left: 2rem;
+      }
+
+      .markdown-content li {
+        margin: 0.5rem 0;
+      }
+
+      /* 返回按钮 */
+      .back-button {
+        display: inline-block;
+        margin-bottom: 1rem;
+        padding: 0.5rem 1rem;
+        background-color: var(--vp-c-brand);
+        color: white;
+        border-radius: 4px;
+        text-decoration: none;
+        font-weight: 500;
+      }
+
+      .back-button:hover {
+        background-color: var(--vp-c-brand-light);
+      }
+
+      /* 暗黑模式切换按钮 */
+      .theme-toggle {
+        position: fixed;
+        right: 1.5rem;
+        bottom: 1.5rem;
+        width: 3rem;
+        height: 3rem;
+        border-radius: 50%;
+        background-color: var(--vp-c-brand);
+        color: white;
+        text-align: center;
+        line-height: 3rem;
+        cursor: pointer;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+      }
+    </style>
+    <script>
+      const userMode = localStorage.getItem("vuepress-theme-hope-scheme");
+      const systemDarkMode =
+        window.matchMedia &&
+        window.matchMedia("(prefers-color-scheme: dark)").matches;
+
+      if (userMode === "dark" || (userMode !== "light" && systemDarkMode)) {
+        document.documentElement.setAttribute("data-theme", "dark");
+      }
+    </script>
+  </head>
+  <body>
+    <div class="markdown-container">
+      <a href="/docs.html" class="back-button">« 返回文档列表</a>
+      <div class="markdown-content">
+        <h1 id="nkuwiki">nkuwiki 服务架构</h1>
+<h2 id="_1">系统架构概述</h2>
+<p>nkuwiki平台采用模块化设计，主要包含两大服务：</p>
+<ol>
+<li><strong>API服务</strong>：基于FastAPI构建的HTTP API服务，提供数据访问和智能体交互功能</li>
+<li><strong>问答服务</strong>：基于多渠道设计的智能问答服务，支持终端、微信公众号等多种交互方式</li>
+</ol>
+<h2 id="_2">主要组件</h2>
+<h3 id="1-app">1. App单例类</h3>
+<p>nkuwiki使用单例模式管理全局应用实例，提供统一的配置和日志访问点：</p>
+<div class="codehilite"><pre><span></span><code><span class="nd">@singleton</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">App</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;应用程序单例，提供全局访问点&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">config</span> <span class="o">=</span> <span class="n">config</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">logger</span> <span class="o">=</span> <span class="n">logger</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_config</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;获取配置对象&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">config</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">get_logger</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;获取日志对象&quot;&quot;&quot;</span>
+        <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">logger</span>
+</code></pre></div>
+
+<h3 id="2-fastapi">2. FastAPI应用</h3>
+<p>API服务使用FastAPI框架构建，支持：</p>
+<ul>
+<li>自动OpenAPI文档生成</li>
+<li>依赖注入系统</li>
+<li>中间件支持</li>
+<li>路由整合</li>
+</ul>
+<div class="codehilite"><pre><span></span><code><span class="n">app</span> <span class="o">=</span> <span class="n">FastAPI</span><span class="p">(</span>
+    <span class="n">title</span><span class="o">=</span><span class="s2">&quot;nkuwiki API&quot;</span><span class="p">,</span>
+    <span class="n">description</span><span class="o">=</span><span class="s2">&quot;南开百科知识平台API服务&quot;</span><span class="p">,</span>
+    <span class="n">version</span><span class="o">=</span><span class="s2">&quot;1.0.0&quot;</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+
+<h3 id="3">3. 日志系统</h3>
+<p>系统使用loguru库实现结构化日志记录：</p>
+<ul>
+<li>按日轮转日志文件</li>
+<li>保留7天日志历史</li>
+<li>请求ID跟踪</li>
+<li>上下文变量绑定</li>
+</ul>
+<h3 id="4">4. 依赖注入系统</h3>
+<p>通过FastAPI依赖注入机制提供：</p>
+<ul>
+<li>日志注入：<code>get_logger()</code></li>
+<li>配置注入：<code>get_config()</code></li>
+</ul>
+<h3 id="5">5. 路由集成</h3>
+<p>系统集成两个主要路由模块：</p>
+<ul>
+<li>MySQL API路由：<code>mysql_router</code></li>
+<li>Agent API路由：<code>agent_router</code></li>
+</ul>
+<h2 id="_3">服务启动流程</h2>
+<h3 id="api">API服务启动</h3>
+<p>API服务通过<code>run_api_service</code>函数启动：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run_api_service</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="s2">&quot;0.0.0.0&quot;</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="mi">8000</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;启动API服务&quot;&quot;&quot;</span>
+    <span class="c1"># 设置信号处理</span>
+    <span class="n">setup_signal_handlers</span><span class="p">()</span>
+
+    <span class="n">logger</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Starting API service on </span><span class="si">{</span><span class="n">host</span><span class="si">}</span><span class="s2">:</span><span class="si">{</span><span class="n">port</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 启动FastAPI服务</span>
+    <span class="n">uvicorn</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">app</span><span class="p">,</span> <span class="n">host</span><span class="o">=</span><span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="n">port</span><span class="p">)</span>
+</code></pre></div>
+
+<h3 id="_4">问答服务启动</h3>
+<p>问答服务通过<code>run_qa_service</code>函数启动：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">run_qa_service</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;启动问答服务&quot;&quot;&quot;</span>
+    <span class="c1"># 设置信号处理</span>
+    <span class="n">setup_signal_handlers</span><span class="p">()</span>
+
+    <span class="c1"># 获取渠道类型</span>
+    <span class="n">channel_type</span> <span class="o">=</span> <span class="n">config</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;services.channel_type&quot;</span><span class="p">,</span> <span class="s2">&quot;terminal&quot;</span><span class="p">)</span>
+
+    <span class="c1"># 使用渠道工厂创建渠道</span>
+    <span class="kn">from</span><span class="w"> </span><span class="nn">services.channel_factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_channel</span>
+    <span class="n">channel</span> <span class="o">=</span> <span class="n">create_channel</span><span class="p">(</span><span class="n">channel_type</span><span class="p">)</span>
+    <span class="k">if</span> <span class="n">channel</span><span class="p">:</span>
+        <span class="n">channel</span><span class="o">.</span><span class="n">startup</span><span class="p">()</span>
+</code></pre></div>
+
+<h3 id="_5">命令行启动</h3>
+<p>通过命令行参数控制启动服务类型：</p>
+<div class="codehilite"><pre><span></span><code>python<span class="w"> </span>app.py<span class="w"> </span><span class="o">[</span>--qa<span class="o">]</span><span class="w"> </span><span class="o">[</span>--api<span class="o">]</span><span class="w"> </span><span class="o">[</span>--host<span class="w"> </span>HOST<span class="o">]</span><span class="w"> </span><span class="o">[</span>--port<span class="w"> </span>PORT<span class="o">]</span>
+</code></pre></div>
+
+<ul>
+<li><code>--qa</code>: 启动问答服务</li>
+<li><code>--api</code>: 启动API服务</li>
+<li><code>--host</code>: API服务主机地址（默认：0.0.0.0）</li>
+<li><code>--port</code>: API服务端口（默认：8000）</li>
+</ul>
+<p>如未指定任何服务，默认只启动问答服务。</p>
+<h2 id="_6">安全与信号处理</h2>
+<p>系统实现信号处理器用于优雅退出：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">setup_signal_handlers</span><span class="p">():</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;设置信号处理函数，用于优雅退出&quot;&quot;&quot;</span>
+    <span class="c1"># 确保只在主线程注册信号处理器</span>
+    <span class="k">if</span> <span class="n">threading</span><span class="o">.</span><span class="n">current_thread</span><span class="p">()</span> <span class="ow">is</span> <span class="n">threading</span><span class="o">.</span><span class="n">main_thread</span><span class="p">():</span>
+        <span class="kn">import</span><span class="w"> </span><span class="nn">signal</span>
+        <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGINT</span><span class="p">,</span> <span class="n">handle_signal</span><span class="p">)</span>
+        <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGTERM</span><span class="p">,</span> <span class="n">handle_signal</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">signal</span><span class="p">,</span> <span class="s1">&#39;SIGUSR1&#39;</span><span class="p">):</span>
+            <span class="n">signal</span><span class="o">.</span><span class="n">signal</span><span class="p">(</span><span class="n">signal</span><span class="o">.</span><span class="n">SIGUSR1</span><span class="p">,</span> <span class="n">handle_signal</span><span class="p">)</span>
+</code></pre></div>
+
+<h2 id="_7">服务间通信</h2>
+<p>在同时启动问答服务和API服务时，使用线程实现并行运行：</p>
+<div class="codehilite"><pre><span></span><code><span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">qa</span><span class="p">:</span>
+    <span class="c1"># 在单独线程中启动问答服务</span>
+    <span class="n">qa_thread</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">run_qa_service</span><span class="p">)</span>
+    <span class="n">qa_thread</span><span class="o">.</span><span class="n">daemon</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">qa_thread</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">api</span><span class="p">:</span>
+    <span class="c1"># 主线程启动API服务</span>
+    <span class="n">run_api_service</span><span class="p">(</span><span class="n">host</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">host</span><span class="p">,</span> <span class="n">port</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">port</span><span class="p">)</span>
+</code></pre></div>
+
+<h2 id="_8">服务架构</h2>
+<p>详细的服务架构设计文档。</p>
+      </div>
+      <div class="theme-toggle" id="themeToggle">🌓</div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function() {
+        const themeToggle = document.getElementById('themeToggle');
+        
+        themeToggle.addEventListener('click', function() {
+          const currentTheme = document.documentElement.getAttribute('data-theme');
+          const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', newTheme);
+          localStorage.setItem('vuepress-theme-hope-scheme', newTheme);
+        });
+      });
+    </script>
+  </body>
+</html>
