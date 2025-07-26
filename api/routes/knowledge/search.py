@@ -1231,7 +1231,7 @@ async def get_hot_and_new_endpoint(
         return Response.error(message="获取热门和最新帖子失败", code=500)
 
 
-async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_weight: float = 0.3) -> Dict[str, Any]:
+async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_weight: float = 0.3, days: int = 7) -> Dict[str, Any]:
     """
     从数据库中获取最新和最热的帖子数据
 
@@ -1239,6 +1239,7 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
         limit: 返回结果数量限制，默认20
         hot_weight: 热度权重，默认0.7
         new_weight: 新度权重，默认0.3
+        days: 获取最近多少天内的帖子，默认7天
 
     Returns:
         包含热门和最新帖子的字典
@@ -1247,7 +1248,7 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
         async with get_db_connection() as connection:
             async with connection.cursor() as cursor:
                 # 获取最近7天的时间
-                seven_days_ago = datetime.now() - timedelta(days=7)
+                seven_days_ago = datetime.now() - timedelta(days)
 
                 # 1. 获取 wechat_nku 热门文章（基于点赞和浏览）
                 wechat_hot_query = """
