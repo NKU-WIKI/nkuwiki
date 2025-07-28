@@ -381,7 +381,7 @@ async def get_user_likes(
     page_size: int = Query(10, description="每页数量")
 ):
     """获取当前用户点赞过的内容，目前只支持帖子"""
-    openid = current_user['openid']
+    user_id = current_user['id']  # 修正：使用id字段
     offset = (page - 1) * page_size
     
     # 1. 连表查询，直接获取点赞帖子的信息
@@ -390,17 +390,17 @@ async def get_user_likes(
            u.nickname as author_nickname, u.avatar as author_avatar
     FROM wxapp_action a
     JOIN wxapp_post p ON a.target_id = p.id
-    LEFT JOIN wxapp_user u ON p.openid = u.openid
-    WHERE a.openid = %s AND a.action_type = 'like' AND a.target_type = 'post' AND p.is_deleted = 0
+    LEFT JOIN wxapp_user u ON p.user_id = u.id
+    WHERE a.user_id = %s AND a.action_type = 'like' AND a.target_type = 'post' AND p.is_deleted = 0
     ORDER BY a.create_time DESC
     LIMIT %s OFFSET %s
     """
-    liked_posts = await execute_custom_query(liked_posts_query, [openid, page_size, offset])
+    liked_posts = await execute_custom_query(liked_posts_query, [user_id, page_size, offset])
 
     # 2. 获取总点赞数用于分页
     total_likes = await count_records(
         "wxapp_action",
-        conditions={"openid": openid, "action_type": "like", "target_type": "post"}
+        conditions={"user_id": user_id, "action_type": "like", "target_type": "post"}
     )
     
     pagination = PaginationInfo(total=total_likes, page=page, page_size=page_size)
@@ -417,7 +417,7 @@ async def get_user_comments(
     page_size: int = Query(10, description="每页数量")
 ):
     """获取当前用户发布的所有评论"""
-    openid = current_user['openid']
+    user_id = current_user['id']  # 修正：使用id字段而不是openid
     offset = (page - 1) * page_size
     
     # 连表查询，获取评论及其关联帖子的标题
@@ -425,16 +425,16 @@ async def get_user_comments(
     SELECT c.*, p.title as post_title
     FROM wxapp_comment c
     LEFT JOIN wxapp_post p ON c.resource_id = p.id AND c.resource_type = 'post'
-    WHERE c.openid = %s AND c.is_deleted = 0
+    WHERE c.user_id = %s AND c.is_deleted = 0
     ORDER BY c.create_time DESC
     LIMIT %s OFFSET %s
     """
-    comments = await execute_custom_query(comments_query, [openid, page_size, offset])
+    comments = await execute_custom_query(comments_query, [user_id, page_size, offset])
     
     # 获取总评论数
     total_comments = await count_records(
         "wxapp_comment",
-        conditions={"openid": openid, "is_deleted": 0}
+        conditions={"user_id": user_id, "is_deleted": 0}
     )
     
     pagination = PaginationInfo(total=total_comments, page=page, page_size=page_size)

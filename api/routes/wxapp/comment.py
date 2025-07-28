@@ -129,7 +129,7 @@ async def _send_comment_notification(
             parent_comment = parent_result[0] if parent_result else None
             if parent_comment and parent_comment.get("user_id") != user_id:
                 await create_notification(
-                    user_id=parent_comment["user_id"],
+                    openid=parent_comment["user_id"],
                     title="收到新回复",
                     content="用户回复了你的评论",
                     target_id=parent_id,
@@ -588,8 +588,13 @@ async def create_comment(
                     "parent_id": parent_id
                 }
 
-                # 插入评论并获取ID
-                comment_id = await insert_record("wxapp_comment", comment_data, cursor=cursor)
+                # 直接使用cursor插入评论数据
+                cols = ", ".join(f"`{k}`" for k in comment_data.keys())
+                placeholders = ", ".join(["%s"] * len(comment_data))
+                insert_query = f"INSERT INTO wxapp_comment ({cols}) VALUES ({placeholders})"
+                
+                await cursor.execute(insert_query, list(comment_data.values()))
+                comment_id = cursor.lastrowid
                 if not comment_id:
                     raise Exception("插入评论记录失败，未能获取 lastrowid")
 
