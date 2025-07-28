@@ -336,27 +336,32 @@
       "details": "快照不存在"
   }
   ```
-### 5.4 获取热门和最新帖子
 
-- **Endpoint**: `GET /knowledge/hot_and_new`
-- **Tags**: `knowledge`
-- **Summary**: 获取热门和最新帖子推荐
+### 5.4 获取热门和最新帖子推荐
 
-#### 功能说明
+- **Endpoint**: `GET /knowledge/recommand`
+- **Tags**: `knowledge`, `recommendation`
+- **Summary**: 获取热门和最新帖子，支持AI智能推荐
 
-此接口从多个平台（wxapp_post、wechat_nku、website_nku、market_nku）获取推荐内容，提供三种类型的数据：
+#### 功能描述
 
-- **最热帖子**：基于点赞、评论、收藏、浏览量等指标计算热度分数的热门内容
-- **最新帖子**：最近7天内发布的最新内容
-- **综合推荐**：结合热度和时间因素的综合推荐算法排序
+从多个平台（wxapp_post, wechat_nku, website_nku, market_nku）获取推荐内容，包括：
+
+- **最热帖子**：基于点赞、评论、收藏、浏览量计算热度分数
+- **最新帖子**：最近N天内发布的帖子
+- **综合推荐**：结合热度和时间的综合推荐算法
+- **AI智能推荐**：基于用户行为和内容分析的个性化推荐
 
 #### 请求参数
 
-| 参数名       | 类型    | 位置  | 是否必需 | 默认值 | 描述                                     |
-| ------------ | ------- | ----- | -------- | ------ | ---------------------------------------- |
-| `limit`      | `integer` | Query | 否       | `20`   | 每类帖子的数量限制。                     |
-| `hot_weight` | `float`   | Query | 否       | `0.7`  | 热度权重，用于综合推荐算法，取值范围0-1。 |
-| `new_weight` | `float`   | Query | 否       | `0.3`  | 新度权重，用于综合推荐算法，取值范围0-1。 |
+| 参数名                    | 类型      | 位置  | 是否必需 | 默认值  | 描述                                           |
+| ------------------------- | --------- | ----- | -------- | ------- | ---------------------------------------------- |
+| `limit`                   | `integer` | Query | 否       | `20`    | 每类帖子的数量限制。                           |
+| `hot_weight`              | `float`   | Query | 否       | `0.7`   | 热度权重，用于综合推荐算法。                   |
+| `new_weight`              | `float`   | Query | 否       | `0.3`   | 新度权重，用于综合推荐算法。                   |
+| `enable_ai_recommendation`| `boolean` | Query | 否       | `true`  | 是否启用AI智能推荐。                          |
+| `user_id`                 | `string`  | Query | 否       | `null`  | 用户ID，用于个性化AI推荐。                     |
+| `days`                    | `integer` | Query | 否       | `7`     | 查询最近N天的数据。                           |
 
 #### 响应
 
@@ -369,66 +374,80 @@
       "hot_posts": [
         {
           "id": 123,
-          "title": "南开大学2024年春季学期课程安排",
-          "content": "根据学校安排，2024年春季学期将于...",
-          "author": "教务处",
-          "platform": "website_nku",
-          "original_url": "http://www.nankai.edu.cn/news/123",
-          "tag": ["官方", "课程"],
-          "hot_score": 0.92,
+          "title": "南开大学2024年招生简章发布",
+          "content": "南开大学正式发布2024年本科招生简章...",
+          "author": "招生办",
+          "platform": "website",
+          "original_url": "http://www.nankai.edu.cn/admissions/2024",
+          "tag": ["招生", "官方"],
+          "hot_score": 95.8,
           "create_time": "2024-01-15T10:00:00",
-          "update_time": "2024-01-15T10:00:00",
-          "view_count": 2048,
+          "view_count": 5432,
           "like_count": 256,
-          "comment_count": 128,
-          "favorite_count": 64
+          "comment_count": 89,
+          "favorite_count": 178
         }
       ],
       "new_posts": [
         {
           "id": 456,
-          "title": "最新：图书馆开放时间调整通知",
-          "content": "为更好地服务师生，图书馆开放时间调整为...",
-          "author": "图书馆",
-          "platform": "wechat_nku",
-          "original_url": "https://mp.weixin.qq.com/s/abc123",
-          "tag": ["通知", "图书馆"],
-          "create_time": "2024-01-20T15:30:00",
-          "update_time": "2024-01-20T15:30:00",
-          "view_count": 512,
-          "like_count": 32,
-          "comment_count": 8,
-          "favorite_count": 16
+          "title": "最新校园活动通知",
+          "content": "本周末将举办校园开放日活动...",
+          "author": "学生处",
+          "platform": "wxapp",
+          "original_url": null,
+          "tag": ["活动", "通知"],
+          "create_time": "2024-01-28T14:30:00",
+          "view_count": 1234,
+          "like_count": 67,
+          "comment_count": 23,
+          "favorite_count": 45
         }
       ],
       "recommended_posts": [
         {
           "id": 789,
-          "title": "南开大学校园文化节精彩回顾",
-          "content": "本次校园文化节汇聚了各学院的精彩表演...",
-          "author": "学生会",
-          "platform": "wxapp_post",
-          "original_url": null,
-          "tag": ["文化", "活动"],
-          "composite_score": 0.85,
-          "hot_score": 0.78,
-          "time_score": 0.95,
-          "create_time": "2024-01-18T20:00:00",
-          "update_time": "2024-01-18T20:00:00",
-          "view_count": 1024,
-          "like_count": 128,
-          "comment_count": 64,
+          "title": "期末考试安排及注意事项",
+          "content": "各位同学请注意，期末考试即将开始...",
+          "author": "教务处",
+          "platform": "wechat",
+          "original_url": "https://mp.weixin.qq.com/s/xxx",
+          "tag": ["考试", "教务"],
+          "recommendation_score": 88.5,
+          "recommendation_reason": "基于您的浏览历史和兴趣标签推荐",
+          "create_time": "2024-01-25T16:00:00",
+          "view_count": 3456,
+          "like_count": 123,
+          "comment_count": 45,
+          "favorite_count": 89
+        }
+      ],
+      "ai_recommendations": [
+        {
+          "id": 101,
+          "title": "图书馆新书推荐",
+          "content": "图书馆新到一批专业书籍...",
+          "author": "图书馆",
+          "platform": "market",
+          "original_url": "http://library.nankai.edu.cn/newbooks",
+          "tag": ["图书", "学习"],
+          "ai_score": 92.3,
+          "personalization_factors": ["学习兴趣", "专业相关", "历史浏览"],
+          "create_time": "2024-01-26T09:00:00",
+          "view_count": 876,
+          "like_count": 54,
+          "comment_count": 12,
           "favorite_count": 32
         }
       ],
       "statistics": {
-        "total_hot_posts": 50,
-        "total_new_posts": 35,
-        "total_recommended_posts": 100,
-        "data_sources": ["wxapp_post", "wechat_nku", "website_nku", "market_nku"],
-        "time_range": "2024-01-14 to 2024-01-21",
-        "hot_weight": 0.7,
-        "new_weight": 0.3
+        "total_hot_posts": 20,
+        "total_new_posts": 15,
+        "total_recommended_posts": 18,
+        "total_ai_recommendations": 12,
+        "query_time_ms": 156,
+        "ai_enabled": true,
+        "personalized": true
       }
     }
   }
@@ -438,27 +457,29 @@
   ```json
   {
     "code": 500,
-    "message": "error",
-    "details": "获取热门和最新帖子失败"
+    "message": "获取热门和最新帖子失败",
+    "details": "服务器内部错误"
   }
   ```
 
 #### 算法说明
 
-**热度分数计算**：
-- 基于点赞数、评论数、收藏数、浏览量等指标
-- 考虑内容发布时间的衰减因子
-- 不同平台数据进行归一化处理
+1. **热度分数计算**：
+   - 基于点赞数、评论数、收藏数、浏览量的加权平均
+   - 考虑时间衰减因子，越新的内容权重越高
 
-**综合推荐算法**：
-- `composite_score = hot_weight × hot_score + new_weight × time_score`
-- `hot_score`：内容的热度分数（0-1）
-- `time_score`：基于发布时间的新鲜度分数（0-1）
-- 权重可通过参数调整，满足不同场景需求
+2. **综合推荐算法**：
+   - 综合分数 = hot_weight × 热度分数 + new_weight × 时间分数
+   - 默认热度权重0.7，新度权重0.3
 
-#### 使用建议
+3. **AI智能推荐**：
+   - 基于用户历史行为分析
+   - 内容相似度匹配
+   - 个性化标签推荐
 
-- **首页推荐**：使用默认参数获取均衡的热门和最新内容
-- **热门优先**：设置较高的 `hot_weight`（如0.8-0.9）
-- **最新优先**：设置较高的 `new_weight`（如0.8-0.9）
-- **性能考虑**：建议 `limit` 参数不要设置过大（建议≤50）
+#### 注意事项
+
+- 当 `enable_ai_recommendation` 为 `false` 时，将不返回 `ai_recommendations` 字段
+- 未提供 `user_id` 时，AI推荐将基于通用推荐算法
+- `hot_weight` 和 `new_weight` 之和建议为1.0，以获得最佳推荐效果
+- 推荐结果会根据平台内容的实际情况动态调整

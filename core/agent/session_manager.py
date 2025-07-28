@@ -67,7 +67,7 @@ class SessionManager(object):
         session = self.build_session(session_id)
         session.add_query(query)
         try:
-            max_tokens = self.config.get("services.conversation_max_tokens", 1000)
+            max_tokens = self.config.get("services.conversation_max_tokens", 2000)
             total_tokens = session.discard_exceeding(max_tokens, None)
             logger.debug("prompt tokens used={}".format(total_tokens))
         except Exception as e:
@@ -78,7 +78,7 @@ class SessionManager(object):
         session = self.build_session(session_id)
         session.add_reply(reply)
         try:
-            max_tokens = self.config.get("services.conversation_max_tokens", 1000)
+            max_tokens = self.config.get("services.conversation_max_tokens", 2000)
             tokens_cnt = session.discard_exceeding(max_tokens, total_tokens)
             logger.debug("raw total_tokens={}, savesession tokens={}".format(total_tokens, tokens_cnt))
         except Exception as e:

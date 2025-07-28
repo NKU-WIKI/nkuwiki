@@ -19,6 +19,7 @@ from api.common.dependencies import get_current_active_user, get_current_active_
 from api.models.common import Response, Request, PaginationInfo
 from api.routes.wxapp._utils import batch_enrich_posts_with_user_info
 from config import Config
+from core.bridge.reply import Reply, ReplyType
 from core.utils.logger import register_logger
 from etl import ES_INDEX_NAME
 from etl.rag.pipeline import RagPipeline
@@ -482,7 +483,7 @@ async def search_knowledge(
                 "avatar": user_info.get("avatar", ""),
                 "title": post.get("title", ""),
                 "content": post.get("content", ""),
-                "original_url": post.get("url_link", ""),  # 使用url_link而不是硬编码
+                "original_url": f"wxapp://post/{post.get('id', '')}",
                 "tag": post.get("tag", "") if post.get("tag") else "",
                 "create_time": str(post.get("create_time", "")),
                 "update_time": str(post.get("update_time", "")),
@@ -932,7 +933,7 @@ async def search(
             # 搜索帖子任务
             post_sql = """
             SELECT id, openid, title, content, category_id, view_count, like_count, 
-                   comment_count, favorite_count, url_link, create_time, update_time
+                   comment_count, favorite_count, create_time, update_time
             FROM wxapp_post
             WHERE status = 1 AND (title LIKE %s OR content LIKE %s)
             """
@@ -1039,7 +1040,6 @@ async def search(
                     "update_time": post["update_time"],
                     "create_time": post.get("create_time"),
                     "openid": post.get("openid", ""),  # 确保有openid字段
-                    "original_url": post.get("url_link", ""),  # 将url_link映射为original_url
                     "relevance": post.get("relevance", 0) if sort_by == "relevance" else 0
                 })
             
@@ -1049,8 +1049,8 @@ async def search(
             
             # 补充用户信息
             if post_results:
-                await batch_enrich_posts_with_user_info(post_results)
-                
+                await batch_enrich_posts_with_user_info(post_results, None)
+
             search_results.extend(post_results)
             post_total = count_results_map["post"][0]['total'] if count_results_map["post"] else 0
             total += post_total
@@ -1157,8 +1157,8 @@ async def clear_search_history(
         
     # 基于user_id删除
     sql = "DELETE FROM wxapp_search_history WHERE user_id = %s"
-    await db_core.execute_custom_query(sql, [user_id], fetch=False)
-    
+    await db_core.execute_custom_query(sql, [user_id], fetch='none')
+
     return Response.success(message="搜索历史已清空")
 
 @router.get("/hot", summary="获取热门搜索")
@@ -1209,11 +1209,14 @@ async def get_snapshot(url: str = Query(..., description="要获取快照的原�
         logger.error(f"获取快照失败: {str(e)}")
         return Response.error(message="服务器内部错误，无法获取快照", code=500)
 
-@router.get("/hot_and_new", summary="获取热门和最新帖子")
-async def get_hot_and_new_endpoint(
+@router.get("/recommand", summary="获取热门和最新帖子")
+async def recommand_endpoint(
     limit: int = Query(20, description="每类帖子的数量限制"),
     hot_weight: float = Query(0.7, description="热度权重"),
-    new_weight: float = Query(0.3, description="新度权重")
+    new_weight: float = Query(0.3, description="新度权重"),
+    enable_ai_recommendation: bool = Query(True, description="是否启用AI智能推荐"),
+    user_id: str = Query(None, description="用户ID，用于个性化AI推荐"),
+    days: int = Query(7, description="查询最近N天的数据")
 ):
     """
     获取热门和最新帖子
@@ -1222,16 +1225,24 @@ async def get_hot_and_new_endpoint(
     - 最热帖子：基于点赞、评论、收藏、浏览量计算热度分数
     - 最新帖子：最近7天内发布的帖子
     - 综合推荐：结合热度和时间的综合推荐
+    - AI智能推荐：基于用户行为和内容分析的个性化推荐
     """
     try:
-        result = await get_hot_and_new_data(limit, hot_weight, new_weight)
+        result = await get_recommand_data(limit, hot_weight, new_weight, enable_ai_recommendation, user_id, days)
         return Response.success(data=result)
     except Exception as e:
         logger.error(f"获取热门和最新帖子失败: {str(e)}", exc_info=True)
         return Response.error(message="获取热门和最新帖子失败", code=500)
 
 
-async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_weight: float = 0.3, days: int = 7) -> Dict[str, Any]:
+async def get_recommand_data(
+    limit: int = 50,
+    hot_weight: float = 0.7,
+    new_weight: float = 0.3,
+    enable_ai_recommendation: bool = True,
+    user_id: str = None,
+    days: int = 7
+) -> Dict[str, Any]:
     """
     从数据库中获取最新和最热的帖子数据
 
@@ -1239,7 +1250,9 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
         limit: 返回结果数量限制，默认20
         hot_weight: 热度权重，默认0.7
         new_weight: 新度权重，默认0.3
-        days: 获取最近多少天内的帖子，默认7天
+        enable_ai_recommendation: 是否启用AI智能推荐，默认启用
+        user_id: 用户ID，用于个性化AI推荐
+        days: 查询最近N天的数据，默认7天
 
     Returns:
         包含热门和最新帖子的字典
@@ -1248,7 +1261,7 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
         async with get_db_connection() as connection:
             async with connection.cursor() as cursor:
                 # 获取最近7天的时间
-                seven_days_ago = datetime.now() - timedelta(days)
+                seven_days_ago = datetime.now() - timedelta(days=days)
 
                 # 1. 获取 wechat_nku 热门文章（基于点赞和浏览）
                 wechat_hot_query = """
@@ -1341,7 +1354,7 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
                 SELECT 
                     id, title, content, user_id, nickname, avatar,
                     view_count, like_count, comment_count, favorite_count,
-                    create_time, update_time, url_link, 'wxapp' as platform,
+                    create_time, update_time, 'wxapp' as platform,
                     ((like_count * 4 + comment_count * 3 + favorite_count * 2 + view_count * 1) / 10.0) as hot_score
                 FROM wxapp_post 
                 WHERE status = 1 AND is_deleted = 0
@@ -1356,7 +1369,7 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
                 SELECT 
                     id, title, content, user_id, nickname, avatar,
                     view_count, like_count, comment_count, favorite_count,
-                    create_time, update_time,url_link, 'wxapp' as platform,
+                    create_time, update_time, 'wxapp' as platform,
                     0 as hot_score
                 FROM wxapp_post 
                 WHERE status = 1 AND is_deleted = 0 AND create_time >= %s
@@ -1447,7 +1460,7 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
                             "update_time": str(row[11]) if row[11] else "",
                             "hot_score": safe_float(row[13]),
                             "is_truncated": len(row[2]) > 200,
-                            "original_url": row[12] or "",  # url_link
+                            "original_url": f"wxapp://post/{row[0]}"
                         }
 
                 # 整理热门内容
@@ -1510,23 +1523,42 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
                 # 按综合分数排序
                 recommended_posts = sorted(unique_posts, key=lambda x: x.get("combined_score", 0), reverse=True)[:limit]
 
-                logger.info(f"成功获取热门帖子{len(hot_posts)}条，最新帖子{len(new_posts)}条，推荐帖子{len(recommended_posts)}条")
+                # AI智能推荐功能
+                ai_recommended_posts = []
+                if enable_ai_recommendation:
+                    try:
+                        ai_recommended_posts = await get_ai_recommended_posts(
+                            hot_posts=hot_posts[:10],  # 传入前10个热门帖子作为候选
+                            new_posts=new_posts[:10],  # 传入前10个最新帖子作为候选
+                            user_id=user_id,
+                            limit=min(limit, 10)  # AI推荐数量限制
+                        )
+                        logger.info(f"AI智能推荐成功获取{len(ai_recommended_posts)}条帖子")
+                    except Exception as e:
+                        logger.error(f"AI智能推荐失败: {str(e)}", exc_info=True)
+                        # AI推荐失败时使用综合推荐作为备选
+                        ai_recommended_posts = recommended_posts[:limit//2]
+
+                logger.info(f"成功获取热门帖子{len(hot_posts)}条，最新帖子{len(new_posts)}条，推荐帖子{len(recommended_posts)}条，AI推荐{len(ai_recommended_posts)}条")
 
                 return {
                     "hot_posts": hot_posts,
                     "new_posts": new_posts,
                     "recommended_posts": recommended_posts,
+                    "ai_recommended_posts": ai_recommended_posts,
                     "total_count": {
                         "hot": len(hot_posts),
                         "new": len(new_posts),
-                        "recommended": len(recommended_posts)
+                        "recommended": len(recommended_posts),
+                        "ai_recommended": len(ai_recommended_posts)
                     },
                     "summary": {
                         "platforms": ["wechat", "website", "market", "wxapp"],
                         "hot_weight": hot_weight,
                         "new_weight": new_weight,
                         "limit_per_category": limit,
-                        "description": "包含微信公众号、南开网站、校园集市、小程序帖子数据"
+                        "ai_recommendation_enabled": enable_ai_recommendation,
+                        "description": "包含微信公众号、南开网站、校园集市、小程序帖子数据，支持AI智能推荐"
                     }
                 }
 
@@ -1544,3 +1576,561 @@ async def get_hot_and_new_data(limit: int = 20, hot_weight: float = 0.7, new_wei
             }
         }
 
+
+async def get_ai_recommended_posts(
+    hot_posts: List[Dict[str, Any]],
+    new_posts: List[Dict[str, Any]],
+    user_id: str = None,
+    limit: int = 10
+) -> List[Dict[str, Any]]:
+    """
+    使用AI智能体获取个性化推荐帖子
+
+    Args:
+        hot_posts: 热门帖子列表（作为参考）
+        new_posts: 最新帖子列表（作为参考）
+        user_id: 用户ID，用于个性化推荐
+        limit: 返回结果数量限制
+
+    Returns:
+        AI推荐的帖子列表
+    """
+    try:
+        # 导入agent
+        from core.agent.coze.coze_agent import CozeAgent
+        import json
+        import time
+
+        # 获取用户画像
+        user_profile = await get_user_preference_profile(user_id) if user_id else {}
+
+        # 使用AI决定候选帖子池的获取策略
+        strategy_prompt = f"""
+作为一个智能推荐系统，请为用户制定获取候选帖子池的策略。
+
+用户信息：
+- 用户ID: {user_id or "匿名用户"}
+- 历史偏好: {user_profile.get('preferences', '暂无数据')}
+- 活跃领域: {user_profile.get('active_areas', '通用')}
+- 兴趣标签: {user_profile.get('interest_tags', [])}
+
+当前可用数据源：
+1. 热门帖子 (热度较高的内容)
+2. 最新帖子 (时效性强的内容)
+3. 微信公众号文章 (platform = 'wechat')
+4. 南开网站内容 (platform = 'nku_website')
+5. 校园集市帖子 (platform = 'market')
+6. 小程序帖子 (platform = 'wxapp')
+
+请返回一个获取候选帖子的策略，包含：
+1. 主要数据源选择
+2. 搜索关键词（基于用户偏好）
+3. 筛选条件
+4. 候选池大小建议
+
+返回JSON格式：
+{{
+    "primary_sources": ["数据源1", "数据源2"],
+    "search_keywords": ["关键词1", "关键词2"],
+    "filter_conditions": {{
+        "min_hot_score": 数值,
+        "platforms": ["平台1", "平台2"],
+        "categories": ["分类1", "分类2"]
+    }},
+    "candidate_pool_size": 数值,
+    "reasoning": "策略说明"
+}}
+"""
+
+        # 创建CozeAgent实例获取策略
+        agent = CozeAgent('answerGenerate')
+        from core.bridge.context import Context, ContextType
+
+        strategy_context = Context()
+        strategy_context.type = ContextType.TEXT
+        strategy_context["session_id"] = f"strategy_{user_id or 'anonymous'}_{int(time.time())}"
+        strategy_context["format"] = "text"
+
+        logger.info("使用AI制定候选帖子池获取策略")
+        strategy_response = agent.reply(strategy_prompt, strategy_context)
+
+        # 解析AI策略
+        strategy = None
+        if strategy_response.type == ReplyType.TEXT and strategy_response.content:
+            try:
+                response_text = strategy_response.content.strip()
+                json_start = response_text.find('{')
+                json_end = response_text.rfind('}') + 1
+
+                if json_start != -1 and json_end > json_start:
+                    json_text = response_text[json_start:json_end]
+                    strategy = json.loads(json_text)
+                    logger.info(f"AI策略解析成功: {strategy.get('reasoning', '无说明')}")
+            except json.JSONDecodeError as e:
+                logger.warning(f"解析AI策略失败: {str(e)}")
+
+        # 如果AI策略解析失败，使用默认策略
+        if not strategy:
+            strategy = {
+                "primary_sources": ["hot", "new", "search"],
+                "search_keywords": user_profile.get('interest_tags', [])[:3],
+                "filter_conditions": {
+                    "min_hot_score": 0.1,
+                    "platforms": ["wechat", "nku_website", "wxapp"],
+                    "categories": []
+                },
+                "candidate_pool_size": 50,
+                "reasoning": "使用默认推荐策略"
+            }
+
+        # 根据AI策略获取候选帖子池
+        candidate_posts = []
+
+        logger.info(f"开始构建候选池 - 热门帖子: {len(hot_posts)}, 最新帖子: {len(new_posts)}")
+        logger.info(f"AI策略数据源: {strategy.get('primary_sources', [])}")
+
+        # 1. 从热门帖子中添加（不筛选）
+        if "hot" in strategy.get("primary_sources", []):
+            for post in hot_posts:
+                candidate_posts.append(_format_candidate_post(post))
+            logger.info(f"从热门帖子添加了 {len(hot_posts)} 个候选")
+
+        # 2. 从最新帖子中添加（不筛选）
+        if "new" in strategy.get("primary_sources", []):
+            for post in new_posts:
+                candidate_posts.append(_format_candidate_post(post))
+            logger.info(f"从最新帖子添加了 {len(new_posts)} 个候选")
+
+        # 3. 基于关键词搜索额外候选
+        if "search" in strategy.get("primary_sources", []) and strategy.get("search_keywords"):
+            search_candidates = await _search_posts_by_ai_strategy(
+                keywords=strategy["search_keywords"],
+                filter_conditions=strategy["filter_conditions"],
+                limit=strategy.get("candidate_pool_size", 50) // 2
+            )
+            candidate_posts.extend(search_candidates)
+            logger.info(f"通过关键词搜索添加了 {len(search_candidates)} 个候选")
+
+        logger.info(f"候选池构建完成，总候选数: {len(candidate_posts)}")
+
+        # 去重候选帖子
+        seen_posts = set()
+        unique_candidates = []
+        for post in candidate_posts:
+            key = (post["id"], post["platform"])
+            if key not in seen_posts:
+                seen_posts.add(key)
+                unique_candidates.append(post)
+
+        logger.info(f"去重后候选数: {len(unique_candidates)}")
+
+        # 限制候选池大小
+        max_candidates = strategy.get("candidate_pool_size", 50)  # 使用50作为默认值
+        unique_candidates = unique_candidates[:max_candidates]
+
+        # 如果候选池为空，尝试补救措施
+        if not unique_candidates:
+            logger.warning("AI策略未能获取到有效的候选帖子，尝试补救措施")
+            
+            # 补救措施1: 如果传入的帖子列表不为空，直接使用它们
+            if hot_posts or new_posts:
+                logger.info("使用传入的热门和最新帖子作为候选")
+                fallback_candidates = []
+                for post in (hot_posts + new_posts)[:max_candidates]:
+                    fallback_candidates.append(_format_candidate_post(post))
+                
+                if fallback_candidates:
+                    unique_candidates = fallback_candidates
+                    logger.info(f"补救成功，获得 {len(unique_candidates)} 个候选帖子")
+            
+            # 如果仍然为空，返回降级推荐
+            if not unique_candidates:
+                logger.error("补救措施失败，使用降级推荐策略")
+                return _fallback_recommendation(hot_posts + new_posts, limit, hot_posts, new_posts)
+
+        # 如果候选池仍然为空，记录警告并返回空结果
+        if not unique_candidates:
+            logger.warning("候选池为空，无法提供推荐")
+            return {
+                "hot_posts": [],
+                "new_posts": [],
+                "recommended_posts": [],
+                "ai_recommended_posts": [],
+                "total_count": {
+                    "hot": 0,
+                    "new": 0,
+                    "recommended": 0,
+                    "ai_recommended": 0
+                },
+                "summary": {
+                    "platforms": ["wechat", "website", "market", "wxapp"],
+                    "hot_weight": hot_weight,
+                    "new_weight": new_weight,
+                    "limit_per_category": limit,
+                    "ai_recommendation_enabled": enable_ai_recommendation,
+                    "description": "包含微信公众号、南开网站、校园集市、小程序帖子数据，支持AI智能推荐"
+                }
+            }
+
+        logger.info(f"候选池准备就绪，包含 {len(unique_candidates)} 个帖子")
+
+        # 构建AI推荐请求的prompt
+        recommendation_prompt = f"""
+作为一个智能推荐系统，请基于以下信息为用户推荐最相关的帖子：
+
+用户画像：
+- 用户ID: {user_id or "匿名用户"}
+- 历史偏好: {user_profile.get('preferences', '暂无数据')}
+- 活跃领域: {user_profile.get('active_areas', '通用')}
+- 兴趣标签: {user_profile.get('interest_tags', [])}
+
+获取策略说明: {strategy.get('reasoning', '智能策略')}
+
+候选帖子池（共{len(unique_candidates)}个）：
+"""
+
+        # 添加候选帖子信息
+        for i, post in enumerate(unique_candidates[:20], 1):  # 最多显示前20个候选
+            recommendation_prompt += f"""
+{i}. 【{post['platform'].upper()}】{post['title']}
+   作者: {post['author']} | 热度: {post['hot_score']:.1f}
+   内容摘要: {post['content'][:50]}...
+   分类: {post.get('category', '未分类')}
+"""
+
+        recommendation_prompt += f"""
+
+请从以上候选帖子中选择最适合该用户的{min(limit, len(unique_candidates))}个帖子进行推荐。
+
+要求：
+1. 考虑用户的历史偏好和活跃领域
+2. 结合获取策略的考量因素
+3. 平衡热门度和内容质量
+4. 优先推荐多样化的内容（不同平台、不同主题）
+5. 返回格式为JSON数组，包含推荐帖子的编号和推荐理由
+6. 必须给出推荐结果！！！
+
+返回格式示例：
+[
+    {{"post_number": 1, "reason": "推荐理由"}},
+    {{"post_number": 3, "reason": "推荐理由"}}
+]
+"""
+
+        # 调用AI智能体进行推荐
+        logger.info(f"调用AI智能体进行个性化推荐，候选帖子数：{len(unique_candidates)}")
+
+        recommendation_context = Context()
+        recommendation_context.type = ContextType.TEXT
+        recommendation_context["session_id"] = f"recommendation_{user_id or 'anonymous'}_{int(time.time())}"
+        recommendation_context["format"] = "text"
+
+        ai_response = agent.reply(recommendation_prompt, recommendation_context)
+
+        logger.info(ai_response)
+
+        if ai_response.type != ReplyType.TEXT or not ai_response.content:
+            logger.warning("AI智能体返回了无效的推荐结果")
+            return _fallback_recommendation(unique_candidates, limit, hot_posts, new_posts)
+
+        # 解析AI推荐结果
+        recommended_posts = []
+        try:
+            # 尝试从AI回复中提取JSON
+            response_text = ai_response.content.strip()
+
+            # 查找JSON部分
+            json_start = response_text.find('[')
+            json_end = response_text.rfind(']') + 1
+
+            if json_start != -1 and json_end > json_start:
+                json_text = response_text[json_start:json_end]
+                ai_recommendations = json.loads(json_text)
+
+                for rec in ai_recommendations:
+                    post_number = rec.get("post_number")
+                    reason = rec.get("reason", "AI推荐")
+
+                    if isinstance(post_number, int) and 1 <= post_number <= len(unique_candidates):
+                        # 获取候选帖子数据
+                        candidate_post = unique_candidates[post_number - 1]
+
+                        # 从原始帖子列表中找到完整数据
+                        full_post = None
+                        for post in hot_posts + new_posts:
+                            if (post.get("id") == candidate_post["id"] and
+                                post.get("platform") == candidate_post["platform"]):
+                                full_post = post.copy()
+                                break
+
+                        # 如果在原始列表中没找到，使用候选帖子数据
+                        if not full_post:
+                            full_post = candidate_post.copy()
+
+                        full_post["ai_recommendation_reason"] = reason
+                        full_post["ai_score"] = len(ai_recommendations) - len(recommended_posts)
+                        full_post["ai_strategy"] = strategy.get('reasoning', '智能策略')
+                        recommended_posts.append(full_post)
+
+                        if len(recommended_posts) >= limit:
+                            break
+
+            else:
+                logger.warning("AI回复中未找到有效的JSON格式推荐结果")
+                return _fallback_recommendation(unique_candidates, limit, hot_posts, new_posts)
+
+        except json.JSONDecodeError as e:
+            logger.warning(f"解析AI推荐结果JSON失败: {str(e)}")
+            return _fallback_recommendation(unique_candidates, limit, hot_posts, new_posts)
+
+        logger.info(f"AI智能推荐成功解析{len(recommended_posts)}条推荐结果")
+        return recommended_posts
+
+    except Exception as e:
+        logger.error(f"AI智能推荐失败: {str(e)}", exc_info=True)
+        # 降级到基于规则的推荐
+        return _fallback_recommendation(hot_posts + new_posts, limit, hot_posts, new_posts)
+
+def _meets_filter_criteria(post: Dict[str, Any], filter_conditions: Dict[str, Any]) -> bool:
+    """
+    检查帖子是否满足筛选条件
+
+    Args:
+        post: 帖子数据
+        filter_conditions: 筛选条件
+
+    Returns:
+        bool: 是否满足条件
+    """
+    try:
+        # 检查最小热度分数
+        min_hot_score = filter_conditions.get("min_hot_score", 0)
+        if post.get("hot_score", 0) < min_hot_score:
+            return False
+
+        # 检查平台限制
+        allowed_platforms = filter_conditions.get("platforms", [])
+        if allowed_platforms and post.get("platform", "") not in allowed_platforms:
+            return False
+
+        # 检查分类限制
+        allowed_categories = filter_conditions.get("categories", [])
+        if allowed_categories and post.get("category", "") not in allowed_categories:
+            return False
+
+        return True
+    except Exception as e:
+        logger.warning(f"检查筛选条件失败: {str(e)}")
+        return True  # 默认通过
+
+
+def _format_candidate_post(post: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    格式化候选帖子数据
+
+    Args:
+        post: 原始帖子数据
+
+    Returns:
+        格式化后的帖子数据
+    """
+    return {
+        "id": post.get("id"),
+        "title": post.get("title", ""),
+        "content": post.get("content", "")[:300],  # 截断内容以节省token
+        "platform": post.get("platform", ""),
+        "author": post.get("author", ""),
+        "hot_score": post.get("hot_score", 0),
+        "category": post.get("category", ""),
+        "create_time": post.get("create_time", ""),
+        "update_time": post.get("update_time", "")
+    }
+
+
+async def _search_posts_by_ai_strategy(
+    keywords: List[str],
+    filter_conditions: Dict[str, Any],
+    limit: int = 25
+) -> List[Dict[str, Any]]:
+    """
+    根据AI策略中的关键词搜索帖子
+
+    Args:
+        keywords: 搜索关键词列表
+        filter_conditions: 筛选条件
+        limit: 返回结果数量限制
+
+    Returns:
+        搜索到的帖子列表
+    """
+    try:
+        if not keywords:
+            return []
+
+        # 构建搜索查询
+        search_query = " ".join(keywords[:3])  # 最多使用前3个关键词
+
+        logger.info(f"基于AI策略搜索帖子: 关键词={search_query}, 限制={limit}")
+
+        # 使用现有的搜索功能
+        search_result = await search_knowledge(
+            query=search_query,
+            current_user=None,
+            platform=",".join(filter_conditions.get("platforms", ["wechat", "website", "market", "wxapp"])),
+            max_results=limit,
+            page=1,
+            page_size=limit,
+            sort_by="relevance"
+        )
+
+        candidates = []
+        for post in search_result.get("data", []):
+            if _meets_filter_criteria(post, filter_conditions):
+                candidates.append(_format_candidate_post(post))
+
+        logger.info(f"AI策略搜索获得{len(candidates)}个候选帖子")
+        return candidates
+
+    except Exception as e:
+        logger.error(f"基于AI策略搜索帖子失败: {str(e)}")
+        return []
+
+
+async def get_user_preference_profile(user_id: str) -> Dict[str, Any]:
+    """
+    获取用户偏好画像
+
+    Args:
+        user_id: 用户ID
+
+    Returns:
+        用户偏好数据
+    """
+    try:
+        if not user_id:
+            return {}
+
+        # 查询用户最近的搜索历史
+        search_history_sql = """
+        SELECT query FROM wxapp_search_history 
+        WHERE user_id = %s 
+        ORDER BY search_time DESC 
+        LIMIT 20
+        """
+        search_history = await db_core.execute_custom_query(search_history_sql, [user_id], fetch='all')
+
+        # 查询用户最近的互动记录（点赞、收藏等）
+        interaction_sql = """
+        SELECT p.title, p.content, p.category_id 
+        FROM wxapp_post p
+        JOIN wxapp_like l ON p.id = l.post_id
+        WHERE l.user_id = %s AND l.status = 1
+        ORDER BY l.create_time DESC
+        LIMIT 10
+        """
+        liked_posts = await db_core.execute_custom_query(interaction_sql, [user_id], fetch='all')
+
+        # 提取兴趣标签
+        interest_tags = []
+        preferences = []
+
+        # 从搜索历史中提取关键词
+        for record in search_history:
+            query = record.get('query', '')
+            if query and len(query) > 1:
+                # 简单的关键词提取
+                words = jieba.analyse.extract_tags(query, topK=3)
+                interest_tags.extend(words)
+                preferences.append(query)
+
+        # 从点赞帖子中提取标签
+        for post in liked_posts:
+            title = post.get('title', '')
+            if title:
+                words = jieba.analyse.extract_tags(title, topK=2)
+                interest_tags.extend(words)
+
+        # 去重并限制数量
+        interest_tags = list(dict.fromkeys(interest_tags))[:10]
+        preferences = list(dict.fromkeys(preferences))[:5]
+
+        # 确定活跃领域
+        active_areas = ["通用"]
+        if any(tag in ["学习", "课程", "考试", "作业"] for tag in interest_tags):
+            active_areas.append("学习")
+        if any(tag in ["社团", "活动", "聚会"] for tag in interest_tags):
+            active_areas.append("社交")
+        if any(tag in ["二手", "商品", "买卖"] for tag in interest_tags):
+            active_areas.append("交易")
+
+        profile = {
+            "preferences": preferences,
+            "interest_tags": interest_tags,
+            "active_areas": active_areas,
+            "interaction_count": len(liked_posts),
+            "search_activity": len(search_history)
+        }
+
+        logger.debug(f"用户{user_id}偏好画像: {profile}")
+        return profile
+
+    except Exception as e:
+        logger.error(f"获取用户偏好画像失败: {str(e)}")
+        return {}
+
+
+def _fallback_recommendation(
+    all_posts: List[Dict[str, Any]],
+    limit: int,
+    hot_posts: List[Dict[str, Any]],
+    new_posts: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """
+    降级推荐策略，当AI推荐失败时使用
+
+    Args:
+        all_posts: 所有候选帖子
+        limit: 返回结果数量限制
+        hot_posts: 热门帖子列表
+        new_posts: 最新帖子列表
+
+    Returns:
+        推荐帖子列表
+    """
+    try:
+        # 简单的基于规则的推荐：热门帖子 + 最新帖子的混合
+        recommendations = []
+
+        # 取一半热门帖子
+        hot_count = min(limit // 2, len(hot_posts))
+        recommendations.extend(hot_posts[:hot_count])
+
+        # 取一半最新帖子
+        new_count = min(limit - hot_count, len(new_posts))
+        recommendations.extend(new_posts[:new_count])
+
+        # 如果还不够，从剩余帖子中补充
+        if len(recommendations) < limit:
+            remaining = limit - len(recommendations)
+            seen_ids = {(p.get('id'), p.get('platform')) for p in recommendations}
+
+            for post in all_posts:
+                if len(recommendations) >= limit:
+                    break
+                key = (post.get('id'), post.get('platform'))
+                if key not in seen_ids:
+                    recommendations.append(post)
+                    seen_ids.add(key)
+
+        # 为降级推荐添加标识
+        for post in recommendations:
+            post["ai_recommendation_reason"] = "基于热度和时间的规则推荐"
+            post["ai_score"] = post.get("hot_score", 0)
+            post["ai_strategy"] = "降级推荐策略"
+
+        logger.info(f"使用降级推荐策略，返回{len(recommendations)}条推荐")
+        return recommendations[:limit]
+
+    except Exception as e:
+        logger.error(f"降级推荐策略失败: {str(e)}")
+        return []

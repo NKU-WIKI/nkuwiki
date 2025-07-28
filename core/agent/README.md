@@ -5,7 +5,6 @@
 ## 目录结构
 
 ```text
-
 core/agent/
 ├── agent.py                # 智能体基类定义
 ├── agent_factory.py        # 智能体工厂，负责创建智能体实例
@@ -27,8 +26,7 @@ core/agent/
 ├── openai/                 # OpenAI通用接口
 ├── xunfei/                 # 讯飞星火模型
 └── zhipuai/                # 智谱AI模型
-
-```text
+```
 
 ## 智能体基类 (Agent)
 
@@ -45,8 +43,7 @@ class Agent(object):
             Reply对象，包含回复内容
         """
         pass
-
-```text
+```
 
 ## 智能体工厂 (AgentFactory)
 
@@ -61,8 +58,7 @@ def create_agent(agent_type):
         智能体实例
     """
     # 根据agent_type返回相应的智能体实例
-
-```text
+```
 
 ## 会话管理 (SessionManager)
 
@@ -75,27 +71,26 @@ class SessionManager:
 
     def session_reply(self, reply, session_id):
         """记录智能体回复"""
-
-```text
+```
 
 ## 支持的智能体
 
-| 智能体类型 | 描述 | 所需依赖 |
-|----------|------|--------|
-| coze | Coze平台，支持多种场景 | cozepy |
-| hiagent | 南开大学AI平台，基于本地部署的Coze | cozepy |
-| openAI | OpenAI通用API，支持GPT-3.5/4系列 | openai |
-| chatGPT | OpenAI ChatGPT模型 | openai |
-| baidu | 百度文心一言模型 | 无特殊依赖 |
-| xunfei | 讯飞星火模型 | websocket-client |
-| claudeAPI | Anthropic Claude API | anthropic |
-| qwen | 旧版通义千问模型 | broadscope_bailian |
-| dashscope | 阿里通义千问DashScope | dashscope |
-| gemini | Google Gemini模型 | google-generativeai |
-| glm-4 | 智谱AI GLM系列模型 | zhipuai |
-| moonshot | Moonshot AI模型 | 无特殊依赖 |
-| minimax | MiniMax AI模型 | 无特殊依赖 |
-| bytedance_coze | 字节跳动Coze平台 | 无特殊依赖 |
+| 智能体类型          | 描述                        | 所需依赖                |
+| -------------- | ------------------------- | ------------------- |
+| coze           | Coze平台，支持多种场景             | cozepy              |
+| hiagent        | 南开大学AI平台，基于本地部署的Coze      | cozepy              |
+| openAI         | OpenAI通用API，支持GPT-3.5/4系列 | openai              |
+| chatGPT        | OpenAI ChatGPT模型          | openai              |
+| baidu          | 百度文心一言模型                  | 无特殊依赖               |
+| xunfei         | 讯飞星火模型                    | websocket-client    |
+| claudeAPI      | Anthropic Claude API      | anthropic           |
+| qwen           | 旧版通义千问模型                  | broadscope_bailian  |
+| dashscope      | 阿里通义千问DashScope           | dashscope           |
+| gemini         | Google Gemini模型           | google-generativeai |
+| glm-4          | 智谱AI GLM系列模型              | zhipuai             |
+| moonshot       | Moonshot AI模型             | 无特殊依赖               |
+| minimax        | MiniMax AI模型              | 无特殊依赖               |
+| bytedance_coze | 字节跳动Coze平台                | 无特殊依赖               |
 
 ## 使用方法
 
@@ -114,8 +109,7 @@ class SessionManager:
     }
   }
 }
-
-```text
+```
 
 2. 在代码中通过工厂方法创建智能体:
 
@@ -131,8 +125,7 @@ agent = create_agent(const.COZE)
 
 reply = agent.reply("你好，请问南开大学的校训是什么？", context)
 print(reply.content)
-
-```text
+```
 
 ## 添加新的智能体
 
@@ -151,7 +144,6 @@ print(reply.content)
 示例实现:
 
 ```python
-
 # core/agent/myagent/my_agent.py
 
 from core.agent.agent import Agent
@@ -168,8 +160,7 @@ class MyAgent(Agent):
         # 实现回复逻辑
         reply.content = "这是一个示例回复"
         return reply
-
-```text
+```
 
 ## 注意事项
 
@@ -185,25 +176,25 @@ class MyAgent(Agent):
 
 以下是各模型智能体的实现进度：
 
-| 模型                  | 状态       | 文件                                              |
-|-----------------------|------------|---------------------------------------------------|
-| 百度文心一言          | 已完成     | `core/agent/baidu/baidu_wenxin.py`                |
-| ChatGPT               | 已完成     | `core/agent/chatgpt/chat_gpt_agent.py`            |
-| OpenAI                | 已完成     | `core/agent/openai/open_ai_agent.py`              |
-| Azure ChatGPT         | 已完成     | `core/agent/chatgpt/chat_gpt_agent.py`            |
-| LinkAI                | 已完成     | `core/agent/linkai/link_ai_agent.py`              |
-| 讯飞星火              | 已完成     | `core/agent/xunfei/xunfei_spark_agent.py`         |
-| Claude API            | 已完成     | `core/agent/claudeapi/claude_api_agent.py`        |
-| Google Gemini         | 已完成     | `core/agent/gemini/google_gemini_agent.py`        |
-| DeepSeek              | 已完成     | `core/agent/deepseek/deepseek_agent.py`           |
-| 字节跳动Coze          | 已完成     | `core/agent/bytedance/bytedance_coze_agent.py`    |
-| 阿里云通义千问        | 已完成     | `core/agent/ali/ali_qwen_agent.py`                |
-| 阿里云DashScope       | 已完成     | `core/agent/dashscope/dashscope_agent.py`         |
-| 智谱AI                | 已完成     | `core/agent/zhipuai/zhipuai_agent.py`             |
-| Moonshot              | 已完成     | `core/agent/moonshot/moonshot_agent.py`           |
-| Minimax               | 已完成     | `core/agent/minimax/minimax_agent.py`             |
-| Dify                  | 已完成     | `core/agent/dify/dify_agent.py`                   |
-| HiAgent               | 已完成     | `core/agent/hiagent/hiagent_agent.py`             |
+| 模型            | 状态  | 文件                                             |
+| ------------- | --- | ---------------------------------------------- |
+| 百度文心一言        | 已完成 | `core/agent/baidu/baidu_wenxin.py`             |
+| ChatGPT       | 已完成 | `core/agent/chatgpt/chat_gpt_agent.py`         |
+| OpenAI        | 已完成 | `core/agent/openai/open_ai_agent.py`           |
+| Azure ChatGPT | 已完成 | `core/agent/chatgpt/chat_gpt_agent.py`         |
+| LinkAI        | 已完成 | `core/agent/linkai/link_ai_agent.py`           |
+| 讯飞星火          | 已完成 | `core/agent/xunfei/xunfei_spark_agent.py`      |
+| Claude API    | 已完成 | `core/agent/claudeapi/claude_api_agent.py`     |
+| Google Gemini | 已完成 | `core/agent/gemini/google_gemini_agent.py`     |
+| DeepSeek      | 已完成 | `core/agent/deepseek/deepseek_agent.py`        |
+| 字节跳动Coze      | 已完成 | `core/agent/bytedance/bytedance_coze_agent.py` |
+| 阿里云通义千问       | 已完成 | `core/agent/ali/ali_qwen_agent.py`             |
+| 阿里云DashScope  | 已完成 | `core/agent/dashscope/dashscope_agent.py`      |
+| 智谱AI          | 已完成 | `core/agent/zhipuai/zhipuai_agent.py`          |
+| Moonshot      | 已完成 | `core/agent/moonshot/moonshot_agent.py`        |
+| Minimax       | 已完成 | `core/agent/minimax/minimax_agent.py`          |
+| Dify          | 已完成 | `core/agent/dify/dify_agent.py`                |
+| HiAgent       | 已完成 | `core/agent/hiagent/hiagent_agent.py`          |
 
 ### 升级说明
 
@@ -227,7 +218,10 @@ class MyAgent(Agent):
 
 ### 配置说明
 
-所有智能体的配置项均遵循`core.agent.<模型名>.<配置项>`的格式，例如：
+所有智能体的配置项均遵循`core.agent.<模型名>.<配置项>`的格式，例如: 
+
+
+
 
 ```json
 {
@@ -235,16 +229,19 @@ class MyAgent(Agent):
   "core.agent.gemini.model": "gemini-1.5-pro",
   "core.agent.gemini.temperature": 0.7
 }
-
-```text
+```
 
 请在`config.json`文件中配置相应的参数。
 
 # 南开Wiki智能助手模块
 
+
 本模块实现了南开Wiki的智能助手功能，支持多种大语言模型(LLM)，提供对话、知识检索等能力。
 
 ## 主要功能
+
+
+
 
 1. 提供统一Agent接口，支持多种智能体实现
 2. 会话状态管理，维护用户对话历史
@@ -255,20 +252,24 @@ class MyAgent(Agent):
 
 ### 智能体工厂
 
+
 使用工厂方法获取智能体实例：
 
 ```python
 from core.agent.agent_factory import get_agent
+```
 
 # 获取默认智能体
-agent = get_agent()
 
+```python
+agent = get_agent() 
 # 获取指定类型智能体
-agent = get_agent("coze")  # 使用Coze智能体
-
+agent = get_agent("coze") # 使用Coze智能体 
 # 获取指定类型和标签的智能体
-agent = get_agent("coze", tag="rewrite")  # 使用特定bot_id的Coze智能体
+agent = get_agent("coze", tag="rewrite") # 使用特定bot_id的Coze智能体
 ```
+
+
 
 ### 基本对话
 
@@ -364,7 +365,7 @@ class MyNewAgent(Agent):
     def __init__(self):
         super().__init__()
         # 初始化代码...
-        
+
     def reply(self, query: str, context: Context) -> Reply:
         # 实现回复逻辑...
         return Reply(ReplyType.TEXT, "回复内容")
@@ -373,6 +374,7 @@ class MyNewAgent(Agent):
 ### 优化与改进
 
 当前优先事项：
+
 - 改进知识库检索质量
 - 优化流式输出性能
 - 增强对话上下文管理

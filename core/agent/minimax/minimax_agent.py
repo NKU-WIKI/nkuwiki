@@ -94,7 +94,7 @@ class MinimaxSessionManager(SessionManager):
         session = self.build_session(session_id)
         session.add_query(query)
         try:
-            max_tokens = self.config.get("core.agent.minimax.max_tokens", 1000)
+            max_tokens = self.config.get("core.agent.minimax.max_tokens", 2000)
             total_tokens = session.discard_exceeding(max_tokens, None)
             logger.debug(f"prompt tokens used={total_tokens}")
         except Exception as e:
@@ -106,7 +106,7 @@ class MinimaxSessionManager(SessionManager):
         session = self.build_session(session_id)
         session.add_reply(reply)
         try:
-            max_tokens = self.config.get("core.agent.minimax.max_tokens", 1000)
+            max_tokens = self.config.get("core.agent.minimax.max_tokens", 2000)
             tokens_cnt = session.discard_exceeding(max_tokens, total_tokens)
             logger.debug(f"raw total_tokens={total_tokens}, savesession tokens={tokens_cnt}")
         except Exception as e:
