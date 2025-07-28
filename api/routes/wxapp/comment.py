@@ -58,6 +58,13 @@ async def _enrich_comments(comments: List[Dict[str, Any]], current_user: Optiona
     for comment in comments:
         author_id = comment.get("user_id")
         user_info = users_info_map.get(author_id, {})
+        
+        # 避免用户信息中的id字段覆盖评论的id，但保留用户ID作为author_id
+        if 'id' in user_info:
+            user_info = user_info.copy()  # 创建副本避免修改原数据
+            comment["author_id"] = user_info['id']  # 保存用户ID为author_id
+            del user_info['id']  # 删除用户的id字段以避免冲突
+        
         comment.update(user_info)
         comment["is_liked"] = comment.get("id") in liked_comment_ids
         if 'openid' in comment: # 保留，以防万一
