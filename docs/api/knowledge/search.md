@@ -339,7 +339,7 @@
 
 ### 5.4 获取热门和最新帖子推荐
 
-- **Endpoint**: `GET /knowledge/recommand`
+- **Endpoint**: `GET /knowledge/recommend`
 - **Tags**: `knowledge`, `recommendation`
 - **Summary**: 获取热门和最新帖子，支持AI智能推荐
 
