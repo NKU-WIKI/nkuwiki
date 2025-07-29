@@ -29,12 +29,13 @@ router = APIRouter()
 
 
 async def _enrich_comments(comments: List[Dict[str, Any]], current_user: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    """高效地为评论列表批量补充作者信息和当前用户的点赞状态"""
+    """高效地为评论列表批量补充作者信息、父评论信息和当前用户的点赞状态"""
     if not comments:
         return []
 
     author_ids = {c.get("user_id") for c in comments if c.get("user_id")}
     comment_ids = [c.get("id") for c in comments if c.get("id")]
+    parent_ids = {c.get("parent_id") for c in comments if c.get("parent_id")}
 
     # 批量获取用户信息
     users_info_map = {}
@@ -43,6 +44,21 @@ async def _enrich_comments(comments: List[Dict[str, Any]], current_user: Optiona
         user_sql = f"SELECT id, nickname, avatar, bio FROM wxapp_user WHERE id IN ({placeholders})"
         user_results = await execute_custom_query(user_sql, list(author_ids))
         users_info_map = {user['id']: user for user in user_results}
+
+    # 批量获取父评论信息
+    parent_comments_map = {}
+    if parent_ids:
+        placeholders = ', '.join(['%s'] * len(parent_ids))
+        parent_sql = f"""
+        SELECT 
+            c.id, c.content, c.user_id, c.create_time,
+            u.nickname as parent_author_nickname
+        FROM wxapp_comment c
+        LEFT JOIN wxapp_user u ON c.user_id = u.id
+        WHERE c.id IN ({placeholders})
+        """
+        parent_results = await execute_custom_query(parent_sql, list(parent_ids))
+        parent_comments_map = {parent['id']: parent for parent in parent_results}
 
     # 批量获取点赞状态
     liked_comment_ids = set()
@@ -56,6 +72,7 @@ async def _enrich_comments(comments: List[Dict[str, Any]], current_user: Optiona
     
     # 注入信息到评论中
     for comment in comments:
+        # 注入作者信息
         author_id = comment.get("user_id")
         user_info = users_info_map.get(author_id, {})
         
@@ -67,6 +84,20 @@ async def _enrich_comments(comments: List[Dict[str, Any]], current_user: Optiona
         
         comment.update(user_info)
         comment["is_liked"] = comment.get("id") in liked_comment_ids
+        
+        # 注入父评论信息
+        parent_id = comment.get("parent_id")
+        if parent_id and parent_id in parent_comments_map:
+            parent_info = parent_comments_map[parent_id]
+            comment["parent_comment"] = {
+                "id": parent_info.get("id"),
+                "content": parent_info.get("content", "")[:50] + ("..." if len(parent_info.get("content", "")) > 50 else ""),  # 截取前50字符
+                "author_nickname": parent_info.get("parent_author_nickname", "未知用户"),
+                "create_time": str(parent_info.get("create_time", ""))
+            }
+        else:
+            comment["parent_comment"] = None
+        
         if 'openid' in comment: # 保留，以防万一
             del comment['openid']
 

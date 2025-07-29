@@ -416,20 +416,81 @@ async def get_user_comments(
     page: int = Query(1, description="页码"),
     page_size: int = Query(10, description="每页数量")
 ):
-    """获取当前用户发布的所有评论"""
+    """获取当前用户发布的所有评论，包含父评论信息"""
     user_id = current_user['id']  # 修正：使用id字段而不是openid
     offset = (page - 1) * page_size
     
-    # 连表查询，获取评论及其关联帖子的标题
+    # 连表查询，获取评论及其关联帖子的标题和作者信息
     comments_query = """
-    SELECT c.*, p.title as post_title
+    SELECT c.*, p.title as post_title, p.content as post_content, p.user_id as post_author_id, u.nickname as post_author_nickname
     FROM wxapp_comment c
     LEFT JOIN wxapp_post p ON c.resource_id = p.id AND c.resource_type = 'post'
+    LEFT JOIN wxapp_user u ON p.user_id = u.id
     WHERE c.user_id = %s AND c.is_deleted = 0
     ORDER BY c.create_time DESC
     LIMIT %s OFFSET %s
     """
     comments = await execute_custom_query(comments_query, [user_id, page_size, offset])
+    
+    # 获取父评论信息
+    parent_ids = {c.get("parent_id") for c in comments if c.get("parent_id")}
+    parent_comments_map = {}
+    if parent_ids:
+        placeholders = ', '.join(['%s'] * len(parent_ids))
+        parent_sql = f"""
+        SELECT 
+            c.id, c.content, c.user_id, c.create_time,
+            u.nickname as parent_author_nickname
+        FROM wxapp_comment c
+        LEFT JOIN wxapp_user u ON c.user_id = u.id
+        WHERE c.id IN ({placeholders})
+        """
+        parent_results = await execute_custom_query(parent_sql, list(parent_ids))
+        parent_comments_map = {parent['id']: parent for parent in parent_results}
+    
+    # 获取用户信息（当前用户）
+    user_info_query = "SELECT id, nickname, avatar, bio FROM wxapp_user WHERE id = %s"
+    user_info_result = await execute_custom_query(user_info_query, [user_id], fetch='one')
+    user_info = user_info_result or {}
+    
+    # 丰富评论数据
+    for comment in comments:
+        # 添加用户信息（避免ID冲突）
+        if user_info:
+            comment["author_id"] = user_info.get("id")
+            comment["nickname"] = user_info.get("nickname", "未知用户")
+            comment["avatar"] = user_info.get("avatar", "")
+            comment["bio"] = user_info.get("bio", "")
+        
+        # 添加父评论信息
+        parent_id = comment.get("parent_id")
+        if parent_id and parent_id in parent_comments_map:
+            parent_info = parent_comments_map[parent_id]
+            comment["parent_comment"] = {
+                "id": parent_info.get("id"),
+                "content": parent_info.get("content", "")[:50] + ("..." if len(parent_info.get("content", "")) > 50 else ""),
+                "author_nickname": parent_info.get("parent_author_nickname", "未知用户"),
+                "create_time": str(parent_info.get("create_time", ""))
+            }
+            # 兼容前端字段名
+            comment["parent_comment_author"] = parent_info.get("parent_author_nickname")
+            comment["parent_comment_content"] = parent_info.get("content", "")[:50] + ("..." if len(parent_info.get("content", "")) > 50 else "")
+        else:
+            comment["parent_comment"] = None
+            comment["parent_comment_author"] = None
+            comment["parent_comment_content"] = None
+        
+        # 添加便于前端使用的字段
+        comment["is_reply"] = parent_id is not None
+        comment["post_id"] = comment.get("resource_id")
+        
+        # 处理图片和内容
+        if not comment.get("post_content"):
+            comment["post_content"] = "内容不可用"
+        
+        # 删除可能干扰的字段
+        if 'openid' in comment:
+            del comment['openid']
     
     # 获取总评论数
     total_comments = await count_records(
