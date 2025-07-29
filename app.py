@@ -61,7 +61,6 @@ async def lifespan(app: FastAPI):
     logger.debug("应用关闭中，开始清理资源...")
     
     try:
-        from etl.load import close_db_pool
         await close_db_pool()
         logger.debug("数据库连接池已关闭")
     except Exception as e:

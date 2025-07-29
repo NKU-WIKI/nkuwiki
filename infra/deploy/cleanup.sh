@@ -1,5 +1,12 @@
 #!/bin/bash
 
+# NKU Wiki 系统清理脚本
+# 功能说明：
+# - 清理系统包缓存、临时文件、日志文件
+# - 智能清理Docker资源，保留pip构建缓存以提高构建效率
+# - 清理无标题帖子（如果脚本存在）
+# - 设置定时任务自动执行清理
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CLEANUP_PY="${SCRIPT_DIR}/cleanup_untitled_posts.py"
@@ -123,11 +130,29 @@ fi
 # 10. 清理Docker系统
 echo "=== 清理Docker系统 ==="
 if command -v docker &>/dev/null; then
-    echo "--- 清理所有未使用的Docker资源 (包括非悬空镜像和构建缓存) ---"
-    docker system prune -af
+    echo "--- 清理停止的容器 ---"
+    docker container prune -f
+    
+    echo "--- 清理悬空镜像 ---"
+    docker image prune -f
+    
+    echo "--- 清理无用的网络 ---"
+    docker network prune -f
     
     echo "--- 清理无用的数据卷 ---"
     docker volume prune -f
+    
+    echo "--- 清理构建缓存（保留pip缓存） ---"
+    # 使用--filter过滤器保留pip相关的构建缓存
+    # 清理超过7天的构建缓存，但保留包含pip关键字的缓存
+    docker buildx prune --filter "until=168h" --filter "!label=pip" -f 2>/dev/null || {
+        # 如果buildx不可用，使用传统方式但更保守地清理
+        echo "buildx不可用，使用传统清理方式"
+        # 只清理超过7天的构建缓存
+        docker builder prune --filter "until=168h" -f 2>/dev/null || {
+            echo "builder命令不可用，跳过构建缓存清理以保留pip缓存"
+        }
+    }
     
     echo "--- 清理后Docker磁盘使用情况 ---"
     docker system df
@@ -174,4 +199,4 @@ else
 fi
 
 echo "=== 清理完成 ==="
-df -h 
+df -h

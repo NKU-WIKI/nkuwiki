@@ -70,12 +70,12 @@ class Notification(BaseTimeStamp):
 class Feedback(BaseTimeStamp):
     """反馈模型"""
     id: int = Field(..., description="反馈ID")
-    openid: str = Field(..., description="用户openid")
     content: str = Field(..., description="反馈内容")
     type: str = Field(..., description="反馈类型：bug-问题反馈, suggestion-建议, other-其他")
     contact: Optional[str] = Field(None, description="联系方式")
     image: List[str] = Field(default_factory=list, description="图片URL列表")
     device_info: Optional[DeviceInfo] = Field(None, description="设备信息")
+    version: Optional[str] = Field(None, description="应用版本号")
     status: str = Field("pending", description="反馈状态：pending-待处理, processing-处理中, resolved-已解决, rejected-已拒绝")
     admin_reply: Optional[str] = Field(None, description="管理员回复")
     admin_id: Optional[str] = Field(None, description="处理管理员ID")

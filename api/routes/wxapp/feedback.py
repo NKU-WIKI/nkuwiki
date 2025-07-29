@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Body
 from typing import Dict, Any, Optional
 
 from api.models.common import Response, validate_params, PaginationInfo
-from etl.load import db_core, insert_record
+from etl.load import insert_record, query_records
 from core.utils.logger import register_logger
 from api.common.dependencies import get_current_active_user_optional, get_current_active_user
 
@@ -35,6 +35,7 @@ async def create_feedback(
         "title": payload.get("title"),
         "category": payload.get("category"),
         "contact": payload.get("contact"),
+        "version": payload.get("version"),
         "status": "pending"  # 初始状态为待处理
     }
     
@@ -73,8 +74,9 @@ async def get_my_feedback_list(
     user_id = current_user["id"]
     
     try:
-        result = await db_core.query_records(
-            table_name="wxapp_feedback",
+        # 查询反馈记录
+        result = await query_records(
+            "wxapp_feedback",
             conditions={"user_id": user_id},
             order_by={"create_time": "DESC"},
             limit=page_size,
@@ -97,9 +99,9 @@ async def get_my_feedback_list(
                 except json.JSONDecodeError:
                     item['device_info'] = None
 
-        pagination = PaginationInfo.from_total(total=total, page=page, page_size=page_size)
+        pagination = PaginationInfo(total=total, page=page, page_size=page_size)
         
         return Response.paged(data=feedbacks, pagination=pagination)
     except Exception as e:
         logger.error(f"获取我的反馈列表时发生异常: {e}")
-        return Response.error(details=f"服务器内部错误: {e}") 
+        return Response.error(details=f"服务器内部错误: {e}")

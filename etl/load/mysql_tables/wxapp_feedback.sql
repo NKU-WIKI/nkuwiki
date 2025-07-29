@@ -1,6 +1,5 @@
 CREATE TABLE IF NOT EXISTS `wxapp_feedback` (
     `id` BIGINT NOT NULL AUTO_INCREMENT,
-    `openid` VARCHAR(100) NOT NULL COMMENT '用户openid',
     `user_id` BIGINT DEFAULT NULL COMMENT '关联的用户ID (如果用户已登录)',
     `title` VARCHAR(255) DEFAULT '' COMMENT '反馈标题',
     `content` TEXT DEFAULT NULL COMMENT '反馈内容',
@@ -8,16 +7,16 @@ CREATE TABLE IF NOT EXISTS `wxapp_feedback` (
     `contact` VARCHAR(100) DEFAULT NULL COMMENT '联系方式',
     `image` JSON DEFAULT NULL COMMENT '图片URL列表',
     `device_info` JSON DEFAULT NULL COMMENT '设备信息',
+    `version` VARCHAR(50) DEFAULT NULL COMMENT '应用版本号',
     `status` VARCHAR(20) DEFAULT 'pending' COMMENT '反馈状态：pending-待处理, processing-处理中, resolved-已解决, rejected-已拒绝',
     `admin_reply` TEXT DEFAULT NULL COMMENT '管理员回复',
     `admin_id` VARCHAR(100) DEFAULT NULL COMMENT '处理管理员ID',
     `create_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     `update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (`id`),
-    KEY `idx_openid` (`openid`),
     KEY `idx_user_id` (`user_id`),
     KEY `idx_category` (`category`),
     KEY `idx_status` (`status`),
     KEY `idx_create_time` (`create_time`),
     FULLTEXT KEY `ft_content` (`content`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序反馈数据表'; 
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='微信小程序反馈数据表';
