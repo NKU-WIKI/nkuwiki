@@ -66,9 +66,11 @@ async def _enrich_comments(comments: List[Dict[str, Any]], current_user: Optiona
         current_user_id = current_user['id']
         placeholders = ', '.join(['%s'] * len(comment_ids))
         like_sql = f"SELECT target_id FROM wxapp_action WHERE action_type = 'like' AND target_type = 'comment' AND user_id = %s AND target_id IN ({placeholders})"
-        like_params = [current_user_id] + comment_ids
+        # 将comment_ids转换为字符串，因为wxapp_action.target_id是VARCHAR类型
+        like_params = [current_user_id] + [str(cid) for cid in comment_ids]
         like_results = await execute_custom_query(like_sql, like_params)
-        liked_comment_ids = {res['target_id'] for res in like_results}
+        # 将target_id转换为整数进行比较，确保类型一致
+        liked_comment_ids = {int(res['target_id']) for res in like_results}
     
     # 注入信息到评论中
     for comment in comments:
@@ -315,15 +317,15 @@ async def get_comment_status(
         WHERE user_id = %s AND action_type = 'like' AND target_type = 'comment' AND target_id IN ({placeholders})
         """
         
-        # 执行查询
-        comments = await execute_custom_query(sql, [user_id] + ids)
+        # 执行查询，将ids转换为字符串因为wxapp_action.target_id是VARCHAR类型
+        comments = await execute_custom_query(sql, [user_id] + [str(cid) for cid in ids])
         
-        # 转换点赞结果为集合，方便快速查找
-        liked_ids = {record['target_id'] for record in comments} if comments else set()
+        # 转换点赞结果为集合，将target_id转为整数方便快速查找
+        liked_ids = {int(record['target_id']) for record in comments} if comments else set()
         
         # 为每个请求的评论ID构建状态信息
         result = {}
-        comment_dict = {comment['target_id']: comment for comment in comments} if comments else {}
+        comment_dict = {int(comment['target_id']): comment for comment in comments} if comments else {}
         
         for cid in ids:
             comment = comment_dict.get(cid)
