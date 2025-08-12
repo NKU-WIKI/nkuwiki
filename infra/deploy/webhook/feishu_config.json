@@ -1,0 +1,13 @@
+{
+  "feishu_app_id": "cli_a8a2740f7c79d00d",
+  "feishu_app_secret": "gERjF0G07OZT4L6EAV6VhcRz2pFvNYjw",
+  "feishu_chat_id": "oc_273a9c864fe5a9693f832c8b29906b79",
+  "default_chat_id": "oc_273a9c864fe5a9693f832c8b29906b79",
+  "project_chat_mapping": {
+    "default": "oc_273a9c864fe5a9693f832c8b29906b79",
+    "aokimi0/CUMCM2025": "oc_273a9c864fe5a9693f832c8b29906b79",
+    "NKU-WIKI/wxapp": "oc_a9b04d6f665c672638eb60d2d71cacbd",
+    "NKU-WIKI/nkuwiki": "oc_a9b04d6f665c672638eb60d2d71cacbd"
+  }
+}
+
