@@ -1,0 +1,110 @@
+[33mebcddd2[m docs: CD排除docs提交
+[1mdiff --git a/infra/deploy/webhook/feishu_config.json b/infra/deploy/webhook/feishu_config.json[m
+[1mindex 38a2ffa..7de753b 100644[m
+[1m--- a/infra/deploy/webhook/feishu_config.json[m
+[1m+++ b/infra/deploy/webhook/feishu_config.json[m
+[36m@@ -6,7 +6,6 @@[m
+   "project_chat_mapping": {[m
+     "default": "oc_273a9c864fe5a9693f832c8b29906b79",[m
+     "aokimi0/CUMCM2025": "oc_273a9c864fe5a9693f832c8b29906b79",[m
+[31m-    "GH2050/Deep-Learning-2025-Spring": "oc_f43831c32a10ee85fc2a028f384e5865",[m
+     "NKU-WIKI/wxapp": "oc_a9b04d6f665c672638eb60d2d71cacbd",[m
+     "NKU-WIKI/nkuwiki": "oc_a9b04d6f665c672638eb60d2d71cacbd"[m
+   }[m
+[1mdiff --git a/infra/deploy/webhook/main.py b/infra/deploy/webhook/main.py[m
+[1mindex c7da3aa..dde29bb 100644[m
+[1m--- a/infra/deploy/webhook/main.py[m
+[1m+++ b/infra/deploy/webhook/main.py[m
+[36m@@ -8,6 +8,7 @@[m [mimport os[m
+ import time[m
+ import asyncio[m
+ import subprocess[m
+[32m+[m[32mimport re[m
+ [m
+ # 目录与日志[m
+ BASE_DIR = os.path.dirname(os.path.abspath(__file__))[m
+[36m@@ -140,6 +141,12 @@[m [mdef safe_tail(text: str, max_len: int = 1600) -> str:[m
+     return text[-max_len:] if len(text) > max_len else text[m
+ [m
+ [m
+[32m+[m[32mdef strip_ansi(text: str) -> str:[m
+[32m+[m[32m    if not text:[m
+[32m+[m[32m        return ""[m
+[32m+[m[32m    return re.sub(r"\x1b\[[0-9;?]*[A-Za-z]", "", text)[m
+[32m+[m
+[32m+[m
+ DEPLOY_CMD = ["/home/dev/nkuwiki-dev/nkuwiki_service_manager.sh", "start", "dev"][m
+ [m
+ [m
+[36m@@ -197,6 +204,41 @@[m [masync def github_webhook(request: Request):[m
+ [m
+     chat_id = get_chat_id_for_project(repo_name)[m
+ [m
+[32m+[m[32m    # docs-only 提交（不触发部署，仅通知）[m
+[32m+[m[32m    docs_only = False[m
+[32m+[m[32m    commit_author = head_commit.get("author", {}).get("name", pusher)[m
+[32m+[m[32m    if isinstance(commits, list) and commits:[m
+[32m+[m[32m        docs_only = all((c.get("message", "").strip().lower().startswith("docs:")) for c in commits)[m
+[32m+[m[32m        latest_commit = commits[-1][m
+[32m+[m[32m        commit_msg = latest_commit.get("message", commit_msg)[m
+[32m+[m[32m        commit_url = latest_commit.get("url", commit_url)[m
+[32m+[m[32m        commit_author = latest_commit.get("author", {}).get("name", commit_author)[m
+[32m+[m[32m    else:[m
+[32m+[m[32m        msg = (commit_msg or "").strip().lower()[m
+[32m+[m[32m        docs_only = msg.startswith("docs:")[m
+[32m+[m
+[32m+[m[32m    if docs_only:[m
+[32m+[m[32m        try:[m
+[32m+[m[32m            elements = [[m
+[32m+[m[32m                {"tag": "div", "text": {"tag": "lark_md", "content": f"📦 **仓库**: {repo_name}"}},[m
+[32m+[m[32m                {"tag": "div", "text": {"tag": "lark_md", "content": f"🌿 **分支**: {branch}"}},[m
+[32m+[m[32m                {"tag": "div", "text": {"tag": "lark_md", "content": f"👤 **提交者**: {commit_author} (推送者: {pusher})"}},[m
+[32m+[m[32m                {"tag": "div", "text": {"tag": "lark_md", "content": f"💬 **信息**: {commit_msg}"}},[m
+[32m+[m[32m                {"tag": "action", "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "🔗 查看提交详情"}, "type": "default", "url": commit_url}]}[m
+[32m+[m[32m            ][m
+[32m+[m[32m            if isinstance(commits, list) and len(commits) > 1:[m
+[32m+[m[32m                elements.insert(4, {"tag": "div", "text": {"tag": "lark_md", "content": f"✨ **总提交数**: {len(commits)}"}})[m
+[32m+[m[32m                compare_url = payload.get("compare")[m
+[32m+[m[32m                if compare_url:[m
+[32m+[m[32m                    elements.append({[m
+[32m+[m[32m                        "tag": "action",[m
+[32m+[m[32m                        "actions": [{"tag": "button", "text": {"tag": "plain_text", "content": "🔍 查看所有变更"}, "type": "default", "url": compare_url}][m
+[32m+[m[32m                    })[m
+[32m+[m[32m            await send_feishu_card(chat_id, "GitHub 文档更新通知", elements)[m
+[32m+[m[32m        except Exception as e:[m
+[32m+[m[32m            logger.error(f"发送文档更新通知失败: {e}")[m
+[32m+[m[32m        return {"status": "success", "message": "docs-only 提交，未触发部署"}[m
+[32m+[m
+     # 发送开始通知[m
+     try:[m
+         elements = [[m
+[36m@@ -220,17 +262,20 @@[m [masync def github_webhook(request: Request):[m
+             end_ts = time.strftime('%Y-%m-%d %H:%M:%S')[m
+             ok = (code == 0)[m
+             status_emoji = "✅" if ok else "❌"[m
+[32m+[m[32m            clean_out = strip_ansi(out)[m
+[32m+[m[32m            clean_err = strip_ansi(err)[m
+             elements = [[m
+                 {"tag": "div", "text": {"tag": "lark_md", "content": f"{status_emoji} **部署完成** (返回码: {code})"}},[m
+                 {"tag": "div", "text": {"tag": "lark_md", "content": f"⏱️ {start_ts} → {end_ts}"}},[m
+                 {"tag": "hr"},[m
+                 {"tag": "div", "text": {"tag": "lark_md", "content": "🟦 标准输出(尾部):"}},[m
+[31m-                {"tag": "div", "text": {"tag": "lark_md", "content": f"```\n{safe_tail(out, 1400)}\n```"}},[m
+[32m+[m[32m                {"tag": "div", "text": {"tag": "lark_md", "content": f"```\n{safe_tail(clean_out, 1400)}\n```"}},[m
+             ][m
+[31m-            if err and err.strip():[m
+[32m+[m[32m            if clean_err and clean_err.strip():[m
+[32m+[m[32m                label = "🟥 错误输出(尾部):" if not ok else "🟨 附加输出(尾部):"[m
+                 elements += [[m
+[31m-                    {"tag": "div", "text": {"tag": "lark_md", "content": "🟥 错误输出(尾部):"}},[m
+[31m-                    {"tag": "div", "text": {"tag": "lark_md", "content": f"```\n{safe_tail(err, 800)}\n```"}},[m
+[32m+[m[32m                    {"tag": "div", "text": {"tag": "lark_md", "content": label}},[m
+[32m+[m[32m                    {"tag": "div", "text": {"tag": "lark_md", "content": f"```\n{safe_tail(clean_err, 800)}\n```"}},[m
+                 ][m
+             try:[m
+                 await send_feishu_card(chat_id, "CI/CD: 部署结果", elements)[m
+[33m30548da[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mdev[m[33m)[m Merge branch 'dev' of https://github.com/NKU-WIKI/nkuwiki into dev
+[33mf563e5b[m docs: CD排除docs提交
+[33md57bafa[m[33m ([m[1;31morigin/dev[m[33m)[m docs: 新架构设计
+[33mebcddd2[m docs: CD排除docs提交
+[33me2f61af[m Merge branch 'dev' of https://github.com/NKU-WIKI/nkuwiki into dev
